@@ -31,6 +31,14 @@ import {
 } from "./look/glsl.js";
 import { GLSL_PARTICLES } from "./look/particles.glsl.js";
 
+/**
+ * Max drifting light motes. The single source of truth for the cap: it is BOTH
+ * the GLSL `#define MAX_MOTES` (interpolated below) and the integer-clamp const
+ * the `.dope` mapping references (passed to the loader as `MAX_MOTES`). Counts
+ * above this won't render (the shader loop is bounded by the define).
+ */
+export const MAX_MOTES = 80;
+
 export const VERTEX_SRC = /* glsl */ `#version 300 es
 void main() {
   // Single full-screen triangle from gl_VertexID — no vertex buffers needed.
@@ -72,7 +80,7 @@ uniform float uSdfOn;        // 1 = drive the icon from the baked SDF (geometry 
 uniform float uSdfRangePx;   // device px that map to the SDF's full 0..1 distance range
 uniform float uSdfStrokePx;  // half stroke width (device px) the SDF coverage reads at
 
-#define MAX_MOTES 80
+#define MAX_MOTES ${MAX_MOTES}
 ${GLSL_CONSTANTS}
 ${GLSL_HASH}
 ${GLSL_FBM}

@@ -41,6 +41,13 @@ import {
 } from "./look/glsl.js";
 import { GLSL_PARTICLES } from "./look/particles.glsl.js";
 
+/**
+ * Max flung droplets. Single source of truth for the cap: BOTH the GLSL
+ * `#define MAX_DROPS` (interpolated below) and the integer-clamp const the
+ * `.dope` mapping references (passed to the loader as `MAX_DROPS`).
+ */
+export const MAX_DROPS = 64;
+
 export const INK_VERTEX_SRC = /* glsl */ `#version 300 es
 void main() {
   vec2 pos = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
@@ -72,7 +79,7 @@ uniform vec3  uC0;           // ink core color
 uniform vec3  uC1;           // mid
 uniform vec3  uC2;           // edge / spray accent
 
-#define MAX_DROPS 64
+#define MAX_DROPS ${MAX_DROPS}
 ${GLSL_CONSTANTS}
 ${GLSL_HASH}
 ${GLSL_FBM}

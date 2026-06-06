@@ -10,8 +10,8 @@
  */
 
 import { envelope, strokeProgress } from "../engine/tempo.js";
-import { MAX_DROPS, type InkRenderParams } from "../engine/mood.js";
-import { INK_FRAGMENT_SRC, INK_VERTEX_SRC } from "../engine/inkstroke-shader.js";
+import type { InkRenderParams } from "../engine/mood.js";
+import { INK_FRAGMENT_SRC, INK_VERTEX_SRC, MAX_DROPS } from "../engine/inkstroke-shader.js";
 import type { EffectContext, EffectFactory, EffectInstance } from "../framework/effect.js";
 import { registerEffect } from "../framework/registry.js";
 import { parseDope, resolveDopeParams } from "../framework/loader.js";

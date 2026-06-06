@@ -71,7 +71,7 @@ if (typeof document !== "undefined") void ensureCheckFonts();
  * fallback box)? Used by the renderer to decide whether to upload a glyph
  * texture or let the shader use its analytic checkmark.
  */
-export function checkFaceReady(family: string): boolean {
+function checkFaceReady(family: string): boolean {
   if (typeof document === "undefined" || !(document as Document).fonts) return false;
   try {
     return (document as Document).fonts.check(`64px "${family}"`);

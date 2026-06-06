@@ -5,7 +5,7 @@
  * GLSL program is compiled in the whole library.
  */
 
-export function compileShader(
+function compileShader(
   gl: WebGL2RenderingContext,
   type: number,
   src: string,

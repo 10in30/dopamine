@@ -1,7 +1,24 @@
 /**
- * Mood mapping — turns the three human-facing knobs (mood / intensity / whimsy)
- * plus a seed into concrete render parameters. This is where the research-backed
- * relationships live:
+ * LEGACY MOOD MAPPING — the TEST-ONLY parity oracle. NOT on the production path.
+ *
+ * This module is the original hand-written mood→params mapping. The shipping
+ * runtime no longer calls it: every built-in effect now resolves its params from
+ * its bundled `.dope` document via the data-driven loader (framework/loader.ts)
+ * + content resolvers (framework/content.ts). What survives here is kept ONLY as
+ * the byte-parity REGRESSION ORACLE: the loader.test.ts / content.test.ts suites
+ * assert that the `.dope`-driven output equals these `resolve*Params` /
+ * `pickWord` / `comicTypography` / `pickCheckGlyph` functions across a
+ * mood × intensity × whimsy × seed grid. So this file is the frozen "golden"
+ * reference — do NOT change its arithmetic (a change here is a parity break, not
+ * a behavior change), and do NOT import it from production code.
+ *
+ * The only thing production still reads from here are the param-shape TYPES
+ * (`RenderParams` / `InkRenderParams` / `ComicRenderParams` / `CheckGlyph` /
+ * `ComicWord`) — pure interfaces, no behavior. The integer-clamp caps
+ * (`MAX_MOTES` / `MAX_DROPS`) now live with the shaders that `#define` them and
+ * are merely re-exported here for the tests' convenience.
+ *
+ * The research-backed relationships these tables encode:
  *   - intensity → saturation + brightness + bloom + overshoot   (arousal/valence)
  *   - whimsy    → photorealism ↔ non-photorealism (the stylization axis):
  *                 0 = true volumetric light + natural motion; 1 = cel-shaded,
@@ -13,6 +30,13 @@ import type { DopamineMood } from "../types.js";
 import { buildPalette, type RGB } from "./color.js";
 import { mulberry32, type Rng } from "./seed.js";
 import { resolveMood } from "../framework/mood-registry.js";
+
+// The mote/drop caps are owned by the shaders that `#define` them (single source
+// of truth); imported for the resolvers below and re-exported so the parity
+// tests can reference one symbol.
+import { MAX_MOTES } from "./shader.js";
+import { MAX_DROPS } from "./inkstroke-shader.js";
+export { MAX_MOTES, MAX_DROPS };
 
 /** A built-in mood name, or any custom mood registered via `registerMood`. */
 type MoodName = DopamineMood | (string & {});
@@ -169,9 +193,6 @@ const BASELINES: Record<DopamineMood, MoodBaseline> = {
   },
 };
 
-/** Must match `MAX_MOTES` in `engine/shader.ts` — counts above this won't render. */
-export const MAX_MOTES = 80;
-
 const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
@@ -296,9 +317,6 @@ export interface InkRenderParams {
   /** 0..1 — stylization (whimsy): wet sumi-e ink → flat cel/neon stroke. */
   style: number;
 }
-
-/** Must match `MAX_DROPS` in `engine/inkstroke-shader.ts`. */
-export const MAX_DROPS = 64;
 
 interface InkBaseline {
   durationMs: number;

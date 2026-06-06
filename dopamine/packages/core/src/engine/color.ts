@@ -59,18 +59,6 @@ export function oklchToLinearSrgb({ L, C, h }: OKLCH): RGB {
   };
 }
 
-/** Linear sRGB channel → gamma-encoded sRGB (for CSS). */
-function encodeChannel(c: number): number {
-  const x = clamp01(c);
-  return x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055;
-}
-
-/** Linear RGB → `rgb(...)` CSS string. Handy for debugging / non-WebGL chrome. */
-export function linearToCss({ r, g, b }: RGB): string {
-  const to255 = (c: number) => Math.round(encodeChannel(c) * 255);
-  return `rgb(${to255(r)} ${to255(g)} ${to255(b)})`;
-}
-
 export interface PaletteParams {
   /** Base lightness for the stops. */
   lightness: number;

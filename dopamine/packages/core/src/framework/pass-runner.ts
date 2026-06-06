@@ -24,12 +24,22 @@
  * `shadowGeometry` / envelope / progress math (supplied by the config).
  */
 
-import { shadowGeometry } from "../engine/shadow.js";
 import { NPR_TIME_STEP_MS } from "../engine/tempo.js";
 import type { DecodedSdf } from "../engine/sdf.js";
 import type { RGB } from "../engine/color.js";
 import type { GLContext } from "../engine/context.js";
 import type { EffectContext, EffectInstance } from "./effect.js";
+import {
+  STANDARD_COMMON,
+  allocTexture,
+  applyFloatMap,
+  beginProgram,
+  bindFrameUniforms,
+  bindPalette,
+  bindScalars,
+  bindShadowGeometry,
+  computeScalarBinds,
+} from "./pass-common.js";
 
 /** A resolved param bag (the loader's output + any composed fields). */
 export type PassParams = Record<string, unknown> & {
@@ -119,10 +129,9 @@ export interface PassConfig {
   frame(info: FrameInfo, params: PassParams): { amp: number } & Record<string, number>;
 }
 
-const STANDARD = ["uResolution", "uOrigin", "uLife", "uTimeS", "uStyle", "uAmp",
-  "uC0", "uC1", "uC2", "uShadow", "uShadowOffset", "uShadowSoft", "uShadowStrength"] as const;
-
-const cap = (s: string): string => `u${s.charAt(0).toUpperCase()}${s.slice(1)}`;
+// The pure-shader runner adds `uOrigin` (anchored radial effects) to the shared
+// standard set.
+const STANDARD = ["uOrigin", ...STANDARD_COMMON] as const;
 
 /** Upload a decoded SDF as a single-channel R8 texture (FLIP_Y, edge-clamped). */
 function uploadSdf(glc: GLContext, sdf: DecodedSdf): WebGLTexture {
@@ -140,18 +149,6 @@ function uploadSdf(glc: GLContext, sdf: DecodedSdf): WebGLTexture {
   return tex!;
 }
 
-/** Allocate a linear/edge-clamped RGBA texture (pixels uploaded later). */
-function allocTexture(glc: GLContext): WebGLTexture {
-  const { gl } = glc;
-  const tex = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  return tex!;
-}
-
 /**
  * Build a drawable {@link EffectInstance} for a pure-shader effect from its
  * config + resolved params + the runtime context. This is the `create()` an
@@ -163,21 +160,12 @@ export function createPassInstance(
   ctx: EffectContext,
 ): EffectInstance {
   const pal = params.palette as RGB[];
-  const [c0, c1, c2] = pal;
   const dpr = ctx.dpr;
   const allUniforms = [...new Set([...STANDARD, ...config.uniforms])];
 
   // The numeric params that auto-bind to a uniform: `name → u<Name>` unless an
   // explicit binding overrides it (or maps it to null to skip).
-  const bindings = config.bindings ?? {};
-  const scalarBinds: Array<[string, string]> = [];
-  for (const [name, value] of Object.entries(params)) {
-    if (typeof value !== "number") continue;
-    if (name === "durationMs") continue; // tempo, not a shader uniform
-    const override = bindings[name];
-    if (override === null) continue; // explicitly not a uniform
-    scalarBinds.push([name, override ?? cap(name)]);
-  }
+  const scalarBinds = computeScalarBinds(params, config.bindings ?? {});
 
   // Aux textures. SDF sources upload up front (static R8 data); canvas sources
   // allocate the texture now but upload pixels lazily on first bind (the canvas
@@ -198,10 +186,7 @@ export function createPassInstance(
   const drawPass = (glc: GLContext, info: FrameInfo, frameUniforms: { amp: number } & Record<string, number>, isShadow: boolean): void => {
     const { gl } = glc;
     const c = glc.canvas;
-    const prog = glc.program(config.vertex, config.fragment);
-    const u = prog.uniforms(allUniforms);
-    gl.useProgram(prog.program);
-    gl.bindVertexArray(glc.vao);
+    const { u } = beginProgram(glc, config.vertex, config.fragment, allUniforms);
 
     // Aux textures (baked SDF icons / rasterized canvas glyphs).
     for (const a of aux) {
@@ -220,13 +205,11 @@ export function createPassInstance(
         if (loc) gl.uniform1i(loc, a.spec.unit);
       }
       if (a.spec.onUniform && u[a.spec.onUniform]) gl.uniform1f(u[a.spec.onUniform], tex ? 1 : 0);
-      const derived = a.spec.uniforms?.(c, params);
-      if (derived) for (const [n, v] of Object.entries(derived)) if (u[n]) gl.uniform1f(u[n], v);
+      applyFloatMap(gl, u, a.spec.uniforms?.(c, params));
     }
 
     // Extra per-pass scalar uniforms (canvas-size-dependent, non-aux).
-    const extra = config.passUniforms?.(c, params);
-    if (extra) for (const [n, v] of Object.entries(extra)) if (u[n]) gl.uniform1f(u[n], v);
+    applyFloatMap(gl, u, config.passUniforms?.(c, params));
 
     // Standard uniforms.
     gl.uniform2f(u.uResolution, c.width, c.height);
@@ -237,30 +220,12 @@ export function createPassInstance(
     gl.uniform1f(u.uLife, info.life);
     gl.uniform1f(u.uTimeS, info.animMs / 1000);
     gl.uniform1f(u.uStyle, params.style);
-    if (c0) gl.uniform3f(u.uC0, c0.r, c0.g, c0.b);
-    if (c1) gl.uniform3f(u.uC1, c1.r, c1.g, c1.b);
-    if (c2) gl.uniform3f(u.uC2, c2.r, c2.g, c2.b);
-
-    // Effect-specific scalar params (auto-bound by name convention).
-    for (const [name, uniformName] of scalarBinds) {
-      const loc = u[uniformName];
-      if (loc) gl.uniform1f(loc, params[name] as number);
-    }
-
-    // Time-varying uniforms from the per-effect frame() hook (incl. uAmp).
-    for (const [n, v] of Object.entries(frameUniforms)) {
-      const loc = u[n === "amp" ? "uAmp" : n];
-      if (loc) gl.uniform1f(loc, v);
-    }
+    bindPalette(gl, u, pal);
+    bindScalars(gl, u, params, scalarBinds);
+    bindFrameUniforms(gl, u, frameUniforms);
 
     gl.uniform1f(u.uShadow, isShadow ? 1 : 0);
-    if (isShadow) {
-      const minDim = Math.min(c.width, c.height);
-      const sg = shadowGeometry({ minDim, heightFrac: heightFrac(), amp: frameUniforms.amp, style: params.style });
-      gl.uniform2f(u.uShadowOffset, sg.offsetX, sg.offsetY);
-      gl.uniform1f(u.uShadowSoft, sg.soft);
-      gl.uniform1f(u.uShadowStrength, sg.strength);
-    }
+    if (isShadow) bindShadowGeometry(gl, u, c, heightFrac(), frameUniforms.amp, params.style);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   };
 

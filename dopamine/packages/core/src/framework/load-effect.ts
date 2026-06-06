@@ -20,7 +20,7 @@
 import { parseDope, type DopeDoc, type DopeOutline } from "./loader.js";
 import type { OKLCH } from "../engine/color.js";
 import { bakeSdf } from "../engine/sdf.js";
-import { getProgram } from "./programs.js";
+import { getProgram, programNames } from "./programs.js";
 import { registerEffect } from "./registry.js";
 import { resolveDopeParams } from "./loader.js";
 import type { EffectContext, EffectFactory, FeelingInput } from "./effect.js";
@@ -156,7 +156,7 @@ export function loadEffectSync(
   const program = getProgram(programKey);
   if (!program) {
     throw new Error(
-      `dope: unknown render program "${programKey}". Known: ${[...Object.keys({})].join(", ") || "import the effect that registers it"}`,
+      `dope: unknown render program "${programKey}". Known: ${programNames().join(", ") || "import the effect that registers it"}`,
     );
   }
 

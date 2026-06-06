@@ -12,9 +12,9 @@
  * check-draw + held-breath envelope timing.
  */
 
-import { FRAGMENT_SRC, VERTEX_SRC } from "../engine/shader.js";
+import { FRAGMENT_SRC, MAX_MOTES, VERTEX_SRC } from "../engine/shader.js";
 import { checkProgress, envelope } from "../engine/tempo.js";
-import { MAX_MOTES, type CheckGlyph, type RenderParams } from "../engine/mood.js";
+import type { CheckGlyph, RenderParams } from "../engine/mood.js";
 import { drawCheckGlyph } from "../engine/check-renderer.js";
 import type { EffectContext, EffectFactory, EffectInstance } from "../framework/effect.js";
 import { registerEffect } from "../framework/registry.js";

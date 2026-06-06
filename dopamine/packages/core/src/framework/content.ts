@@ -32,12 +32,6 @@ export function pickFromList<T>(list: readonly T[], seed: number): T {
   return list[idx]!;
 }
 
-/** A whimsy band entry — a value plus the band it occupies (equal-width bands). */
-export interface GlyphBand {
-  family: string;
-  char: string;
-}
-
 /**
  * Pick a band by whimsy (0..1), splitting the slider into equal bands. Matches
  * Solarbloom's `pickCheckGlyph`: `floor(w * n)` clamped to the last band.

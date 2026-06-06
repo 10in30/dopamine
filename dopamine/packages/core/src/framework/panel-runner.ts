@@ -23,11 +23,20 @@
  * and a tiny config naming the shader's uniforms + the per-frame timing.
  */
 
-import { shadowGeometry } from "../engine/shadow.js";
 import type { RGB } from "../engine/color.js";
 import type { GLContext } from "../engine/context.js";
 import type { EffectContext, EffectInstance } from "./effect.js";
 import type { PassParams } from "./pass-runner.js";
+import {
+  STANDARD_COMMON,
+  applyFloatMap,
+  beginProgram,
+  bindFrameUniforms,
+  bindPalette,
+  bindScalars,
+  bindShadowGeometry,
+  computeScalarBinds,
+} from "./pass-common.js";
 
 /** Per-frame timing context for a panel effect's draw + frame hooks. */
 export interface PanelFrameInfo {
@@ -80,10 +89,9 @@ export interface PanelConfig<P extends PassParams = PassParams> {
   passUniforms?(canvas: HTMLCanvasElement, params: P, dpr: number): Record<string, number>;
 }
 
-const STANDARD = ["uResolution", "uCenter", "uLife", "uTimeS", "uStyle",
-  "uC0", "uC1", "uC2", "uShadow", "uShadowOffset", "uShadowSoft", "uShadowStrength"] as const;
-
-const cap = (s: string): string => `u${s.charAt(0).toUpperCase()}${s.slice(1)}`;
+// The panel runner adds `uCenter` (the panel composites around screen center)
+// to the shared standard set.
+const STANDARD = ["uCenter", ...STANDARD_COMMON] as const;
 
 /**
  * Build a drawable {@link EffectInstance} for a Canvas2D-panel effect from its
@@ -95,21 +103,12 @@ export function createPanelInstance<P extends PassParams>(
   ctx: EffectContext,
 ): EffectInstance {
   const pal = params.palette as RGB[];
-  const [c0, c1, c2] = pal;
   const dpr = ctx.dpr;
   const sampler = config.panelSampler ?? "uPanel";
   const allUniforms = [...new Set([...STANDARD, sampler, ...config.uniforms])];
 
   // The numeric params that auto-bind to a uniform.
-  const bindings = config.bindings ?? {};
-  const scalarBinds: Array<[string, string]> = [];
-  for (const [name, value] of Object.entries(params)) {
-    if (typeof value !== "number") continue;
-    if (name === "durationMs") continue;
-    const override = bindings[name];
-    if (override === null) continue;
-    scalarBinds.push([name, override ?? cap(name)]);
-  }
+  const scalarBinds = computeScalarBinds(params, config.bindings ?? {});
 
   // One offscreen Canvas2D panel, shared by both passes (drawn once per frame).
   const panel = document.createElement("canvas");
@@ -139,10 +138,7 @@ export function createPanelInstance<P extends PassParams>(
   ): void => {
     const { gl } = glc;
     const c = glc.canvas;
-    const prog = glc.program(config.vertex, config.fragment);
-    const u = prog.uniforms(allUniforms);
-    gl.useProgram(prog.program);
-    gl.bindVertexArray(glc.vao);
+    const { u } = beginProgram(glc, config.vertex, config.fragment, allUniforms);
 
     // Upload the freshly-drawn panel (changes every frame).
     gl.activeTexture(gl.TEXTURE0);
@@ -153,8 +149,7 @@ export function createPanelInstance<P extends PassParams>(
     if (u[sampler]) gl.uniform1i(u[sampler], 0);
 
     // Extra per-pass scalar uniforms (dpr-scaled etc.).
-    const extra = config.passUniforms?.(c, params, dpr);
-    if (extra) for (const [n, v] of Object.entries(extra)) if (u[n]) gl.uniform1f(u[n], v);
+    applyFloatMap(gl, u, config.passUniforms?.(c, params, dpr));
 
     // Standard uniforms.
     gl.uniform2f(u.uResolution, c.width, c.height);
@@ -162,30 +157,12 @@ export function createPanelInstance<P extends PassParams>(
     gl.uniform1f(u.uLife, info.life);
     gl.uniform1f(u.uTimeS, info.elapsedMs / 1000);
     gl.uniform1f(u.uStyle, params.style);
-    if (c0) gl.uniform3f(u.uC0, c0.r, c0.g, c0.b);
-    if (c1) gl.uniform3f(u.uC1, c1.r, c1.g, c1.b);
-    if (c2) gl.uniform3f(u.uC2, c2.r, c2.g, c2.b);
-
-    // Effect-specific scalar params (auto-bound by name convention).
-    for (const [name, uniformName] of scalarBinds) {
-      const loc = u[uniformName];
-      if (loc) gl.uniform1f(loc, params[name] as number);
-    }
-
-    // Time-varying uniforms from the per-effect frame() hook.
-    for (const [n, v] of Object.entries(frameUniforms)) {
-      const loc = u[n === "amp" ? "uAmp" : n];
-      if (loc) gl.uniform1f(loc, v);
-    }
+    bindPalette(gl, u, pal);
+    bindScalars(gl, u, params, scalarBinds);
+    bindFrameUniforms(gl, u, frameUniforms);
 
     gl.uniform1f(u.uShadow, isShadow ? 1 : 0);
-    if (isShadow) {
-      const minDim = Math.min(c.width, c.height);
-      const sg = shadowGeometry({ minDim, heightFrac: heightFrac(), amp: frameUniforms.amp, style: params.style });
-      gl.uniform2f(u.uShadowOffset, sg.offsetX, sg.offsetY);
-      gl.uniform1f(u.uShadowSoft, sg.soft);
-      gl.uniform1f(u.uShadowStrength, sg.strength);
-    }
+    if (isShadow) bindShadowGeometry(gl, u, c, heightFrac(), frameUniforms.amp, params.style);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   };
 
