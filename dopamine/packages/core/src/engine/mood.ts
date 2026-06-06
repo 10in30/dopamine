@@ -31,6 +31,10 @@ export interface RenderParams {
   overshoot: number;
   /** A per-fire hash offset so mote layouts differ run to run. */
   moteSeed: number;
+  /** 0..1 — strength of the iridescent thin-film shimmer on the bloom shell. */
+  iridescence: number;
+  /** 0..1 — strength of the chromatic/spectral split at the bloom edge. */
+  dispersion: number;
 }
 
 interface MoodBaseline {
@@ -44,6 +48,9 @@ interface MoodBaseline {
   moteSpeed: number;
   turbulence: number;
   overshoot: number;
+  /** Base iridescence/dispersion for the mood (0..1). */
+  iridescence: number;
+  dispersion: number;
 }
 
 /**
@@ -63,6 +70,9 @@ const BASELINES: Record<DopamineMood, MoodBaseline> = {
     moteSpeed: 0.55,
     turbulence: 0.35,
     overshoot: 0.55,
+    // Serene: dreamy oil-on-water shimmer, almost no hard prismatic fringe.
+    iridescence: 0.85,
+    dispersion: 0.35,
   },
   celebratory: {
     durationMs: 1800,
@@ -75,6 +85,9 @@ const BASELINES: Record<DopamineMood, MoodBaseline> = {
     moteSpeed: 0.85,
     turbulence: 0.6,
     overshoot: 1.0,
+    // Celebratory: balanced — colorful shimmer and a lively spectral rim.
+    iridescence: 0.6,
+    dispersion: 0.6,
   },
   electric: {
     durationMs: 1200,
@@ -87,6 +100,9 @@ const BASELINES: Record<DopamineMood, MoodBaseline> = {
     moteSpeed: 1.25,
     turbulence: 0.9,
     overshoot: 1.45,
+    // Electric: hard, hot prismatic edge; less milky shimmer, more raw dispersion.
+    iridescence: 0.4,
+    dispersion: 0.95,
   },
 };
 
@@ -124,6 +140,10 @@ export function resolveParams({ mood, intensity, whimsy, seed }: ResolveInput): 
     Math.round(base.moteCount * lerp(0.8, 1.3, w) * lerp(0.85, 1.25, i)),
   );
 
+  // whimsy adds shimmer; intensity sharpens the spectral edge.
+  const iridescence = clamp01(base.iridescence * lerp(0.6, 1.15, w));
+  const dispersion = clamp01(base.dispersion * lerp(0.7, 1.2, i));
+
   const palette = buildPalette(rng, {
     lightness: base.lightness,
     chroma,
@@ -142,6 +162,8 @@ export function resolveParams({ mood, intensity, whimsy, seed }: ResolveInput): 
     moteSpeed: base.moteSpeed,
     turbulence,
     overshoot,
+    iridescence,
+    dispersion,
     // A stable but seed-derived offset that scatters the mote field.
     moteSeed: rng() * 1000,
   };

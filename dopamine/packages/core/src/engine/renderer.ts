@@ -30,7 +30,7 @@ export interface RunHandle {
 const UNIFORMS = [
   "uResolution", "uOrigin", "uAmp", "uCheck", "uLife", "uTimeS", "uExposure",
   "uBloomRadius", "uTurbulence", "uMoteSpeed", "uMoteCount", "uMoteSeed",
-  "uC0", "uC1", "uC2",
+  "uIridescence", "uDispersion", "uC0", "uC1", "uC2",
 ] as const;
 
 type UniformName = (typeof UNIFORMS)[number];
@@ -130,6 +130,8 @@ export function createSolarbloom(
     gl.uniform1f(u.uMoteSpeed, params.moteSpeed);
     gl.uniform1f(u.uMoteCount, params.moteCount);
     gl.uniform1f(u.uMoteSeed, params.moteSeed);
+    gl.uniform1f(u.uIridescence, params.iridescence);
+    gl.uniform1f(u.uDispersion, params.dispersion);
     gl.uniform3f(u.uC0, c0.r, c0.g, c0.b);
     gl.uniform3f(u.uC1, c1.r, c1.g, c1.b);
     gl.uniform3f(u.uC2, c2.r, c2.g, c2.b);
