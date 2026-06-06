@@ -6,7 +6,7 @@ and usable as a component that sits in your page *and* casts real light onto the
 UI beneath it. You pick a **mood**, an **intensity**, and an amount of
 **whimsy** — not raw parameters.
 
-> **Components (success):** two interchangeable "successful completion" effects
+> **Components (success):** three interchangeable "successful completion" effects
 > that share the same `mood` / `intensity` / `whimsy` API and light-casting
 > overlay, but speak different visual languages:
 > - **`Solarbloom`** — a centered radial volumetric bloom (light radiating from
@@ -94,10 +94,27 @@ const celebrate = useDopamine();
 |---|---|---|
 | `mood` | `"celebratory"` | `serene` · `celebratory` · `electric` |
 | `intensity` | `0.7` | 0..1 — saturation, brightness, bloom size, overshoot |
-| `whimsy` | `0.5` | 0..1 — hue spread + motion turbulence |
+| `whimsy` | `0.5` | 0..1 — photoreal ↔ non-photoreal (cel / hand-drawn "animate on twos") stylization |
 | `seed` | random | pin for reproducible output |
 | `origin` | center | viewport-pixel anchor of the bloom |
-| `target` | `document.body` | element the overlay covers (light is cast on what's beneath) |
+| `target` | `document.body` | element the overlay covers (light + shadow are cast on what's beneath) |
+
+### Layout — lit content should fill the viewport
+
+Every effect mounts a **full-viewport overlay** — a `screen`-blend light layer and
+a `multiply`-blend shadow layer — that casts light and shadow onto whatever sits
+beneath it. For the effect to read its best, **the content you want lit should
+fill the viewport.** Large empty margins give the light and shadow nothing to
+fall on and read as dead space at the edges of the frame.
+
+Two ways to honor this:
+
+- **Full-page effects:** let your page content extend to the edges (avoid a
+  narrow centered column with wide empty gutters). The bundled demo does this —
+  its scene runs to the edges of the frame.
+- **Scoped effects:** pass `target: someElement` so the overlay is bounded to
+  that element. The effect then lights *that* element edge-to-edge instead of the
+  whole page — ideal for celebrating a card, panel, or modal in place.
 
 ## Develop
 
