@@ -10,6 +10,8 @@ import { chromium } from "playwright";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { mkdir, rename, rm, readdir } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const demoDir = join(root, "examples", "demo");
@@ -23,6 +25,30 @@ const CHROMIUM_ARGS = [
   "--ignore-gpu-blocklist",
   "--enable-webgl",
 ];
+
+/** Transcode the Playwright .webm to a broadly-compatible H.264 .mp4. */
+async function toMp4(src, dest) {
+  const ffmpeg = createRequire(import.meta.url)("ffmpeg-static");
+  if (!ffmpeg) {
+    console.warn("• ffmpeg-static unavailable — skipping mp4");
+    return;
+  }
+  const args = [
+    "-y", "-i", src,
+    "-movflags", "+faststart",
+    "-pix_fmt", "yuv420p",
+    "-c:v", "libx264", "-crf", "20", "-preset", "slow",
+    dest,
+  ];
+  await new Promise((res, reject) => {
+    const proc = spawn(ffmpeg, args, { stdio: "ignore" });
+    proc.on("error", reject);
+    proc.on("close", (code) =>
+      code === 0 ? res() : reject(new Error(`ffmpeg exited ${code}`)),
+    );
+  });
+  console.log(`✓ saved ${dest}`);
+}
 
 async function main() {
   await rm(outDir, { recursive: true, force: true });
@@ -77,15 +103,16 @@ async function main() {
 
     const video = page.video();
     await context.close(); // flush video to disk
+    const webmPath = join(outDir, "solarbloom.webm");
     if (video) {
-      const tmp = await video.path();
-      await rename(tmp, join(outDir, "solarbloom.webm"));
+      await rename(await video.path(), webmPath);
     } else {
       const files = await readdir(outDir);
       const webm = files.find((f) => f.endsWith(".webm"));
-      if (webm) await rename(join(outDir, webm), join(outDir, "solarbloom.webm"));
+      if (webm) await rename(join(outDir, webm), webmPath);
     }
-    console.log(`✓ saved ${join(outDir, "solarbloom.webm")}`);
+    console.log(`✓ saved ${webmPath}`);
+    await toMp4(webmPath, join(outDir, "solarbloom.mp4"));
   } finally {
     if (browser) await browser.close();
     await new Promise((res) => server.httpServer.close(res));

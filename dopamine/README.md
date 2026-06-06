@@ -76,7 +76,7 @@ npm install
 npm test       # unit tests for the color / tempo / mood engine
 npm run dev     # interactive demo (mood/intensity/whimsy controls)
 npm run build   # build core, react, demo
-npm run record  # headless: record solarbloom.webm across all three moods
+npm run record  # headless: record solarbloom.webm + .mp4 across all three moods
 ```
 
 ## How it works
