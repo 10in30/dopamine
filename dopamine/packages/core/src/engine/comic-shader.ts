@@ -95,8 +95,15 @@ void main(){
     for (int i = 0; i < 8; i++) {
       float a = float(i) / 8.0 * TAU;
       vec2 o = vec2(cos(a), sin(a)) * uShadowSoft * px;
-      vec4 s = texture(uPanel, souv + o);
-      occ += clamp(s.r + s.b, 0.0, 1.0);
+      vec2 tuv = souv + o;
+      // Gate samples that fall OUTSIDE the panel: the texture is CLAMP_TO_EDGE,
+      // so without this an offset sample past an edge smears that edge row into
+      // a phantom band (the streaks at the top of the frame). Outside == no
+      // occluder == no shadow.
+      vec2 inb = step(vec2(0.0), tuv) * step(tuv, vec2(1.0));
+      float mask = inb.x * inb.y;
+      vec4 s = texture(uPanel, tuv);
+      occ += clamp(s.r + s.b, 0.0, 1.0) * mask;
     }
     occ /= 8.0;
     float dark = clamp(occ * uShadowStrength, 0.0, 1.0);
