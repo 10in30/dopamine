@@ -1,16 +1,15 @@
+// The demo imports the LEAN runtime from `@dopamine/core/core` and pulls each
+// effect explicitly from its own subpath entry (`@dopamine/core/effects/<name>`)
+// via dynamic import, so Vite code-splits every effect (shader + .dope + fonts/
+// SDF) into its OWN chunk — a consumer pays only for what they import. The demo
+// is a showcase of all four, so it preloads them during init; a real app would
+// import only the ones it fires.
 import {
-  celebrate,
-  celebrateInk,
-  celebrateComic,
-  fail as dopamineFail,
-  prepareSolarbloom,
-  prepareInkstroke,
-  prepareComic,
-  prepareFail,
-  ensureComicFonts,
-  ensureCheckFonts,
+  play,
+  prepare as preparePlay,
+  type PreparedEffect,
   type DopamineMood,
-} from "@dopamine/core";
+} from "@dopamine/core/core";
 
 const $ = <T extends HTMLElement>(sel: string): T => {
   const el = document.querySelector<T>(sel);
@@ -19,6 +18,15 @@ const $ = <T extends HTMLElement>(sel: string): T => {
 };
 
 type EffectName = "solarbloom" | "inkstroke" | "comic" | "fail";
+
+// Lazy per-effect chunks. Each module self-registers its effect on import; we
+// await them so the generic `play("name", …)` can find the registered factory.
+const EFFECT_LOADERS: Record<EffectName, () => Promise<unknown>> = {
+  solarbloom: () => import("@dopamine/core/effects/solarbloom"),
+  inkstroke: () => import("@dopamine/core/effects/inkstroke"),
+  comic: () => import("@dopamine/core/effects/comic"),
+  fail: () => import("@dopamine/core/effects/fail"),
+};
 
 // The fail effect speaks failure moods; map the shared success-mood toggle onto
 // gentle → harsh so the one mood control drives every effect.
@@ -33,6 +41,10 @@ const state = {
   whimsy: 0.5,
   effect: "comic" as EffectName,
 };
+
+// Map the demo's success-mood toggle onto the effect's actual mood.
+const moodFor = (effect: EffectName, mood: DopamineMood): string =>
+  effect === "fail" ? FAIL_MOOD[mood] : mood;
 
 // Mood segmented control
 const moodGroup = $("#mood");
@@ -59,7 +71,7 @@ const bind = (id: string, key: "intensity" | "whimsy") => {
 bind("intensity", "intensity");
 bind("whimsy", "whimsy");
 
-// Effect segmented control (Solarbloom vs Calligraphic Verdict / inkstroke).
+// Effect segmented control.
 const effectGroup = document.querySelector("#effect");
 effectGroup?.addEventListener("click", (e) => {
   const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-effect]");
@@ -76,19 +88,10 @@ function fire(overrides: Partial<typeof state> = {}): Promise<void> {
   const mood = overrides.mood ?? state.mood;
   const intensity = overrides.intensity ?? state.intensity;
   const whimsy = overrides.whimsy ?? state.whimsy;
-  const effect = overrides.effect ?? state.effect;
-  if (effect === "inkstroke") {
-    return celebrateInk({ mood, intensity, whimsy });
-  }
-  if (effect === "comic") {
-    return celebrateComic({ mood, intensity, whimsy });
-  }
-  if (effect === "fail") {
-    return dopamineFail({ mood: FAIL_MOOD[mood], intensity, whimsy });
-  }
+  const effect = (overrides.effect ?? state.effect) as EffectName;
   const r = fireBtn.getBoundingClientRect();
-  return celebrate({
-    mood,
+  return play(effect, {
+    mood: moodFor(effect, mood),
     intensity,
     whimsy,
     origin: { x: r.left + r.width / 2, y: r.top + r.height / 2 },
@@ -96,27 +99,17 @@ function fire(overrides: Partial<typeof state> = {}): Promise<void> {
 }
 fireBtn.addEventListener("click", () => void fire());
 
-// Prepare an effect for offline/fixed-timestep capture. An optional `seed`
-// pins the palette/word so capture scripts can isolate one variable (e.g. the
-// whimsy axis) without the per-fire palette changing underneath them.
-function prepare(overrides: Partial<typeof state> & { seed?: number } = {}) {
+// Prepare an effect for offline/fixed-timestep capture. An optional `seed` pins
+// the palette/word so capture scripts can isolate one variable.
+function prepare(overrides: Partial<typeof state> & { seed?: number } = {}): PreparedEffect | null {
   const mood = overrides.mood ?? state.mood;
   const intensity = overrides.intensity ?? state.intensity;
   const whimsy = overrides.whimsy ?? state.whimsy;
-  const effect = overrides.effect ?? state.effect;
+  const effect = (overrides.effect ?? state.effect) as EffectName;
   const seed = overrides.seed;
-  if (effect === "inkstroke") {
-    return prepareInkstroke({ mood, intensity, whimsy, seed });
-  }
-  if (effect === "comic") {
-    return prepareComic({ mood, intensity, whimsy, seed });
-  }
-  if (effect === "fail") {
-    return prepareFail({ mood: FAIL_MOOD[mood], intensity, whimsy, seed });
-  }
   const r = fireBtn.getBoundingClientRect();
-  return prepareSolarbloom({
-    mood,
+  return preparePlay(effect, {
+    mood: moodFor(effect, mood),
     intensity,
     whimsy,
     seed,
@@ -130,13 +123,26 @@ interface DopamineDemo {
   prepare: typeof prepare;
 }
 (window as unknown as { __dopamine: DopamineDemo }).__dopamine = { fire, prepare };
-// Make sure the bundled faces have loaded before we signal readiness, so capture
-// scripts grab frames with the real lettering (Comic) and the real checkmark
-// glyph (Solarbloom) rather than the fallbacks. The core also degrades
-// gracefully if these never resolve.
-void Promise.all([ensureComicFonts(), ensureCheckFonts()]).finally(() => {
-  document.documentElement.dataset.dopamineReady = "true";
-});
+
+// Preload every effect chunk before signalling readiness, so capture scripts can
+// synchronously prepare any effect. The bundled faces (comic lettering / check
+// glyph) ship in their own effect chunks; await them via those modules so the
+// real fonts are loaded before the first paint. (A real app would only import the
+// effects it fires.) Each chunk self-registers on import.
+void Promise.all(Object.values(EFFECT_LOADERS).map((load) => load()))
+  .then(async () => {
+    const [comicMod, solarMod] = await Promise.all([
+      import("@dopamine/core/effects/comic"),
+      import("@dopamine/core/effects/solarbloom"),
+    ]);
+    await Promise.all([
+      (comicMod as { ensureComicFonts(): Promise<void> }).ensureComicFonts(),
+      (solarMod as { ensureCheckFonts(): Promise<void> }).ensureCheckFonts(),
+    ]);
+  })
+  .finally(() => {
+    document.documentElement.dataset.dopamineReady = "true";
+  });
 
 // ?autoplay=<mood> fires once shortly after load (used by the recorder).
 const autoplay = new URLSearchParams(location.search).get("autoplay");

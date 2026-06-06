@@ -33,6 +33,10 @@ import { createPanelInstance, type PanelConfig } from "../framework/panel-runner
 import type { PassParams } from "../framework/pass-runner.js";
 import doc from "./comic.dope.json";
 
+// Re-export the bundled comic-face preloader from the effect's own chunk, so a
+// host that imports this effect can await its lettering without pulling the barrel.
+export { ensureComicFonts } from "../engine/comic-renderer.js";
+
 // Comic is FULLY data-driven: numeric panel + palette params, the per-fire
 // WORD/checkmark token (content.pool), and the TYPOGRAPHY (mood→face + the
 // whimsy/intensity curve table) all come from comic.dope.json via the loader +

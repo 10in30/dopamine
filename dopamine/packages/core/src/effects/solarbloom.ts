@@ -25,6 +25,9 @@ import { createPassInstance, type AuxTextureSpec, type PassConfig, type PassPara
 import { decodeSdf, type DecodedSdf } from "../engine/sdf.js";
 import doc from "./solarbloom.dope.json";
 
+// Re-export the bundled check-glyph face preloader from the effect's own chunk.
+export { ensureCheckFonts } from "../engine/check-renderer.js";
+
 // Solarbloom is fully DATA-DRIVEN: its mood→params mapping lives in the bundled
 // `.dope` document (solarbloom.dope.json), evaluated by the loader. A vitest
 // proves the loader output is byte-identical to the legacy `resolveParams`, so

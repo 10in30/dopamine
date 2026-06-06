@@ -10,6 +10,26 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "default": "./dist/core.js"
+    },
+    "./effects/solarbloom": {
+      "types": "./dist/effects/solarbloom.d.ts",
+      "default": "./dist/effects/solarbloom.js"
+    },
+    "./effects/inkstroke": {
+      "types": "./dist/effects/inkstroke.d.ts",
+      "default": "./dist/effects/inkstroke.js"
+    },
+    "./effects/comic": {
+      "types": "./dist/effects/comic.d.ts",
+      "default": "./dist/effects/comic.js"
+    },
+    "./effects/fail": {
+      "types": "./dist/effects/fail.d.ts",
+      "default": "./dist/effects/fail.js"
     }
   },
   "files": ["dist", "src", "assets"],
