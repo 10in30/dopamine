@@ -109,7 +109,7 @@
       "webgl2": {
         "stage": "fullscreen-triangle",
         "blend": "screen",
-        "shader": { "$ref": "shaders/solarbloom.frag.glsl" }
+        "shader": { "program": "solarbloom" }
       }
     },
     "fallbackOrder": ["webgl2"]

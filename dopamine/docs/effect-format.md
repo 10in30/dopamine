@@ -86,6 +86,46 @@ Why, in three lines:
 
 ---
 
+## 2b. Self-contained, no external assets (hard rule)
+
+A `.dope` is **standalone** — it must never point at the network or an absolute
+filesystem path. The loader enforces this (`parseDope` walks the doc and throws
+on any `http(s)://`, protocol-relative `//host`, or absolute-path value), so a
+`.dope` is guaranteed portable and offline. Assets are carried one of two ways:
+
+- **Single JSON** — everything inline: a bundled-program **key**
+  (`render.backends.webgl2.shader = { "program": "solarbloom" }`, resolved to a
+  shader the runtime ships), inline GLSL, or `data:` URIs for small binaries.
+  This is what the three built-ins use today.
+- **`.dope` zip** (dotLottie-style) — for binary assets (baked SDF textures,
+  fonts) without base64 bloat: a zip whose entry is `effect.json` plus an
+  `assets/` dir referenced by **relative** paths only. The loader reads the zip
+  (tiny inflate) and resolves paths *inside* it; relative refs are allowed,
+  remote/absolute are not.
+
+### Authoring → packing → distribution, and what's done at BUILD time
+Anything static is precomputed by a `pack-dope` build step so the runtime only
+samples — never converts:
+
+```
+authored .dope (human-editable: SVG path strings, full GLSL, font sources)
+        │  scripts/pack-dope  (build time)
+        │   • outline paths  → baked SDF (texture or distance data)   ← key one
+        │   • shaders        → minified / chunk-resolved
+        │   • fonts          → subset + embedded
+        │   • palette/curves → optional LUTs
+        ▼
+distributed .dope  (standalone: single JSON, or zip w/ relative assets)
+```
+
+Build-time **path→SDF** is the headline: host-swappable icon/letter outlines are
+distance-field-baked when packed, so the runtime samples an SDF instead of doing
+live path→SDF conversion. (Today the built-ins' check/stroke SDFs are analytic
+in-shader; the pack step is the home for *arbitrary* swapped outlines — see the
+deferred host-override seam.) The authored source stays in the repo for
+round-tripping; the packed artifact carries the runtime-ready, self-contained
+assets.
+
 ## 3. Top-level document structure
 
 A `.dope` document is JSON (UTF-8). Top-level keys:

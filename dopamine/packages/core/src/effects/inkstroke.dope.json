@@ -98,7 +98,7 @@
       "webgl2": {
         "stage": "fullscreen-triangle",
         "blend": "screen",
-        "shader": { "$ref": "shaders/inkstroke.frag.glsl" }
+        "shader": { "program": "inkstroke" }
       }
     },
     "fallbackOrder": ["webgl2"]

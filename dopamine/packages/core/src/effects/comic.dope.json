@@ -94,7 +94,7 @@
       "webgl2": {
         "stage": "fullscreen-triangle",
         "blend": "screen",
-        "shader": { "$ref": "shaders/comic.frag.glsl" },
+        "shader": { "program": "comic" },
         "note": "Hybrid: a Canvas2D panel (word/burst/ink) is uploaded as a texture; the shader adds halftone, action lines, flash, styling."
       }
     },

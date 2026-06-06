@@ -173,10 +173,35 @@ export function resolveDopeParams(
   return out;
 }
 
+// A `.dope` must be SELF-CONTAINED — it may inline assets (e.g. `data:` URIs) or
+// reference bundled programs/assets by key or by a path RELATIVE to the package
+// (resolved inside a `.dope` zip), but it must never point at the network or an
+// absolute filesystem path. This keeps every effect portable and offline.
+const REMOTE_REF_RE = /^(?:[a-z][a-z0-9+.-]*:)?\/\//i; // http(s)://, ftp://, //host
+const ABS_PATH_RE = /^(?:\/|[A-Za-z]:[\\/])/; // /etc/..., C:\...
+
+function assertStandalone(node: unknown, path = "$"): void {
+  if (typeof node === "string") {
+    if (REMOTE_REF_RE.test(node) || ABS_PATH_RE.test(node)) {
+      throw new Error(
+        `dope: external asset reference is not allowed — a .dope must be ` +
+          `self-contained (inline or bundle assets). Offending value at ${path}: "${node}"`,
+      );
+    }
+    return;
+  }
+  if (Array.isArray(node)) {
+    node.forEach((v, i) => assertStandalone(v, `${path}[${i}]`));
+  } else if (node && typeof node === "object") {
+    for (const [k, v] of Object.entries(node)) assertStandalone(v, `${path}.${k}`);
+  }
+}
+
 /**
  * Parse + validate a `.dope` document from a JSON string or already-parsed
- * object. Rejects a wrong/absent magic or major version. (A fuller JSON-Schema
- * validation lives in CI against docs/effect-format.schema.json.)
+ * object. Rejects a wrong/absent magic or major version, and any external
+ * (remote / absolute-path) asset reference — a `.dope` must be self-contained.
+ * (A fuller JSON-Schema validation lives in CI against effect-format.schema.json.)
  */
 export function parseDope(src: string | object): DopeDoc {
   const doc = (typeof src === "string" ? JSON.parse(src) : src) as DopeDoc;
@@ -190,5 +215,6 @@ export function parseDope(src: string | object): DopeDoc {
   if (!doc.render?.params || !doc.palette?.perMood || !doc.baselines) {
     throw new Error("dope: document missing render.params / palette.perMood / baselines");
   }
+  assertStandalone(doc);
   return doc;
 }

@@ -97,3 +97,23 @@ describe(".dope loader parity vs legacy resolve*Params", () => {
     }
   });
 });
+
+describe("standalone guard", () => {
+  it("accepts the bundled self-contained docs", () => {
+    expect(() => parseDope(solarbloomDoc as object)).not.toThrow();
+    expect(() => parseDope(inkstrokeDoc as object)).not.toThrow();
+    expect(() => parseDope(comicDoc as object)).not.toThrow();
+  });
+
+  it("rejects a remote/external asset reference", () => {
+    const bad = JSON.parse(JSON.stringify(solarbloomDoc));
+    bad.render.backends.webgl2.shader = { $ref: "https://cdn.example.com/x.frag.glsl" };
+    expect(() => parseDope(bad)).toThrow(/self-contained|external asset/);
+  });
+
+  it("rejects an absolute-path reference", () => {
+    const bad = JSON.parse(JSON.stringify(solarbloomDoc));
+    bad.render.backends.webgl2.shader = { $ref: "/usr/share/shaders/x.glsl" };
+    expect(() => parseDope(bad)).toThrow(/self-contained|external asset/);
+  });
+});
