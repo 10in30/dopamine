@@ -42,6 +42,7 @@ uniform float uMoteCount;
 uniform float uMoteSeed;
 uniform float uIridescence;  // 0..1 thin-film shimmer strength
 uniform float uDispersion;   // 0..1 spectral split strength at the bloom edge
+uniform float uStyle;        // 0..1 photoreal -> non-photoreal (cel-shaded / hand-drawn)
 uniform vec3  uC0;
 uniform vec3  uC1;
 uniform vec3  uC2;
@@ -202,6 +203,15 @@ void main(){
     float size = minDim * 0.006 * (0.6 + h.x * 0.8) * depth;
     float spark = size / (dist + size * 0.5);
     spark *= spark;
+    // Toward the NPR end, crisp the spark and add a screen-aligned 4-point
+    // sparkle "star" so motes read as hand-drawn twinkles, not soft photons.
+    if (uStyle > 0.001) {
+      float crisp = smoothstep(size * 1.5, 0.0, dist);
+      vec2 star = abs(q);
+      float spikes = exp(-star.x / (size * 0.45)) * exp(-star.y * star.y / (size * size * 0.5))
+                   + exp(-star.y / (size * 0.45)) * exp(-star.x * star.x / (size * size * 0.5));
+      spark = mix(spark, crisp + spikes * 0.6, uStyle * 0.9);
+    }
     // Twinkle: a fast, per-mote shimmer so the field scintillates.
     float twinkle = 0.75 + 0.25 * sin(uTimeS * (6.0 + h2.y * 10.0) + h.x * TAU);
     float fade = (1.0 - pow(life, 1.3)) * smoothstep(0.0, 0.08, life);
@@ -210,9 +220,12 @@ void main(){
 
   // ---- Checkmark drawn in light, with leading spark + afterglow ----
   float cr = minDim * 0.11;
-  vec2 A = uOrigin + cr * vec2(-0.9, 0.15);
-  vec2 B = uOrigin + cr * vec2(-0.25, -0.55);
-  vec2 C = uOrigin + cr * vec2(1.0, 0.78);
+  // Hand-drawn "boil": per-vertex jitter that pops in discrete steps (the time
+  // step makes floor(uTimeS*12) tick on twos), scaled in by style.
+  float bt = floor(uTimeS * 12.0);
+  vec2 A = uOrigin + cr * vec2(-0.9, 0.15) + (hash21(bt + 1.1) - 0.5) * cr * 0.06 * uStyle;
+  vec2 B = uOrigin + cr * vec2(-0.25, -0.55) + (hash21(bt + 2.2) - 0.5) * cr * 0.06 * uStyle;
+  vec2 C = uOrigin + cr * vec2(1.0, 0.78) + (hash21(bt + 3.3) - 0.5) * cr * 0.06 * uStyle;
   float l1 = length(B - A), l2 = length(C - B);
   float total = l1 + l2;
   float drawn = uCheck * total;
@@ -225,8 +238,12 @@ void main(){
     dseg = min(dseg, sdSeg(frag, B, tip));
   }
   float sw = cr * 0.12;
-  float ccore = smoothstep(sw, sw * 0.35, dseg);
-  float cglow = exp(-dseg / (sw * 2.0)) * 0.7;
+  // Soft luminous stroke (photoreal) cross-fades to a crisp, flat drawn line
+  // (toon) as style rises; the soft glow recedes so it reads as ink, not light.
+  float softCore = smoothstep(sw, sw * 0.35, dseg);
+  float hardCore = 1.0 - smoothstep(sw * 0.85, sw, dseg);
+  float ccore = mix(softCore, hardCore, uStyle);
+  float cglow = exp(-dseg / (sw * 2.0)) * 0.7 * (1.0 - 0.7 * uStyle);
   // Leading spark: a bright hot point at the pen tip while it's drawing, with a
   // soft afterglow that lingers a moment after the stroke completes.
   float tipDist = length(frag - tip);
@@ -245,10 +262,25 @@ void main(){
   // Pre-exposure < 1 keeps the bloom a focused burst (not an all-over haze)
   // while ACES gives a graceful highlight rolloff.
   col = tonemapACES(col * 0.62);
+
+  // ---- Non-photoreal pass: cel shading + neon flattening ----
+  // As style (whimsy) rises we leave true lighting behind: boost chroma toward
+  // flat neon and quantize the light into hard cel bands (fewer bands = more
+  // cartoon / cyberpunk). At style 0 this is a no-op.
+  if (uStyle > 0.001) {
+    float l = dot(col, vec3(0.299, 0.587, 0.114));
+    vec3 neon = clamp(l + (col - l) * 1.6, 0.0, 1.0);     // punch up saturation
+    vec3 styled = mix(col, neon, 0.7);
+    float bands = mix(40.0, 4.0, uStyle);                 // hard posterize
+    styled = floor(styled * bands + 0.5) / bands;
+    col = mix(col, styled, uStyle);
+  }
+
   // Ordered dither (~1/255) to break up the smooth-gradient banding the screen
   // blend would otherwise reveal on the page beneath. Triangular hash noise.
+  // Fade it out toward the cel end, where hard bands are the intended look.
   float dz = hash11(dot(frag, vec2(12.989, 78.233)) + uTimeS) - 0.5;
-  col += dz / 255.0;
+  col += (dz / 255.0) * (1.0 - uStyle);
 
   fragColor = vec4(col, 1.0);
 }`;

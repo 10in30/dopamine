@@ -30,11 +30,18 @@ describe("resolveParams", () => {
     expect(hi.overshoot).toBeGreaterThan(lo.overshoot);
   });
 
-  it("higher whimsy raises turbulence and mote count", () => {
+  it("whimsy is the stylization axis: higher whimsy raises style and flattens photoreal light", () => {
     const lo = resolveParams({ mood: "celebratory", intensity: 0.7, whimsy: 0.0, seed: 5 });
     const hi = resolveParams({ mood: "celebratory", intensity: 0.7, whimsy: 1.0, seed: 5 });
-    expect(hi.turbulence).toBeGreaterThan(lo.turbulence);
-    expect(hi.moteCount).toBeGreaterThanOrEqual(lo.moteCount);
+    expect(lo.style).toBe(0);
+    expect(hi.style).toBe(1);
+    // Toward the cel/NPR end, oil-slick iridescence recedes.
+    expect(hi.iridescence).toBeLessThan(lo.iridescence);
+  });
+
+  it("style is clamped to 0..1 and tracks whimsy", () => {
+    expect(resolveParams({ mood: "serene", intensity: 0.5, whimsy: 0.3, seed: 1 }).style).toBeCloseTo(0.3);
+    expect(resolveParams({ mood: "serene", intensity: 0.5, whimsy: 2, seed: 1 }).style).toBe(1);
   });
 
   it("electric is faster than serene", () => {

@@ -8,7 +8,7 @@
  * `elapsedMs` always yields the same frame.
  */
 
-import { checkProgress, envelope } from "./tempo.js";
+import { checkProgress, envelope, NPR_TIME_STEP_MS } from "./tempo.js";
 import type { RenderParams } from "./mood.js";
 import { FRAGMENT_SRC, VERTEX_SRC } from "./shader.js";
 
@@ -30,7 +30,7 @@ export interface RunHandle {
 const UNIFORMS = [
   "uResolution", "uOrigin", "uAmp", "uCheck", "uLife", "uTimeS", "uExposure",
   "uBloomRadius", "uTurbulence", "uMoteSpeed", "uMoteCount", "uMoteSeed",
-  "uIridescence", "uDispersion", "uC0", "uC1", "uC2",
+  "uIridescence", "uDispersion", "uStyle", "uC0", "uC1", "uC2",
 ] as const;
 
 type UniformName = (typeof UNIFORMS)[number];
@@ -107,7 +107,11 @@ export function createSolarbloom(
 
   const renderAt = (elapsedMs: number) => {
     if (disposed) return;
-    const life = Math.min(Math.max(elapsedMs, 0) / params.durationMs, 1);
+    // Hand-drawn "on twos": snap the animation clock toward a coarse grid as
+    // style (whimsy) rises. style 0 → continuous; style 1 → fully stepped.
+    const stepped = Math.floor(elapsedMs / NPR_TIME_STEP_MS) * NPR_TIME_STEP_MS;
+    const animMs = elapsedMs + (stepped - elapsedMs) * params.style;
+    const life = Math.min(Math.max(animMs, 0) / params.durationMs, 1);
     const amp = envelope(life, params.overshoot);
 
     resize();
@@ -121,9 +125,9 @@ export function createSolarbloom(
     // Flip Y: gl_FragCoord origin is bottom-left.
     gl.uniform2f(u.uOrigin, originCss.x * dpr, canvas.height - originCss.y * dpr);
     gl.uniform1f(u.uAmp, amp);
-    gl.uniform1f(u.uCheck, checkProgress(elapsedMs));
+    gl.uniform1f(u.uCheck, checkProgress(animMs));
     gl.uniform1f(u.uLife, life);
-    gl.uniform1f(u.uTimeS, elapsedMs / 1000);
+    gl.uniform1f(u.uTimeS, animMs / 1000);
     gl.uniform1f(u.uExposure, params.exposure);
     gl.uniform1f(u.uBloomRadius, params.bloomRadius);
     gl.uniform1f(u.uTurbulence, params.turbulence);
@@ -132,6 +136,7 @@ export function createSolarbloom(
     gl.uniform1f(u.uMoteSeed, params.moteSeed);
     gl.uniform1f(u.uIridescence, params.iridescence);
     gl.uniform1f(u.uDispersion, params.dispersion);
+    gl.uniform1f(u.uStyle, params.style);
     gl.uniform3f(u.uC0, c0.r, c0.g, c0.b);
     gl.uniform3f(u.uC1, c1.r, c1.g, c1.b);
     gl.uniform3f(u.uC2, c2.r, c2.g, c2.b);

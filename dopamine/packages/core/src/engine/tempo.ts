@@ -15,6 +15,14 @@
 /** Window (ms) over which the checkmark draws in, independent of total length. */
 export const CHECK_DRAW_MS = 240;
 
+/**
+ * Coarse animation step (ms) for the hand-drawn "animate on twos" look at full
+ * whimsy — ~12 updates/sec, i.e. 24fps on twos. Motion is snapped toward this
+ * grid as style rises (see the renderer), giving discrete, posed beats instead
+ * of smooth interpolation.
+ */
+export const NPR_TIME_STEP_MS = 1000 / 12;
+
 const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
 
 /** Classic ease-out cubic — quick start, gentle settle. */
