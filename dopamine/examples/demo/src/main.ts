@@ -1,8 +1,10 @@
 import {
   celebrate,
   celebrateInk,
+  celebrateComic,
   prepareSolarbloom,
   prepareInkstroke,
+  prepareComic,
   type DopamineMood,
 } from "@dopamine/core";
 
@@ -12,12 +14,12 @@ const $ = <T extends HTMLElement>(sel: string): T => {
   return el;
 };
 
-type EffectName = "solarbloom" | "inkstroke";
+type EffectName = "solarbloom" | "inkstroke" | "comic";
 const state = {
   mood: "celebratory" as DopamineMood,
   intensity: 0.7,
   whimsy: 0.5,
-  effect: "inkstroke" as EffectName,
+  effect: "comic" as EffectName,
 };
 
 // Mood segmented control
@@ -66,6 +68,9 @@ function fire(overrides: Partial<typeof state> = {}): Promise<void> {
   if (effect === "inkstroke") {
     return celebrateInk({ mood, intensity, whimsy });
   }
+  if (effect === "comic") {
+    return celebrateComic({ mood, intensity, whimsy });
+  }
   const r = fireBtn.getBoundingClientRect();
   return celebrate({
     mood,
@@ -76,20 +81,27 @@ function fire(overrides: Partial<typeof state> = {}): Promise<void> {
 }
 fireBtn.addEventListener("click", () => void fire());
 
-// Prepare an effect for offline/fixed-timestep capture.
-function prepare(overrides: Partial<typeof state> = {}) {
+// Prepare an effect for offline/fixed-timestep capture. An optional `seed`
+// pins the palette/word so capture scripts can isolate one variable (e.g. the
+// whimsy axis) without the per-fire palette changing underneath them.
+function prepare(overrides: Partial<typeof state> & { seed?: number } = {}) {
   const mood = overrides.mood ?? state.mood;
   const intensity = overrides.intensity ?? state.intensity;
   const whimsy = overrides.whimsy ?? state.whimsy;
   const effect = overrides.effect ?? state.effect;
+  const seed = overrides.seed;
   if (effect === "inkstroke") {
-    return prepareInkstroke({ mood, intensity, whimsy });
+    return prepareInkstroke({ mood, intensity, whimsy, seed });
+  }
+  if (effect === "comic") {
+    return prepareComic({ mood, intensity, whimsy, seed });
   }
   const r = fireBtn.getBoundingClientRect();
   return prepareSolarbloom({
     mood,
     intensity,
     whimsy,
+    seed,
     origin: { x: r.left + r.width / 2, y: r.top + r.height / 2 },
   });
 }

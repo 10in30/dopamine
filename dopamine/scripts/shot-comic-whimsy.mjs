@@ -1,7 +1,7 @@
 /**
- * Single-frame validation screenshot. Builds the demo, previews it, and for each
- * mood renders one peak frame (default 320 ms) inside a double-rAF then screenshots.
- * Usage: node scripts/shot.mjs [peakMs] [suffix]
+ * Comic Impact whimsy-axis validation: one mood, fixed seed, four whimsy steps
+ * (noir 0 → pop-art 1), one settled frame each. Confirms the NOIR ↔ POP-ART
+ * interpolation is continuous. Usage: node scripts/shot-comic-whimsy.mjs [peakMs]
  */
 import { build, preview } from "vite";
 import { chromium } from "playwright";
@@ -13,18 +13,9 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const demoDir = join(root, "examples", "demo");
 const outDir = join(root, "e2e", "output");
 const VIEWPORT = { width: 1100, height: 720 };
+const peakMs = Number(process.argv[2] ?? 340);
 
-const peakMs = Number(process.argv[2] ?? 320);
-const suffix = process.argv[3] ?? "";
-// Optional 4th arg / DOPAMINE_EFFECT env selects the effect for every shot.
-const effect = process.argv[4] ?? process.env.DOPAMINE_EFFECT ?? undefined;
-
-const MOODS = [
-  { mood: "celebratory", intensity: 0.85, whimsy: 0.6 },
-  { mood: "electric", intensity: 0.95, whimsy: 0.85 },
-  { mood: "serene", intensity: 0.7, whimsy: 0.4 },
-].map((c) => (effect ? { ...c, effect } : c));
-
+const STEPS = [0.0, 0.33, 0.66, 1.0];
 const CHROMIUM_ARGS = [
   "--use-gl=angle",
   "--use-angle=swiftshader",
@@ -36,10 +27,9 @@ const CHROMIUM_ARGS = [
 async function main() {
   await mkdir(outDir, { recursive: true });
   await build({ root: demoDir, logLevel: "warn" });
-  const server = await preview({ root: demoDir, preview: { port: 5193, strictPort: false } });
+  const server = await preview({ root: demoDir, preview: { port: 5194, strictPort: false } });
   const url = server.resolvedUrls?.local?.[0];
   if (!url) throw new Error("no preview url");
-
   let browser;
   try {
     browser = await chromium.launch({ headless: true, args: CHROMIUM_ARGS });
@@ -50,8 +40,8 @@ async function main() {
       () => document.documentElement.dataset.dopamineReady === "true",
       { timeout: 15000 },
     );
-
-    for (const cfg of MOODS) {
+    for (const whimsy of STEPS) {
+      const cfg = { mood: "celebratory", intensity: 0.85, whimsy, effect: "comic", seed: 1337 };
       await page.evaluate((c) => {
         window.__cap = window.__dopamine.prepare(c);
       }, cfg);
@@ -65,7 +55,8 @@ async function main() {
           }),
         peakMs,
       );
-      const out = join(outDir, `shot-${cfg.mood}${suffix}.png`);
+      const tag = String(Math.round(whimsy * 100)).padStart(3, "0");
+      const out = join(outDir, `shot-comic-whimsy-${tag}.png`);
       await page.screenshot({ path: out });
       await page.evaluate(() => {
         window.__cap.dispose();

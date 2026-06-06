@@ -7,13 +7,14 @@
  * offline capture, or to sync the effect to an external timeline.
  */
 
-import { resolveParams, resolveInkParams } from "./engine/mood.js";
+import { resolveParams, resolveInkParams, resolveComicParams } from "./engine/mood.js";
 import { createSolarbloom, runSolarbloom, type SolarbloomRenderer } from "./engine/renderer.js";
 import {
   createInkstroke,
   runInkstroke,
   type InkstrokeRenderer,
 } from "./engine/inkstroke-renderer.js";
+import { createComic, runComic, type ComicRenderer } from "./engine/comic-renderer.js";
 import { randomSeed } from "./engine/seed.js";
 import { createOverlay } from "./overlay.js";
 import type { DopamineSuccessOptions } from "./types.js";
@@ -101,6 +102,83 @@ export function prepareSolarbloom(options: DopamineSuccessOptions = {}): Prepare
   let renderer: SolarbloomRenderer;
   try {
     renderer = createSolarbloom(m.canvas, m.params, m.originLocal, m.dpr);
+  } catch (err) {
+    m.destroyOverlay();
+    throw err;
+  }
+  return {
+    durationMs: renderer.durationMs,
+    renderAt: (ms) => renderer.renderAt(ms),
+    dispose: () => {
+      renderer.dispose();
+      m.destroyOverlay();
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Comic Impact — the "BAM! POW!" fight-panel success effect.
+//
+// Same feeling-API + light-casting overlay, but a Golden/Silver-Age comic
+// visual language: a hand-lettered onomatopoeia word slams in over a jagged
+// starburst with bold ink outlines, Ben-Day halftone shading and radiating
+// action lines. whimsy maps NOIR (high-contrast chiaroscuro inking, one spot
+// color, subtle halftone) ↔ POP-ART (screaming saturation, loud Ben-Day dots,
+// fat ink, animate-on-twos). `origin` is ignored (the punch is centred).
+// ---------------------------------------------------------------------------
+
+interface ComicMounted {
+  canvas: HTMLCanvasElement;
+  destroyOverlay: () => void;
+  params: ReturnType<typeof resolveComicParams>;
+  dpr: number;
+}
+
+function mountComic(options: DopamineSuccessOptions): ComicMounted {
+  const target = options.target ?? document.body;
+  const seed = options.seed ?? randomSeed();
+  const params = resolveComicParams({
+    mood: options.mood ?? DEFAULTS.mood,
+    intensity: options.intensity ?? DEFAULTS.intensity,
+    whimsy: options.whimsy ?? DEFAULTS.whimsy,
+    seed,
+  });
+  const overlay = createOverlay(target);
+  overlay.canvas.dataset.dopamine = "comic";
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  return { canvas: overlay.canvas, destroyOverlay: overlay.destroy, params, dpr };
+}
+
+/**
+ * Fire a Comic Impact celebration. Resolves once it has fully played.
+ *
+ * ```ts
+ * await celebrateComic({ mood: "electric", intensity: 0.9, whimsy: 1 }); // POW!
+ * ```
+ */
+export function celebrateComic(options: DopamineSuccessOptions = {}): Promise<void> {
+  if (typeof document === "undefined") return Promise.resolve();
+  const m = mountComic(options);
+  let handle: { done: Promise<void>; stop: () => void };
+  try {
+    handle = runComic(m.canvas, m.params, m.dpr);
+  } catch (err) {
+    m.destroyOverlay();
+    return Promise.reject(err);
+  }
+  return handle.done.then(() => m.destroyOverlay());
+}
+
+/**
+ * Mount the overlay and return a comic-impact renderer you drive yourself via
+ * `renderAt(elapsedMs)`. Call `dispose()` when finished. `null` outside a DOM.
+ */
+export function prepareComic(options: DopamineSuccessOptions = {}): PreparedEffect | null {
+  if (typeof document === "undefined") return null;
+  const m = mountComic(options);
+  let renderer: ComicRenderer;
+  try {
+    renderer = createComic(m.canvas, m.params, m.dpr);
   } catch (err) {
     m.destroyOverlay();
     throw err;

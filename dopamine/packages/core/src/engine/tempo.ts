@@ -79,3 +79,54 @@ export const STROKE_DRAW_MS = 360;
 export function strokeProgress(elapsedMs: number): number {
   return easeOutCubic(elapsedMs / STROKE_DRAW_MS);
 }
+
+/**
+ * Window (ms) over which the comic onomatopoeia word SLAMS in. Deliberately
+ * very short — a hard, fast IMPACT — so the word reads as a punch landing, not
+ * a tween. The word scales from huge → settles, overshooting (recoil) en route.
+ */
+export const IMPACT_MS = 200;
+
+/** Hold (ms) the word sits proud at full size before it begins to settle out. */
+export const IMPACT_HOLD_MS = 650;
+
+/**
+ * Comic impact SCALE over elapsed ms. The word arrives oversized and slams down
+ * past its rest size, recoils (a quick spring), holds, then eases out at the
+ * tail. Returns a multiplier on rest size:
+ *   - t≈0           : large (≈1 + overshoot*0.8) — caught mid-slam, big
+ *   - ~IMPACT_MS    : ≈1 (rest), having overshot slightly below then back
+ *   - hold window   : gentle breathing ≈1
+ *   - tail          : sags toward ~0.92 as it fades (handled by the renderer's
+ *                     opacity; scale stays close to rest so letters stay legible)
+ *
+ * `overshoot` scales the slam magnitude (driven by intensity).
+ */
+export function impactScale(elapsedMs: number, overshoot = 1): number {
+  const t = elapsedMs;
+  if (t <= 0) return 1 + 0.85 * overshoot;
+  if (t < IMPACT_MS) {
+    // Slam: shrink from oversized down through a small undershoot, spring to 1.
+    const x = t / IMPACT_MS;
+    const eased = easeOutCubic(x);
+    const big = 1 + 0.85 * overshoot;
+    // overshoot dip slightly below 1 around 75% then back to exactly 1.
+    const dip = -0.12 * overshoot * Math.sin(x * Math.PI) * (1 - x);
+    return big + (1 - big) * eased + dip;
+  }
+  return 1;
+}
+
+/**
+ * Comic impact OPACITY/presence over normalized life (0..1). A near-instant
+ * appearance, a long proud hold, then a quick fade at the very end so the panel
+ * clears. `durationMs` is the whole-effect length; the fade occupies the last
+ * ~18%.
+ */
+export function impactPresence(life: number): number {
+  const t = clamp01(life);
+  if (t < 0.04) return easeOutCubic(t / 0.04); // snap in
+  if (t < 0.82) return 1;
+  const fade = clamp01(1 - (t - 0.82) / 0.18);
+  return Math.pow(fade, 1.4); // quick clean fade
+}

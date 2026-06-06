@@ -19,6 +19,17 @@ UI beneath it. You pick a **mood**, an **intensity**, and an amount of
 >   At `whimsy` 1 it flattens into a flat cel / neon-cyberpunk slash with a
 >   glowing rim and animate-on-twos motion. `celebrateInk()` /
 >   `prepareInkstroke()`.
+> - **`Comic Impact`** — a Golden/Silver-Age comic-book **"BAM! POW!"** fight-panel
+>   hit: a hand-lettered onomatopoeia word (picked per-fire from BAM!/POW!/BIFF!/
+>   WHAM!/ZAP!/KAPOW! — variety = novelty) **slams in** over a jagged starburst
+>   with a hard, fast impact + recoil, bold ink outlines, **Ben-Day / halftone
+>   dot** shading and **radiating action lines**. A hybrid: the word + burst +
+>   ink are drawn in an offscreen Canvas2D, the halftone, action lines, flash and
+>   styling are a WebGL2 fragment shader. `whimsy` is the **NOIR ↔ POP-ART** axis:
+>   `whimsy` 0 = moody high-contrast chiaroscuro inking, near-monochrome with one
+>   spot color, subtle fine halftone; `whimsy` 1 = saturated screaming Ben-Day
+>   dots, thick bold ink, snappy animate-on-twos motion. `celebrateComic()` /
+>   `prepareComic()`.
 >
 > Web first; iOS / Android / macOS to follow.
 

@@ -319,3 +319,180 @@ export function resolveInkParams({ mood, intensity, whimsy, seed }: ResolveInput
     inkSeed: rng() * 1000,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Comic Impact ("BAM! POW!") parameters.
+//
+// A Golden/Silver-Age comic fight-panel impact: a hand-lettered onomatopoeia
+// word slams in over a jagged starburst, with bold ink outlines, radiating
+// action lines and Ben-Day / halftone dot shading. whimsy is the
+// PHOTOREAL ↔ NON-PHOTOREAL (here: moody NOIR ↔ full POP-ART) axis:
+//   whimsy 0 — high-contrast chiaroscuro inking, near-monochrome with one spot
+//              color, restrained/subtle halftone, gritty.
+//   whimsy 1 — saturated Ben-Day dots, thick bold ink outlines, screaming
+//              color, snappy animate-on-twos motion.
+// ---------------------------------------------------------------------------
+
+/**
+ * The onomatopoeia set. Picking one per fire (by seed) is the variable-reward /
+ * novelty lever — you never quite know which punch you'll get. Kept short and
+ * blocky so the simple letterforms read instantly.
+ */
+export const COMIC_WORDS = ["BAM!", "POW!", "BIFF!", "WHAM!", "ZAP!", "KAPOW!"] as const;
+export type ComicWord = (typeof COMIC_WORDS)[number];
+
+/**
+ * Deterministically pick an onomatopoeia word from a seed. Same seed → same
+ * word (reproducible), but an un-pinned seed scatters across the set for
+ * per-fire variety.
+ */
+export function pickWord(seed: number): ComicWord {
+  const r = mulberry32(seed >>> 0)();
+  const idx = Math.min(COMIC_WORDS.length - 1, Math.floor(r * COMIC_WORDS.length));
+  return COMIC_WORDS[idx]!;
+}
+
+export interface ComicRenderParams {
+  seed: number;
+  /** Total effect length in milliseconds (impact + hold + settle). */
+  durationMs: number;
+  /** Three linear-RGB palette stops (word fill → secondary → dot/accent). */
+  palette: [RGB, RGB, RGB];
+  /** The onomatopoeia word slammed into the panel this fire. */
+  word: ComicWord;
+  /** Overall brightness multiplier (cast-light gain). */
+  exposure: number;
+  /** Slam overshoot/recoil magnitude (drives the punch). */
+  overshoot: number;
+  /** Word size as a fraction of viewport min dimension. */
+  scale: number;
+  /** Number of points on the jagged starburst (integer). */
+  burstPoints: number;
+  /** Number of radiating action/speed lines (integer). */
+  actionLines: number;
+  /** Ink outline thickness (px at 1x dpr, scaled in the renderer). */
+  inkWeight: number;
+  /** 0..1 — Ben-Day halftone dot strength (subtle noir → loud pop-art). */
+  halftone: number;
+  /** Ben-Day dot cell size in device px (smaller = finer screen). */
+  dotSize: number;
+  /** 0..1 — color saturation of the panel (near-mono noir → screaming pop). */
+  saturation: number;
+  /** A per-fire hash offset so burst spikes + line angles differ run to run. */
+  comicSeed: number;
+  /** 0..1 — stylization (whimsy): noir chiaroscuro → full pop-art. */
+  style: number;
+}
+
+interface ComicBaseline {
+  durationMs: number;
+  lightness: number;
+  chroma: number;
+  hueCenter: number;
+  hueRange: number;
+  scale: number;
+  burstPoints: number;
+  actionLines: number;
+  overshoot: number;
+}
+
+/**
+ * Mood register for the punch:
+ *   serene      — a softer "thump": fewer spikes, calmer lines, cooler hue, the
+ *                 word lands but doesn't scream. (Still a comic, just gentler.)
+ *   celebratory — the classic hero hit: bold, warm, lively spike count + lines.
+ *   electric    — a savage KAPOW: many spikes, dense action lines, hot hue, the
+ *                 hardest slam.
+ * Hue centers mirror Solarbloom/Verdict (cool → warm with arousal).
+ */
+const COMIC_BASELINES: Record<DopamineMood, ComicBaseline> = {
+  serene: {
+    durationMs: 2400,
+    lightness: 0.82,
+    chroma: 0.1,
+    hueCenter: 230,
+    hueRange: 120,
+    scale: 0.34,
+    burstPoints: 14,
+    actionLines: 18,
+    overshoot: 0.55,
+  },
+  celebratory: {
+    durationMs: 1900,
+    lightness: 0.82,
+    chroma: 0.18,
+    hueCenter: 50,
+    hueRange: 320,
+    scale: 0.4,
+    burstPoints: 20,
+    actionLines: 30,
+    overshoot: 1.0,
+  },
+  electric: {
+    durationMs: 1500,
+    lightness: 0.8,
+    chroma: 0.24,
+    hueCenter: 35,
+    hueRange: 150,
+    scale: 0.46,
+    burstPoints: 28,
+    actionLines: 44,
+    overshoot: 1.45,
+  },
+};
+
+/** Map the human knobs onto deterministic comic-impact render parameters. */
+export function resolveComicParams({ mood, intensity, whimsy, seed }: ResolveInput): ComicRenderParams {
+  const i = clamp01(intensity);
+  const w = clamp01(whimsy);
+  const base = COMIC_BASELINES[mood];
+  const rng: Rng = mulberry32(seed);
+
+  // intensity → saturation/brightness, slam force, word size, spike + line count.
+  const chroma = base.chroma * lerp(0.7, 1.5, i);
+  const exposure = lerp(0.85, 1.5, i);
+  const overshoot = base.overshoot * lerp(0.7, 1.3, i);
+  const scale = base.scale * lerp(0.85, 1.12, i);
+  const burstPoints = Math.round(base.burstPoints * lerp(0.8, 1.2, i));
+  const actionLines = Math.round(base.actionLines * lerp(0.7, 1.25, i));
+
+  // whimsy is the NOIR ↔ POP-ART stylization axis. Toward pop-art the halftone
+  // screams (loud, large dots), the ink fattens, and color floods in. Toward
+  // noir it's near-monochrome chiaroscuro with a restrained, fine, subtle dot.
+  const style = w;
+  const halftone = clamp01(lerp(0.28, 1.0, w));
+  // Dots get LARGER (louder, more graphic) toward pop-art; finer/subtler at noir.
+  const dotSize = lerp(5.0, 11.0, w);
+  // Saturation: near-mono one-spot-color noir → screaming pop. Intensity nudges.
+  const saturation = clamp01(lerp(0.18, 1.0, w) * lerp(0.8, 1.1, i));
+  // Ink outline weight thickens toward the bold pop-art register.
+  const inkWeight = lerp(5.0, 12.0, w) * lerp(0.85, 1.1, i);
+
+  const palette = buildPalette(rng, {
+    lightness: base.lightness,
+    chroma,
+    hueCenter: base.hueCenter,
+    hueRange: base.hueRange,
+    hueSpread: 0.55,
+  }) as [RGB, RGB, RGB];
+
+  const comicSeed = rng() * 1000;
+
+  return {
+    seed,
+    durationMs: Math.round(base.durationMs * lerp(1.1, 0.9, i)),
+    palette,
+    word: pickWord(seed),
+    exposure,
+    overshoot,
+    scale,
+    burstPoints,
+    actionLines,
+    inkWeight,
+    halftone,
+    dotSize,
+    saturation,
+    comicSeed,
+    style,
+  };
+}
