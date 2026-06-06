@@ -46,6 +46,58 @@ export interface RenderParams {
   dispersion: number;
   /** 0..1 — stylization (whimsy): photoreal lighting/motion → cel-shaded, hand-drawn. */
   style: number;
+  /**
+   * Which bundled check-glyph face + codepoint the checkmark layer renders this
+   * fire, chosen by WHIMSY (see `pickCheckGlyph`). Purely whimsy-derived (no rng,
+   * no effect on any numeric/palette param), so the `.dope` parity stays intact
+   * while the checkmark's SHAPE changes from a refined to a bold/playful glyph.
+   */
+  checkGlyph: CheckGlyph;
+}
+
+// ---------------------------------------------------------------------------
+// SOLARBLOOM CHECK GLYPH — selected by WHIMSY.
+//
+// Solarbloom's checkmark is now a REAL typeface glyph (✓ U+2713 / ✔ U+2714),
+// drawn into an offscreen canvas and uploaded as a texture (see
+// effects/solarbloom.ts + engine/check-fonts.ts). Whimsy picks the FACE +
+// CODEPOINT so the shape reads differently across the slider:
+//   low whimsy  — a refined, light, calligraphic check (elegant),
+//   mid whimsy  — a clean humanist check (balanced),
+//   high whimsy — a fat, bold, playful heavy-check (exuberant).
+// The faces are the SIL OFL check-glyph subsets bundled in check-fonts.ts; the
+// `family` strings here MUST match `CHECK_FACES[*].family` there.
+// ---------------------------------------------------------------------------
+
+/** A concrete check-glyph choice: a bundled face + the codepoint to render. */
+export interface CheckGlyph {
+  /** CSS font-family — must match a `CHECK_FACES` entry registered at runtime. */
+  family: string;
+  /** The check character to draw (✓ U+2713 or ✔ U+2714). */
+  char: string;
+}
+
+/**
+ * Whimsy bands → (face, char). Ordered low→high whimsy. Both faces ship in
+ * check-fonts.ts; "Symbols" carries the calligraphic ✓ and a fat playful ✔,
+ * "Sans" carries a clean humanist ✓.
+ */
+const CHECK_GLYPHS: readonly CheckGlyph[] = [
+  { family: "Dopamine Check Symbols", char: "✓" }, // elegant calligraphic ✓
+  { family: "Dopamine Check Sans", char: "✔" },    // clean humanist heavy ✔
+  { family: "Dopamine Check Symbols", char: "✔" }, // fat playful heavy ✔
+];
+
+/**
+ * Pick the check glyph for a whimsy value (0..1). Pure + deterministic: the
+ * slider is split into equal bands so 0 → refined, 1 → bold/playful. Returned by
+ * `resolveParams` and consumed by the Solarbloom renderer to pick the face it
+ * rasterizes into the glyph texture.
+ */
+export function pickCheckGlyph(whimsy: number): CheckGlyph {
+  const w = clamp01(whimsy);
+  const idx = Math.min(CHECK_GLYPHS.length - 1, Math.floor(w * CHECK_GLYPHS.length));
+  return CHECK_GLYPHS[idx]!;
 }
 
 interface MoodBaseline {
@@ -209,6 +261,9 @@ export function resolveParams({ mood, intensity, whimsy, seed }: ResolveInput): 
     style,
     // A stable but seed-derived offset that scatters the mote field.
     moteSeed: rng() * 1000,
+    // Whimsy-derived check glyph (face + char); no rng, so palette/moteSeed
+    // ordering and every numeric param above are unchanged (`.dope` parity holds).
+    checkGlyph: pickCheckGlyph(w),
   };
 }
 

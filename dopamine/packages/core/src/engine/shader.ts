@@ -64,6 +64,9 @@ uniform float uShadowStrength;// 0..1 max darkening of the multiply layer
 uniform vec3  uC0;
 uniform vec3  uC1;
 uniform vec3  uC2;
+uniform sampler2D uCheckTex; // alpha mask of the chosen check GLYPH (✓ / ✔), centred, premult-free
+uniform float uCheckTexOn;   // 1 = sample the real font glyph; 0 = analytic SDF fallback
+uniform float uCheckBox;     // half-size (device px) of the square glyph box around uOrigin
 
 #define MAX_MOTES 80
 ${GLSL_CONSTANTS}
@@ -87,6 +90,43 @@ float bloomProfile(float dn){
   float core = exp(-dn * dn * 2.4) * 0.92;
   float halo = exp(-dn * 1.3) * 0.5;
   return core + halo;
+}
+
+// ---------------------------------------------------------------------------
+// GLYPH CHECKMARK — a REAL font glyph (✓ / ✔, chosen by whimsy) rasterized into
+// uCheckTex and sampled here. It sits centred on uOrigin in a square box of half
+// size uCheckBox. The glyph "draws itself": we reveal it along a diagonal wipe
+// (lower-left → upper-right, the natural pen path of a tick) driven by uCheck, so
+// the reveal stays a pure function of time. Returns coverage in .x and the wipe
+// frontier coordinate (0..1 along the draw axis) in .y for the leading spark.
+// ---------------------------------------------------------------------------
+
+// Map a device-pixel sample to this glyph's UV (origin bottom-left, y up). The
+// texture is uploaded FLIP_Y so the canvas (y-down) glyph lands upright.
+vec2 glyphUV(vec2 frag){
+  return (frag - uOrigin) / (2.0 * uCheckBox) + 0.5;
+}
+
+// Normalized progress along the diagonal draw axis at a glyph-UV point. The tick
+// is drawn from its bottom-left to its top-right tip, so the axis is mostly +x
+// with a gentle upward bias; tuned so the short down-stroke reveals first.
+float glyphDrawAxis(vec2 uv){
+  return clamp((uv.x * 0.86 + uv.y * 0.14), 0.0, 1.0);
+}
+
+// Glyph coverage at frag, gated by the draw-in wipe. uCheck 0..1 sweeps the
+// frontier across the draw axis with a soft leading edge.
+float glyphCoverage(vec2 frag, out float axisHere){
+  vec2 uv = glyphUV(frag);
+  axisHere = glyphDrawAxis(uv);
+  // Outside the box there is no glyph (CLAMP_TO_EDGE would otherwise smear).
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
+  float a = texture(uCheckTex, uv).a;
+  // Soft wipe: pixels ahead of the frontier are still "undrawn". The frontier
+  // runs a touch past 1.0 at uCheck=1 so the whole glyph completes.
+  float frontier = uCheck * 1.12;
+  float wipe = smoothstep(frontier, frontier - 0.07, axisHere);
+  return a * wipe;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,24 +169,31 @@ float solarOcclusion(vec2 p){
     occ += dot * fade * 0.5;
   }
 
-  // Checkmark capsule mass (same geometry as the light pass, no boil jitter).
+  // Checkmark mass — cast from the SAME source as the light pass so the
+  // silhouette matches: the real font glyph when present, else the analytic SDF.
   float cr = minDim * 0.11;
-  vec2 A = uOrigin + cr * vec2(-0.9, 0.15);
-  vec2 B = uOrigin + cr * vec2(-0.25, -0.55);
-  vec2 C = uOrigin + cr * vec2(1.0, 0.78);
-  float l1 = length(B - A), l2 = length(C - B);
-  float total = l1 + l2;
-  float drawn = uCheck * total;
-  float vis1 = clamp(drawn, 0.0, l1);
-  vec2 tip = A + (B - A) * (vis1 / l1);
-  float dseg = sdSeg(p, A, tip);
-  if (drawn > l1) {
-    float d2 = clamp(drawn - l1, 0.0, l2);
-    vec2 tip2 = B + (C - B) * (d2 / l2);
-    dseg = min(dseg, sdSeg(p, B, tip2));
-  }
   float sw = cr * 0.12;
-  occ += (1.0 - smoothstep(sw * 0.6, sw * 1.4, dseg)) * 0.8;
+  if (uCheckTexOn > 0.5) {
+    float axisHere;
+    float cov = glyphCoverage(p, axisHere);
+    occ += cov * 0.8;
+  } else {
+    vec2 A = uOrigin + cr * vec2(-0.9, 0.15);
+    vec2 B = uOrigin + cr * vec2(-0.25, -0.55);
+    vec2 C = uOrigin + cr * vec2(1.0, 0.78);
+    float l1 = length(B - A), l2 = length(C - B);
+    float total = l1 + l2;
+    float drawn = uCheck * total;
+    float vis1 = clamp(drawn, 0.0, l1);
+    vec2 tip = A + (B - A) * (vis1 / l1);
+    float dseg = sdSeg(p, A, tip);
+    if (drawn > l1) {
+      float d2 = clamp(drawn - l1, 0.0, l2);
+      vec2 tip2 = B + (C - B) * (d2 / l2);
+      dseg = min(dseg, sdSeg(p, B, tip2));
+    }
+    occ += (1.0 - smoothstep(sw * 0.6, sw * 1.4, dseg)) * 0.8;
+  }
 
   return clamp(occ * uAmp, 0.0, 1.0);
 }
@@ -294,35 +341,68 @@ void main(){
   }
 
   // ---- Checkmark drawn in light, with leading spark + afterglow ----
+  // The checkmark is a REAL font glyph (✓ / ✔ chosen by whimsy) sampled from
+  // uCheckTex, falling back to the analytic two-segment SDF if the glyph texture
+  // failed to load. Either way it stays the brightest "drawn in light" element,
+  // preserves the draw-in wipe + leading spark, and casts light + shadow.
   float cr = minDim * 0.11;
-  // Hand-drawn "boil": per-vertex jitter that pops in discrete steps (the time
-  // step makes floor(uTimeS*12) tick on twos), scaled in by style.
-  float bt = floor(uTimeS * 12.0);
-  vec2 A = uOrigin + cr * vec2(-0.9, 0.15) + (hash21(bt + 1.1) - 0.5) * cr * 0.06 * uStyle;
-  vec2 B = uOrigin + cr * vec2(-0.25, -0.55) + (hash21(bt + 2.2) - 0.5) * cr * 0.06 * uStyle;
-  vec2 C = uOrigin + cr * vec2(1.0, 0.78) + (hash21(bt + 3.3) - 0.5) * cr * 0.06 * uStyle;
-  float l1 = length(B - A), l2 = length(C - B);
-  float total = l1 + l2;
-  float drawn = uCheck * total;
-  float vis1 = clamp(drawn, 0.0, l1);
-  vec2 tip = A + (B - A) * (vis1 / l1);
-  float dseg = sdSeg(frag, A, tip);
-  if (drawn > l1) {
-    float d2 = clamp(drawn - l1, 0.0, l2);
-    tip = B + (C - B) * (d2 / l2);
-    dseg = min(dseg, sdSeg(frag, B, tip));
-  }
   float sw = cr * 0.12;
-  // Soft luminous stroke (photoreal) cross-fades to a crisp, flat drawn line
-  // (toon) as style rises; the soft glow recedes so it reads as ink, not light.
-  float softCore = smoothstep(sw, sw * 0.35, dseg);
-  float hardCore = 1.0 - smoothstep(sw * 0.85, sw, dseg);
-  float ccore = mix(softCore, hardCore, uStyle);
-  float cglow = exp(-dseg / (sw * 2.0)) * 0.7 * (1.0 - 0.7 * uStyle);
+  float ccore;   // crisp glyph body coverage (0..1)
+  float cglow;   // soft surrounding glow
+  vec2  tip;     // leading-edge point for the spark
+  float drawing; // 1 while the stroke is being laid down (gates the spark)
+
+  if (uCheckTexOn > 0.5) {
+    // -- GLYPH PATH: sample the rasterized font check, revealed by a diagonal --
+    // wipe so it "draws itself". A tiny screen-space boil jitter (on twos, scaled
+    // by style) keeps the hand-drawn feel at high whimsy.
+    float bt = floor(uTimeS * 12.0);
+    vec2 boil = (hash21(bt + 1.7) - 0.5) * cr * 0.05 * uStyle;
+    vec2 gfrag = frag - boil;
+    float axisHere;
+    float cov = glyphCoverage(gfrag, axisHere);
+    // Soft glow: re-sample the coverage slightly blurred via the box gradient.
+    // (Cheap: reuse the same masked coverage with a falloff vs the wipe frontier.)
+    ccore = smoothstep(0.35, 0.6, cov);
+    cglow = cov * 0.6 * (1.0 - 0.7 * uStyle);
+    // Leading spark: brightest where the wipe frontier currently crosses inked
+    // glyph pixels. frontier in draw-axis space; convert to a device-px point on
+    // the diagonal for the radial spark sprite.
+    float frontier = clamp(uCheck * 1.12, 0.0, 1.0);
+    // Reconstruct an approximate frontier point on the draw diagonal in the box.
+    vec2 axisDir = normalize(vec2(0.86, 0.14));
+    vec2 boxUVtoPx = vec2(2.0 * uCheckBox);
+    // Param 0..1 along axis → uv along the diagonal anchored at box centre line.
+    vec2 frontUV = vec2(frontier, 0.30 + frontier * 0.55);
+    tip = uOrigin + (frontUV - 0.5) * boxUVtoPx;
+    drawing = smoothstep(0.0, 0.04, uCheck) * (1.0 - smoothstep(0.92, 1.06, uCheck));
+  } else {
+    // -- ANALYTIC FALLBACK: the original two-segment SDF "drawn in light". ------
+    float bt = floor(uTimeS * 12.0);
+    vec2 A = uOrigin + cr * vec2(-0.9, 0.15) + (hash21(bt + 1.1) - 0.5) * cr * 0.06 * uStyle;
+    vec2 B = uOrigin + cr * vec2(-0.25, -0.55) + (hash21(bt + 2.2) - 0.5) * cr * 0.06 * uStyle;
+    vec2 C = uOrigin + cr * vec2(1.0, 0.78) + (hash21(bt + 3.3) - 0.5) * cr * 0.06 * uStyle;
+    float l1 = length(B - A), l2 = length(C - B);
+    float total = l1 + l2;
+    float drawn = uCheck * total;
+    float vis1 = clamp(drawn, 0.0, l1);
+    tip = A + (B - A) * (vis1 / l1);
+    float dseg = sdSeg(frag, A, tip);
+    if (drawn > l1) {
+      float d2 = clamp(drawn - l1, 0.0, l2);
+      tip = B + (C - B) * (d2 / l2);
+      dseg = min(dseg, sdSeg(frag, B, tip));
+    }
+    float softCore = smoothstep(sw, sw * 0.35, dseg);
+    float hardCore = 1.0 - smoothstep(sw * 0.85, sw, dseg);
+    ccore = mix(softCore, hardCore, uStyle);
+    cglow = exp(-dseg / (sw * 2.0)) * 0.7 * (1.0 - 0.7 * uStyle);
+    drawing = smoothstep(0.0, 0.04, uCheck) * (1.0 - smoothstep(0.92, 1.06, uCheck));
+  }
+
   // Leading spark: a bright hot point at the pen tip while it's drawing, with a
   // soft afterglow that lingers a moment after the stroke completes.
   float tipDist = length(frag - tip);
-  float drawing = smoothstep(0.0, 0.04, uCheck) * (1.0 - smoothstep(0.92, 1.06, uCheck));
   float tipSize = sw * 1.6;
   float sparkHead = tipSize / (tipDist + tipSize * 0.4);
   sparkHead *= sparkHead;

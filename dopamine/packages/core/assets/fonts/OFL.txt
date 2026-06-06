@@ -1,8 +1,16 @@
-Fonts bundled with @dopamine/core Comic Impact effect, all under the SIL Open Font License 1.1:
+Fonts bundled with @dopamine/core effects, all under the SIL Open Font License 1.1:
 
-  Bangers       Copyright (c) Vernon Adams (Reserved Font Name "Bangers")
-  Anton         Copyright (c) Vernon Adams (Reserved Font Name "Anton")
-  Luckiest Guy  Copyright (c) Astigmatic (Reserved Font Name "Luckiest Guy")
+  Bangers              Copyright (c) Vernon Adams (Reserved Font Name "Bangers")
+  Anton                Copyright (c) Vernon Adams (Reserved Font Name "Anton")
+  Luckiest Guy         Copyright (c) Astigmatic (Reserved Font Name "Luckiest Guy")
+  Noto Sans Symbols 2  Copyright (c) The Noto Project Authors (Reserved Font Name "Noto")
+  Source Sans 3        Copyright (c) Adobe (Reserved Font Name "Source")
+
+The Comic Impact effect uses the three display faces above. The Solarbloom
+success effect bundles the CHECK-GLYPH subsets only (U+2713 "check mark" and
+U+2714 "heavy check mark") of Noto Sans Symbols 2 and Source Sans 3, so its
+checkmark is a real typeface glyph selected by whimsy yet carries no runtime
+asset fetch.
 
 Source: Google Fonts (fonts.google.com). The full license text follows.
 ================================================================================

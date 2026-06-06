@@ -65,6 +65,8 @@
     "outlines": {
       "checkmark": {
         "role": "confirm-glyph",
+        "source": "font-glyph",
+        "note": "Rendered from a bundled SIL-OFL check glyph (U+2713 / U+2714) chosen by whimsy (low = refined ✓, high = bold ✔) and uploaded as a texture; see engine/check-fonts.ts + engine/check-renderer.ts. The svgPath below is the legacy analytic two-segment tick, retained as the documented reference shape and the shader's fallback when the glyph face fails to load.",
         "svgPath": "M 5 55 L 38 88 L 95 12"
       }
     }

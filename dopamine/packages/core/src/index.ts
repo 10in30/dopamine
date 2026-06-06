@@ -34,6 +34,7 @@ export type { DopamineMood, DopamineSuccessOptions } from "./types.js";
 export type { RGB, OKLCH } from "./engine/color.js";
 export { registerElement, DopamineSuccessElement } from "./element.js";
 export { ensureComicFonts } from "./engine/comic-renderer.js";
+export { ensureCheckFonts } from "./engine/check-renderer.js";
 
 // Framework surface — for adding new effects / moods and lower-level control.
 export type {

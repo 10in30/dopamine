@@ -6,6 +6,7 @@ import {
   prepareInkstroke,
   prepareComic,
   ensureComicFonts,
+  ensureCheckFonts,
   type DopamineMood,
 } from "@dopamine/core";
 
@@ -113,10 +114,11 @@ interface DopamineDemo {
   prepare: typeof prepare;
 }
 (window as unknown as { __dopamine: DopamineDemo }).__dopamine = { fire, prepare };
-// Make sure the bundled Comic Impact display faces have loaded before we signal
-// readiness, so capture scripts grab frames with the real lettering (not the
-// fallback). The core also degrades gracefully if this never resolves.
-void ensureComicFonts().finally(() => {
+// Make sure the bundled faces have loaded before we signal readiness, so capture
+// scripts grab frames with the real lettering (Comic) and the real checkmark
+// glyph (Solarbloom) rather than the fallbacks. The core also degrades
+// gracefully if these never resolve.
+void Promise.all([ensureComicFonts(), ensureCheckFonts()]).finally(() => {
   document.documentElement.dataset.dopamineReady = "true";
 });
 
