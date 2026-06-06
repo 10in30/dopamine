@@ -5,6 +5,7 @@ import {
   prepareSolarbloom,
   prepareInkstroke,
   prepareComic,
+  ensureComicFonts,
   type DopamineMood,
 } from "@dopamine/core";
 
@@ -112,7 +113,12 @@ interface DopamineDemo {
   prepare: typeof prepare;
 }
 (window as unknown as { __dopamine: DopamineDemo }).__dopamine = { fire, prepare };
-document.documentElement.dataset.dopamineReady = "true";
+// Make sure the bundled Comic Impact display faces have loaded before we signal
+// readiness, so capture scripts grab frames with the real lettering (not the
+// fallback). The core also degrades gracefully if this never resolves.
+void ensureComicFonts().finally(() => {
+  document.documentElement.dataset.dopamineReady = "true";
+});
 
 // ?autoplay=<mood> fires once shortly after load (used by the recorder).
 const autoplay = new URLSearchParams(location.search).get("autoplay");

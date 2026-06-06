@@ -12,7 +12,7 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src"],
+  "files": ["dist", "src", "assets"],
   "sideEffects": ["./src/element.ts", "./dist/element.js"],
   "scripts": {
     "build": "tsc -p tsconfig.json"

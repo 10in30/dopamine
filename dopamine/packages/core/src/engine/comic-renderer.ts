@@ -19,9 +19,10 @@
  */
 
 import { impactScale, impactPresence, IMPACT_MS, IMPACT_HOLD_MS } from "./tempo.js";
-import type { ComicRenderParams } from "./mood.js";
+import { isCheckmark, type ComicRenderParams } from "./mood.js";
 import { COMIC_FRAGMENT_SRC, COMIC_VERTEX_SRC } from "./comic-shader.js";
 import { mulberry32 } from "./seed.js";
+import { EMBEDDED_FACES } from "./comic-fonts.js";
 
 export interface ComicRenderer {
   readonly durationMs: number;
@@ -42,6 +43,64 @@ const UNIFORMS = [
 
 type UniformName = (typeof UNIFORMS)[number];
 type UniformMap = Record<UniformName, WebGLUniformLocation | null>;
+
+// ---------------------------------------------------------------------------
+// BUNDLED FONT LOADING
+//
+// The effect must NOT silently depend on a host font being installed, so the
+// SIL OFL display faces (Bangers / Anton / Luckiest Guy) ship base64-embedded
+// (comic-fonts.ts) and are registered via the FontFace API. We kick this off
+// once at module import and await it before the first paint; if it fails for
+// any reason the renderer still draws using the robust fallback stack (and the
+// mood/whimsy difference still reads via the procedural treatment).
+// ---------------------------------------------------------------------------
+
+let fontsReady: Promise<void> | null = null;
+
+function base64ToArrayBuffer(b64: string): ArrayBuffer {
+  const bin = atob(b64);
+  const len = bin.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+
+/** Register + load the embedded faces once. Resolves even if loading fails. */
+export function ensureComicFonts(): Promise<void> {
+  if (fontsReady) return fontsReady;
+  if (
+    typeof document === "undefined" ||
+    typeof FontFace === "undefined" ||
+    !(document as Document).fonts
+  ) {
+    fontsReady = Promise.resolve();
+    return fontsReady;
+  }
+  fontsReady = (async () => {
+    await Promise.all(
+      EMBEDDED_FACES.map(async (f) => {
+        try {
+          // Skip if a face by this family is already registered (e.g. host has it).
+          const face = new FontFace(f.family, base64ToArrayBuffer(f.base64));
+          await face.load();
+          (document as Document).fonts.add(face);
+        } catch {
+          /* fall back to the system stack for this face */
+        }
+      }),
+    );
+    try {
+      await (document as Document).fonts.ready;
+    } catch {
+      /* ignore */
+    }
+  })();
+  return fontsReady;
+}
+
+// Begin loading as soon as the module is imported so faces are usually ready by
+// the time the user fires the effect.
+if (typeof document !== "undefined") void ensureComicFonts();
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
   const sh = gl.createShader(type);
@@ -146,46 +205,163 @@ function drawPanel(
   ctx.stroke();
   ctx.restore();
 
-  // ---------- ONOMATOPOEIA WORD --------------------------------------------
-  // Blocky condensed caps. We draw the fill into RED, the outline into GREEN
-  // (ink). A slight extra-bold stroke under the fill gives the chunky letter
-  // body; an outer heavy stroke is the bold ink contour.
-  const word = params.word;
-  // Target the word at a fraction of the burst's inner span, then SHRINK-TO-FIT
-  // so long words (KAPOW!/WHAM!) never overflow the panel or the burst. We pick
-  // a base size, measure, and clamp so the glyph run fits a max width.
-  let fontPx = minDim * params.scale * 0.92 * scale;
+  // ---------- LETTERING (success word) or CHECKMARK ------------------------
+  // Mood selects the bundled display face + base character (skew/stretch/tilt);
+  // whimsy shifts the treatment from restrained inked caps (noir) to fat,
+  // inflated, multi-layer-inked, 3D-extruded, per-letter-bounced pop-art. The
+  // owner also wants a big bold ✓ as a selectable option — that's drawn as a
+  // VECTOR path (not a font glyph) so it's reliable everywhere.
+  const fillA = Math.round(255 * presence);
+  const inkStyle = `rgba(0,${fillA},0,1)`;
+  const fillStyle = `rgba(${fillA},0,0,1)`;
+  const round = params.inkRoundness;
+
+  // Per-letter / per-shape deterministic jitter, derived from the per-fire seed.
+  const jrng = mulberry32((params.comicSeed * 2654435761) >>> 0);
+
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.rotate(tilt);
+  ctx.rotate(tilt + params.fontTilt);
+  // Italic lean + non-uniform stretch as a shared transform on the whole word.
+  // matrix: [stretchX, 0, skewX, 1] (a=stretch horiz, c=shear).
+  ctx.transform(params.fontStretchX, 0, params.fontSkew, 1, 0, 0);
+  ctx.lineJoin = round > 0.5 ? "round" : "miter";
+  ctx.lineCap = round > 0.5 ? "round" : "butt";
+  ctx.miterLimit = 2;
+  ctx.globalCompositeOperation = "lighter"; // additive into channels
+
+  if (isCheckmark(params.word)) {
+    // ----- VECTOR CHECKMARK -----------------------------------------------
+    // A bold two-segment tick centred on the panel, sized to the burst's inner
+    // span. Drawn as a stroked path; ink contour + 3D extrude + bright fill use
+    // the same treatment knobs as the word path below.
+    const span = innerR * 1.25; // overall check width
+    const strokeW = span * 0.24 * (0.85 + round * 0.25);
+    const extrude = span * params.extrudeDepth;
+    // Check geometry (down-stroke then long up-flick), centred.
+    const pts: [number, number][] = [
+      [-span * 0.42, span * 0.02],
+      [-span * 0.12, span * 0.34],
+      [span * 0.46, -span * 0.36],
+    ];
+    const traceCheck = () => {
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => (i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
+    };
+    // 3D extrude: stacked ink copies stepping down-right (pop-art only).
+    if (extrude > 0.5) {
+      const steps = 8;
+      for (let s = steps; s >= 1; s--) {
+        const dx = (extrude * s) / steps;
+        const dy = (extrude * s) / steps;
+        ctx.save();
+        ctx.translate(dx, dy);
+        traceCheck();
+        ctx.lineWidth = strokeW;
+        ctx.strokeStyle = inkStyle;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    // Bold ink contour (heavier toward pop-art via outlineLayers).
+    traceCheck();
+    ctx.lineWidth = strokeW + ink * (1.2 + params.outlineLayers * 0.5);
+    ctx.strokeStyle = inkStyle;
+    ctx.stroke();
+    // Bright fill body.
+    traceCheck();
+    ctx.lineWidth = strokeW;
+    ctx.strokeStyle = fillStyle;
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  // ----- WORD RUN ---------------------------------------------------------
+  const word = params.word;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  // Heavy condensed system stack; Impact is the canonical comic-blast face.
-  const fontFor = (px: number) =>
-    `900 ${px}px Impact, "Haettenschweiler", "Arial Narrow Bold", "Arial Black", system-ui, sans-serif`;
+  const fontFor = (px: number) => `${px}px ${params.fontStack}`;
+
+  // Target size, then SHRINK-TO-FIT so longer words (GREAT!/DONE!) never spill
+  // out of the burst. Account for the extra horizontal stretch + tracking.
+  let fontPx = minDim * params.scale * 0.92 * scale;
   ctx.font = fontFor(fontPx);
-  // Fit width: the word should sit inside the burst's inner radius span.
-  const maxW = innerR * 1.7;
-  const measured = ctx.measureText(word).width;
+  const chars = [...word];
+  const trackPx = () => fontPx * params.fontTracking;
+  const runWidth = (): number => {
+    let total = 0;
+    for (const ch of chars) total += ctx.measureText(ch).width + trackPx();
+    return Math.max(1, total - trackPx());
+  };
+  const maxW = (innerR * 1.7) / Math.max(0.6, params.fontStretchX);
+  let measured = runWidth();
   if (measured > maxW) {
     fontPx *= maxW / measured;
     ctx.font = fontFor(fontPx);
+    measured = runWidth();
   }
 
-  const fillA = Math.round(255 * presence);
+  const extrude = fontPx * params.extrudeDepth;
+  const inkLine = ink * (1.3 + (params.outlineLayers - 1) * 0.7);
 
-  // Outer bold INK contour (GREEN) — drawn first, sits OUTSIDE the glyph body
-  // so it frames the letters rather than eating into the bright fill.
-  ctx.globalCompositeOperation = "lighter";
-  ctx.lineJoin = "round";
-  ctx.lineWidth = ink * 1.7;
-  ctx.strokeStyle = `rgba(0,${fillA},0,1)`;
-  ctx.strokeText(word, 0, 0);
+  // Lay out letters individually so we can apply per-letter rotation/baseline
+  // jitter (the pop-art bounce). Start at the left edge of the centred run.
+  let penX = -measured / 2;
+  type Letter = { ch: string; x: number; rot: number; dy: number; wgt: number };
+  const letters: Letter[] = chars.map((ch) => {
+    const wpx = ctx.measureText(ch).width;
+    const x = penX + wpx / 2;
+    penX += wpx + trackPx();
+    const rot = (jrng() - 0.5) * 2 * params.letterRotJitter;
+    const dy = (jrng() - 0.5) * 2 * params.letterBaselineJitter * fontPx;
+    return { ch, x, rot, dy, wgt: jrng() };
+  });
 
-  // Word FILL (RED) — drawn on top, so the bright body covers the inner half of
-  // the contour stroke; the outline reads as a clean frame around each letter.
-  ctx.fillStyle = `rgba(${fillA},0,0,1)`;
-  ctx.fillText(word, 0, 0);
+  const drawLetters = (
+    cb: (ctx: CanvasRenderingContext2D, l: Letter) => void,
+  ) => {
+    for (const l of letters) {
+      ctx.save();
+      ctx.translate(l.x, l.dy);
+      ctx.rotate(l.rot);
+      cb(ctx, l);
+      ctx.restore();
+    }
+  };
+
+  // 3D extrude / drop: stacked ink copies stepping down-right behind the body
+  // (pop-art pops, flat at noir).
+  if (extrude > 0.5) {
+    const steps = 8;
+    for (let s = steps; s >= 1; s--) {
+      const dx = (extrude * s) / steps;
+      const dy = (extrude * s) / steps;
+      drawLetters((c, l) => {
+        c.fillStyle = inkStyle;
+        c.fillText(l.ch, dx, dy);
+      });
+    }
+  }
+
+  // Bold INK contour — drawn under the fill so the outline frames the letters.
+  // outlineLayers stacks slightly fattening passes for the inflated balloon look.
+  for (let layer = params.outlineLayers; layer >= 1; layer--) {
+    const lw = inkLine * (1 + (layer - 1) * 0.5);
+    drawLetters((c, l) => {
+      c.lineJoin = round > 0.5 ? "round" : "miter";
+      c.lineWidth = lw;
+      c.strokeStyle = inkStyle;
+      c.strokeText(l.ch, 0, 0);
+    });
+  }
+
+  // Bright FILL body on top.
+  drawLetters((c, l) => {
+    c.fillStyle = fillStyle;
+    c.fillText(l.ch, 0, 0);
+  });
+
   ctx.restore();
 }
 

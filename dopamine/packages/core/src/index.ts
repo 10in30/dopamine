@@ -22,6 +22,7 @@ import type { DopamineSuccessOptions } from "./types.js";
 export type { DopamineMood, DopamineSuccessOptions } from "./types.js";
 export type { RGB, OKLCH } from "./engine/color.js";
 export { registerElement, DopamineSuccessElement } from "./element.js";
+export { ensureComicFonts } from "./engine/comic-renderer.js";
 
 const DEFAULTS = { mood: "celebratory", intensity: 0.7, whimsy: 0.5 } as const;
 

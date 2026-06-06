@@ -19,17 +19,23 @@ UI beneath it. You pick a **mood**, an **intensity**, and an amount of
 >   At `whimsy` 1 it flattens into a flat cel / neon-cyberpunk slash with a
 >   glowing rim and animate-on-twos motion. `celebrateInk()` /
 >   `prepareInkstroke()`.
-> - **`Comic Impact`** — a Golden/Silver-Age comic-book **"BAM! POW!"** fight-panel
->   hit: a hand-lettered onomatopoeia word (picked per-fire from BAM!/POW!/BIFF!/
->   WHAM!/ZAP!/KAPOW! — variety = novelty) **slams in** over a jagged starburst
->   with a hard, fast impact + recoil, bold ink outlines, **Ben-Day / halftone
->   dot** shading and **radiating action lines**. A hybrid: the word + burst +
->   ink are drawn in an offscreen Canvas2D, the halftone, action lines, flash and
->   styling are a WebGL2 fragment shader. `whimsy` is the **NOIR ↔ POP-ART** axis:
->   `whimsy` 0 = moody high-contrast chiaroscuro inking, near-monochrome with one
->   spot color, subtle fine halftone; `whimsy` 1 = saturated screaming Ben-Day
->   dots, thick bold ink, snappy animate-on-twos motion. `celebrateComic()` /
->   `prepareComic()`.
+> - **`Comic Impact`** — a Golden/Silver-Age comic-book **success shout**: a
+>   hand-lettered **affirmation** (picked per-fire from YES!/DONE!/NICE!/OKAY!/
+>   WIN!/GREAT!/WOO! — or a big bold **✓ checkmark** — variety = novelty)
+>   **slams in** over a jagged starburst with a hard, fast impact + recoil, bold
+>   ink outlines, **Ben-Day / halftone dot** shading and **radiating action
+>   lines**. A hybrid: the word/checkmark + burst + ink are drawn in an offscreen
+>   Canvas2D, the halftone, action lines, flash and styling are a WebGL2 fragment
+>   shader. The **lettering varies by mood and whimsy**: mood picks a bundled SIL
+>   OFL display face + character (electric → Anton, condensed/hard-italic;
+>   celebratory → Bangers, classic exuberant comic; serene → Luckiest Guy,
+>   rounded/calmer) and `whimsy` is the **NOIR ↔ POP-ART** axis — `whimsy` 0 =
+>   moody chiaroscuro, near-monochrome, clean single-pass inked caps, subtle fine
+>   halftone; `whimsy` 1 = saturated screaming Ben-Day dots, fat inflated balloon
+>   letters with multi-layer ink + 3D extrude/drop and bouncy per-letter
+>   rotation/baseline jitter, snappy animate-on-twos motion. The faces ship
+>   bundled (base64 woff2, loaded via `FontFace`) so the effect never depends on a
+>   host font. `celebrateComic()` / `prepareComic()`.
 >
 > Web first; iOS / Android / macOS to follow.
 
