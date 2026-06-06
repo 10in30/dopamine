@@ -177,3 +177,145 @@ export function resolveParams({ mood, intensity, whimsy, seed }: ResolveInput): 
     moteSeed: rng() * 1000,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Calligraphic Verdict (ink-stroke effect) parameters.
+// ---------------------------------------------------------------------------
+
+export interface InkRenderParams {
+  seed: number;
+  /** Total afterglow length in milliseconds. */
+  durationMs: number;
+  /** Three linear-RGB palette stops (ink core → mid → spray accent). */
+  palette: [RGB, RGB, RGB];
+  /** Overall brightness multiplier. */
+  exposure: number;
+  /** Held-breath overshoot magnitude for the envelope. */
+  overshoot: number;
+  /** Stroke length as a fraction of viewport width. */
+  scale: number;
+  /** Belly thickness multiplier (heavier = bolder gesture). */
+  pressure: number;
+  /** 0..1 — wet-ink bleed / spread amount. */
+  wetness: number;
+  /** 0..1 — dry-brush / bristle rake strength. */
+  bristle: number;
+  /** Number of droplets flung off the flick (integer). */
+  droplets: number;
+  /** A per-fire hash offset so the stroke wobble + spray differ run to run. */
+  inkSeed: number;
+  /** 0..1 — stylization (whimsy): wet sumi-e ink → flat cel/neon stroke. */
+  style: number;
+}
+
+/** Must match `MAX_DROPS` in `engine/inkstroke-shader.ts`. */
+export const MAX_DROPS = 64;
+
+interface InkBaseline {
+  durationMs: number;
+  lightness: number;
+  chroma: number;
+  hueCenter: number;
+  hueRange: number;
+  scale: number;
+  pressure: number;
+  wetness: number;
+  bristle: number;
+  droplets: number;
+  overshoot: number;
+}
+
+/**
+ * Mood register for the gesture itself:
+ *   serene      — a slow, wet, generous stroke; soft bleed, few calm droplets.
+ *   celebratory — a confident bold signature; balanced bleed + a lively spray.
+ *   electric    — a fast, dry, raking slash; hard bristle, a wide droplet burst.
+ * Hue centers mirror Solarbloom (cool → warm with arousal) for brand coherence.
+ */
+const INK_BASELINES: Record<DopamineMood, InkBaseline> = {
+  serene: {
+    durationMs: 2600,
+    lightness: 0.82,
+    chroma: 0.1,
+    hueCenter: 230,
+    hueRange: 120,
+    scale: 0.62,
+    pressure: 1.05,
+    wetness: 0.95,
+    bristle: 0.25,
+    droplets: 10,
+    overshoot: 0.55,
+  },
+  celebratory: {
+    durationMs: 1900,
+    lightness: 0.82,
+    chroma: 0.17,
+    hueCenter: 50,
+    hueRange: 320,
+    scale: 0.72,
+    pressure: 1.25,
+    wetness: 0.65,
+    bristle: 0.5,
+    droplets: 30,
+    overshoot: 1.0,
+  },
+  electric: {
+    durationMs: 1300,
+    lightness: 0.8,
+    chroma: 0.24,
+    hueCenter: 35,
+    hueRange: 150,
+    scale: 0.82,
+    pressure: 1.45,
+    wetness: 0.4,
+    bristle: 0.9,
+    droplets: 52,
+    overshoot: 1.45,
+  },
+};
+
+/** Map the human knobs onto deterministic ink-stroke render parameters. */
+export function resolveInkParams({ mood, intensity, whimsy, seed }: ResolveInput): InkRenderParams {
+  const i = clamp01(intensity);
+  const w = clamp01(whimsy);
+  const base = INK_BASELINES[mood];
+  const rng: Rng = mulberry32(seed);
+
+  // intensity → saturation, brightness, gesture boldness, spray volume.
+  const chroma = base.chroma * lerp(0.7, 1.5, i);
+  const exposure = lerp(0.8, 1.55, i);
+  const pressure = base.pressure * lerp(0.85, 1.2, i);
+  const scale = base.scale * lerp(0.9, 1.08, i);
+  const overshoot = base.overshoot * lerp(0.7, 1.25, i);
+  const droplets = Math.min(MAX_DROPS, Math.round(base.droplets * lerp(0.7, 1.3, i)));
+
+  // whimsy is the stylization axis: toward the cel/neon end the ink dries out
+  // (less wet bleed) and rakes harder (more bristle), reading as a flat drawn
+  // slash rather than a wet sumi-e mark.
+  const style = w;
+  const wetness = clamp01(base.wetness * lerp(1.0, 0.35, w));
+  const bristle = clamp01(base.bristle * lerp(0.85, 1.25, w) * lerp(0.9, 1.1, i));
+
+  const palette = buildPalette(rng, {
+    lightness: base.lightness,
+    chroma,
+    hueCenter: base.hueCenter,
+    hueRange: base.hueRange,
+    hueSpread: 0.55,
+  }) as [RGB, RGB, RGB];
+
+  return {
+    seed,
+    durationMs: Math.round(base.durationMs * lerp(1.1, 0.9, i)),
+    palette,
+    exposure,
+    overshoot,
+    scale,
+    pressure,
+    wetness,
+    bristle,
+    droplets,
+    style,
+    inkSeed: rng() * 1000,
+  };
+}

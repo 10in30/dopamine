@@ -1,4 +1,10 @@
-import { celebrate, prepareSolarbloom, type DopamineMood } from "@dopamine/core";
+import {
+  celebrate,
+  celebrateInk,
+  prepareSolarbloom,
+  prepareInkstroke,
+  type DopamineMood,
+} from "@dopamine/core";
 
 const $ = <T extends HTMLElement>(sel: string): T => {
   const el = document.querySelector<T>(sel);
@@ -6,7 +12,13 @@ const $ = <T extends HTMLElement>(sel: string): T => {
   return el;
 };
 
-const state = { mood: "celebratory" as DopamineMood, intensity: 0.7, whimsy: 0.5 };
+type EffectName = "solarbloom" | "inkstroke";
+const state = {
+  mood: "celebratory" as DopamineMood,
+  intensity: 0.7,
+  whimsy: 0.5,
+  effect: "inkstroke" as EffectName,
+};
 
 // Mood segmented control
 const moodGroup = $("#mood");
@@ -33,26 +45,51 @@ const bind = (id: string, key: "intensity" | "whimsy") => {
 bind("intensity", "intensity");
 bind("whimsy", "whimsy");
 
+// Effect segmented control (Solarbloom vs Calligraphic Verdict / inkstroke).
+const effectGroup = document.querySelector("#effect");
+effectGroup?.addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-effect]");
+  if (!btn) return;
+  state.effect = btn.dataset.effect as EffectName;
+  effectGroup
+    .querySelectorAll("button")
+    .forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+});
+
 // Fire from the button's center so the bloom radiates from the action.
 const fireBtn = $<HTMLButtonElement>("#fire");
 function fire(overrides: Partial<typeof state> = {}): Promise<void> {
+  const mood = overrides.mood ?? state.mood;
+  const intensity = overrides.intensity ?? state.intensity;
+  const whimsy = overrides.whimsy ?? state.whimsy;
+  const effect = overrides.effect ?? state.effect;
+  if (effect === "inkstroke") {
+    return celebrateInk({ mood, intensity, whimsy });
+  }
   const r = fireBtn.getBoundingClientRect();
   return celebrate({
-    mood: overrides.mood ?? state.mood,
-    intensity: overrides.intensity ?? state.intensity,
-    whimsy: overrides.whimsy ?? state.whimsy,
+    mood,
+    intensity,
+    whimsy,
     origin: { x: r.left + r.width / 2, y: r.top + r.height / 2 },
   });
 }
 fireBtn.addEventListener("click", () => void fire());
 
-// Prepare an effect for offline/fixed-timestep capture, anchored at the button.
+// Prepare an effect for offline/fixed-timestep capture.
 function prepare(overrides: Partial<typeof state> = {}) {
+  const mood = overrides.mood ?? state.mood;
+  const intensity = overrides.intensity ?? state.intensity;
+  const whimsy = overrides.whimsy ?? state.whimsy;
+  const effect = overrides.effect ?? state.effect;
+  if (effect === "inkstroke") {
+    return prepareInkstroke({ mood, intensity, whimsy });
+  }
   const r = fireBtn.getBoundingClientRect();
   return prepareSolarbloom({
-    mood: overrides.mood ?? state.mood,
-    intensity: overrides.intensity ?? state.intensity,
-    whimsy: overrides.whimsy ?? state.whimsy,
+    mood,
+    intensity,
+    whimsy,
     origin: { x: r.left + r.width / 2, y: r.top + r.height / 2 },
   });
 }

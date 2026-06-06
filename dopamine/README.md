@@ -6,7 +6,20 @@ and usable as a component that sits in your page *and* casts real light onto the
 UI beneath it. You pick a **mood**, an **intensity**, and an amount of
 **whimsy** — not raw parameters.
 
-> **First component: `Solarbloom`** — a "successful completion" effect.
+> **Components (success):** two interchangeable "successful completion" effects
+> that share the same `mood` / `intensity` / `whimsy` API and light-casting
+> overlay, but speak different visual languages:
+> - **`Solarbloom`** — a centered radial volumetric bloom (light radiating from
+>   a point). `celebrate()` / `prepareSolarbloom()`.
+> - **`Calligraphic Verdict`** — a single confident ink/light *signature stroke*
+>   that writes itself across the frame (a downward dip + upward flick: an
+>   abstracted check / approving flourish). Directional, asymmetric composition,
+>   not concentric. Pressure-modulated brush width, wet-ink bleed, dry-brush
+>   bristle, a racing wet tip, flung droplets, and a "signed" underline of light.
+>   At `whimsy` 1 it flattens into a flat cel / neon-cyberpunk slash with a
+>   glowing rim and animate-on-twos motion. `celebrateInk()` /
+>   `prepareInkstroke()`.
+>
 > Web first; iOS / Android / macOS to follow.
 
 ## Why it actually feels good (not just flashy)
