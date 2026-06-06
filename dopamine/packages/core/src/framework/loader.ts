@@ -65,6 +65,37 @@ export function getOutline(doc: DopeDoc, name: string): DopeOutline | undefined 
   return doc.geometry?.outlines?.[name];
 }
 
+/**
+ * The mood a doc degrades to when asked for one it doesn't declare.
+ *
+ * Each effect declares its OWN moods (the success trio declares
+ * serene/celebratory/electric; the fail effect declares try-again/error/denied),
+ * so there is no single hardcoded fallback mood that exists for every effect.
+ * An effect's own default is, in order of preference:
+ *   1. its `controls.mood.default`, if that mood actually has a baseline, else
+ *   2. the first mood key in its `baselines` table.
+ * This keeps EVERY declared mood resolvable and makes an unknown mood degrade to
+ * the effect's own sensible default instead of throwing on a missing baseline.
+ */
+export function defaultMoodKey(doc: DopeDoc): string {
+  const controls = (doc as { controls?: { mood?: { default?: unknown } } }).controls;
+  const declared = controls?.mood?.default;
+  if (typeof declared === "string" && doc.baselines[declared]) return declared;
+  const first = Object.keys(doc.baselines)[0];
+  if (!first) throw new Error("dope: document has no baselines to resolve a mood against");
+  return first;
+}
+
+/**
+ * Resolve a requested mood name against a doc to a key the doc actually declares:
+ * the requested mood if it has a baseline, otherwise the doc's own default mood
+ * ({@link defaultMoodKey}). Returned key is used for BOTH the baseline table and
+ * the palette `perMood` register, so they always agree.
+ */
+function resolveMoodKey(doc: DopeDoc, mood: string): string {
+  return doc.baselines[mood] ? mood : defaultMoodKey(doc);
+}
+
 interface DopePalette {
   hueSpread: number;
   lightness: { baseline: string; perStop: [number, number, number] };
@@ -179,7 +210,11 @@ export function resolveDopeParams(
 ): Record<string, number | RGB[] | number[]> {
   const i = clamp01(input.intensity);
   const w = clamp01(input.whimsy);
-  const baseline = doc.baselines[input.mood] ?? doc.baselines.celebratory;
+  // Degrade an undeclared mood to THIS effect's own default mood (not a hardcoded
+  // "celebratory", which the fail effect — and any non-success effect — has no
+  // baseline for). Declared moods always resolve to themselves, so parity holds.
+  const moodKey = resolveMoodKey(doc, input.mood);
+  const baseline = doc.baselines[moodKey];
   const rng: Rng = mulberry32(input.seed);
 
   const ctx: EvalCtx = {
@@ -206,7 +241,9 @@ export function resolveDopeParams(
 
   // Palette FIRST (consumes one rng() for the base hue inside buildPalette),
   // matching the engine's call order exactly.
-  const reg = doc.palette.perMood[input.mood] ?? doc.palette.perMood.celebratory;
+  // Same resolved key as the baseline lookup, so palette + baselines always agree
+  // (an undeclared mood uses the effect's own default for both).
+  const reg = doc.palette.perMood[moodKey] ?? doc.palette.perMood[defaultMoodKey(doc)];
   const chroma = evalExpr(doc.palette.chroma.from, { ...ctx, baseline: reg as Record<string, number> });
   const generated = buildPalette(rng, {
     lightness: reg.lightness,

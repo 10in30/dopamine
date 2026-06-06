@@ -93,7 +93,9 @@ export function resolveTypography(
   intensity: number,
   whimsy: number,
 ): ResolvedTypography {
-  const base = typo.perMood[mood] ?? typo.perMood.celebratory!;
+  // Degrade an undeclared mood to the first declared typography mood (not a
+  // hardcoded "celebratory"), matching the loader's own-default fallback.
+  const base = typo.perMood[mood] ?? typo.perMood[Object.keys(typo.perMood)[0]!]!;
   const ctx: EvalCtx = {
     controls: { intensity: clamp01(intensity), whimsy: clamp01(whimsy) },
     // Only the numeric baselines are visible to the grammar.
