@@ -27,7 +27,7 @@
         min-height: 100%;
         display: grid;
         place-items: center;
-        padding: 56px 24px;
+        padding: 20px;
         /* The whole document is a perspective viewport: child surfaces lifted on
            translateZ genuinely sit at different depths, so a light wash from
            above rakes across raised vs recessed planes. */
@@ -38,7 +38,7 @@
       /* The 3D scene: a subtly tilted slab that the surfaces are mounted onto.
          preserve-3d lets each child keep its own Z within this space. */
       .scene {
-        width: min(1000px, 100%);
+        width: min(1100px, 100%);
         transform-style: preserve-3d;
         transform: rotateX(7deg) rotateZ(-0.4deg);
         display: grid;
