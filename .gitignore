@@ -5,3 +5,6 @@ __pycache__
 .env
 .DS_Store
 reboot.py
+
+# Claude Code agent worktrees / local scratch
+.claude/
