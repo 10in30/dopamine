@@ -1,4 +1,4 @@
-import { celebrate, type DopamineMood } from "@dopamine/core";
+import { celebrate, prepareSolarbloom, type DopamineMood } from "@dopamine/core";
 
 const $ = <T extends HTMLElement>(sel: string): T => {
   const el = document.querySelector<T>(sel);
@@ -46,11 +46,23 @@ function fire(overrides: Partial<typeof state> = {}): Promise<void> {
 }
 fireBtn.addEventListener("click", () => void fire());
 
-// Expose a hook for the Playwright recorder + signal readiness.
+// Prepare an effect for offline/fixed-timestep capture, anchored at the button.
+function prepare(overrides: Partial<typeof state> = {}) {
+  const r = fireBtn.getBoundingClientRect();
+  return prepareSolarbloom({
+    mood: overrides.mood ?? state.mood,
+    intensity: overrides.intensity ?? state.intensity,
+    whimsy: overrides.whimsy ?? state.whimsy,
+    origin: { x: r.left + r.width / 2, y: r.top + r.height / 2 },
+  });
+}
+
+// Expose hooks for the Playwright recorders + signal readiness.
 interface DopamineDemo {
   fire: typeof fire;
+  prepare: typeof prepare;
 }
-(window as unknown as { __dopamine: DopamineDemo }).__dopamine = { fire };
+(window as unknown as { __dopamine: DopamineDemo }).__dopamine = { fire, prepare };
 document.documentElement.dataset.dopamineReady = "true";
 
 // ?autoplay=<mood> fires once shortly after load (used by the recorder).
