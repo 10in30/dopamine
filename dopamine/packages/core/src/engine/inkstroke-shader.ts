@@ -51,6 +51,10 @@ uniform float uBristle;      // 0..1 dry-brush rake strength
 uniform float uDroplets;     // count of flung droplets
 uniform float uSeed;         // per-fire hash offset
 uniform float uStyle;        // 0..1 photoreal ink -> cel/neon (whimsy)
+uniform float uShadow;       // 0 = light pass (screen), 1 = shadow pass (multiply)
+uniform vec2  uShadowOffset; // device-px offset of the cast silhouette (away from light)
+uniform float uShadowSoft;   // penumbra softness in device px (blur tap radius)
+uniform float uShadowStrength;// 0..1 max darkening of the multiply layer
 uniform vec3  uC0;           // ink core color
 uniform vec3  uC1;           // mid
 uniform vec3  uC2;           // edge / spray accent
@@ -91,11 +95,106 @@ vec3 paletteMix(float t){
   return t < 0.5 ? mix(uC0, uC1, t * 2.0) : mix(uC1, uC2, (t - 0.5) * 2.0);
 }
 
+// Stroke control points — shared by the light pass and the shadow silhouette so
+// the cast shadow tracks exactly what's drawn. jitterScale lets the shadow drop
+// the cel "on twos" jitter (a shadow shouldn't shimmer).
+void strokeGeom(float jitterScale, out vec2 P0, out vec2 P1, out vec2 P2){
+  vec2 res = uResolution;
+  float minDim = min(res.x, res.y);
+  float len = uScale * res.x;
+  vec2 mid = vec2(res.x * 0.5, res.y * 0.46);
+  float bt = floor(uTimeS * 12.0);
+  vec2 jit = (hash21(bt + uSeed) - 0.5) * minDim * 0.02 * uStyle * jitterScale;
+  P0 = mid + vec2(-0.52, 0.10) * len + jit;
+  P1 = mid + vec2(-0.02, 0.42) * len + jit;
+  P2 = mid + vec2(0.55, -0.30) * len + jit;
+}
+
+float sdSeg(vec2 p, vec2 a, vec2 b){
+  vec2 pa = p - a, ba = b - a;
+  float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-3), 0.0, 1.0);
+  return length(pa - ba * h);
+}
+
+// ---------------------------------------------------------------------------
+// SHADOW silhouette — a cheap occlusion field for the bright forms (the drawn
+// stroke body + the flung droplets). Just the mass, no wet bleed / bristle /
+// tip-glow, so the extra pass stays light under software WebGL.
+float inkOcclusion(vec2 p){
+  vec2 res = uResolution;
+  float minDim = min(res.x, res.y);
+  vec2 P0, P1, P2;
+  strokeGeom(0.0, P0, P1, P2);   // drop the cel jitter for the shadow
+  float base = minDim * 0.045;
+  float occ = 0.0;
+
+  const int STEPS = 16;
+  for (int i = 0; i < STEPS; i++) {
+    float t0 = float(i) / float(STEPS);
+    float t1 = float(i + 1) / float(STEPS);
+    if (t0 > uDraw) break;
+    float tc = clamp((t0 + t1) * 0.5, 0.0, uDraw);
+    vec2 a = bez(P0, P1, P2, t0);
+    vec2 b = bez(P0, P1, P2, min(t1, uDraw));
+    float belly = exp(-pow((tc - 0.42) * 2.1, 2.0)) * uPressure;
+    float taper = smoothstep(0.0, 0.05, tc) * (1.0 - smoothstep(0.86, 1.0, tc));
+    float rad = base * (0.55 + 1.25 * belly) * (0.4 + 0.6 * taper);
+    float dist = sdSeg(p, a, b);
+    occ = max(occ, 1.0 - smoothstep(rad * 0.7, rad, dist));
+  }
+
+  // Droplets: soft round mass.
+  vec2 launch = bez(P0, P1, P2, 0.78);
+  vec2 launchDir = normalize(bez(P0, P1, P2, 0.85) - bez(P0, P1, P2, 0.7));
+  float len = uScale * res.x;
+  for (int i = 0; i < MAX_DROPS; i++) {
+    if (float(i) >= uDroplets) break;
+    vec2 hh = hash21(float(i) * 5.3 + uSeed + 11.0);
+    float dl = 0.6 + hh.x * 0.25;
+    float dlife = clamp((uLife - dl) / max(1.0 - dl, 0.001), 0.0, 1.0);
+    if (dlife <= 0.0) continue;
+    float spd = (0.4 + hh.y) * len * 0.9;
+    float spread = (hh.x - 0.5) * 1.4;
+    vec2 dir = normalize(launchDir + vec2(-launchDir.y, launchDir.x) * spread);
+    vec2 dp = launch + dir * spd * dlife - vec2(0.0, 1.0) * (minDim * 0.9) * dlife * dlife;
+    float dsz = minDim * 0.006 * (0.4 + hh.y * 0.9) * (1.0 - 0.5 * dlife);
+    float dd = length(p - dp);
+    occ = max(occ, (1.0 - smoothstep(dsz * 0.5, dsz * 1.2, dd)) * (1.0 - dlife) * 0.7);
+  }
+
+  return clamp(occ * uAmp, 0.0, 1.0);
+}
+
+vec4 inkShadowColor(vec2 frag){
+  vec2 sp = frag - uShadowOffset;
+  float occ = inkOcclusion(sp);
+  float soft = uShadowSoft;
+  occ += inkOcclusion(sp + vec2( soft, 0.0));
+  occ += inkOcclusion(sp + vec2(-soft, 0.0));
+  occ += inkOcclusion(sp + vec2(0.0,  soft));
+  occ += inkOcclusion(sp + vec2(0.0, -soft));
+  float s2 = soft * 0.7071;
+  occ += inkOcclusion(sp + vec2( s2,  s2));
+  occ += inkOcclusion(sp + vec2(-s2,  s2));
+  occ += inkOcclusion(sp + vec2( s2, -s2));
+  occ += inkOcclusion(sp + vec2(-s2, -s2));
+  occ /= 9.0;
+  float dark = clamp(occ, 0.0, 1.0) * uShadowStrength;
+  vec3 tint = mix(vec3(1.0), 0.6 + 0.4 * normalize(uC0 + 1e-3), 0.25);
+  vec3 mul = mix(vec3(1.0), tint, dark);
+  return vec4(mul, 1.0);
+}
+
 void main(){
   vec2 frag = gl_FragCoord.xy;
   vec2 res = uResolution;
   float minDim = min(res.x, res.y);
   vec3 col = vec3(0.0);
+
+  if (uShadow > 0.5) {
+    fragColor = inkShadowColor(frag);
+    return;
+  }
 
   // ---- Stroke geometry: a left->right gesture that dips then flicks up. ----
   // Anchored low-left, control point pulls the belly down, exit flicks up-right

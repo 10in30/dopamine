@@ -10,6 +10,7 @@
 
 import { checkProgress, envelope, NPR_TIME_STEP_MS } from "./tempo.js";
 import type { RenderParams } from "./mood.js";
+import { shadowGeometry } from "./shadow.js";
 import { FRAGMENT_SRC, VERTEX_SRC } from "./shader.js";
 
 export interface SolarbloomRenderer {
@@ -31,6 +32,7 @@ const UNIFORMS = [
   "uResolution", "uOrigin", "uAmp", "uCheck", "uLife", "uTimeS", "uExposure",
   "uBloomRadius", "uTurbulence", "uMoteSpeed", "uMoteCount", "uMoteSeed",
   "uIridescence", "uDispersion", "uStyle", "uC0", "uC1", "uC2",
+  "uShadow", "uShadowOffset", "uShadowSoft", "uShadowStrength",
 ] as const;
 
 type UniformName = (typeof UNIFORMS)[number];
@@ -67,16 +69,15 @@ function link(gl: WebGL2RenderingContext): WebGLProgram {
   return program;
 }
 
-/**
- * Build a renderer for `canvas`. `originCss` is in CSS pixels relative to the
- * canvas's top-left; `dpr` is the device-pixel ratio to render at.
- */
-export function createSolarbloom(
-  canvas: HTMLCanvasElement,
-  params: RenderParams,
-  originCss: { x: number; y: number },
-  dpr: number,
-): SolarbloomRenderer {
+interface Pass {
+  gl: WebGL2RenderingContext;
+  canvas: HTMLCanvasElement;
+  program: WebGLProgram;
+  u: UniformMap;
+  vao: WebGLVertexArrayObject | null;
+}
+
+function makePass(canvas: HTMLCanvasElement): Pass {
   const gl = canvas.getContext("webgl2", {
     alpha: false,
     antialias: false,
@@ -84,46 +85,76 @@ export function createSolarbloom(
     powerPreference: "high-performance",
   });
   if (!gl) throw new Error("dopamine: WebGL2 is not available");
-
   const program = link(gl);
   const u = Object.fromEntries(
     UNIFORMS.map((name) => [name, gl.getUniformLocation(program, name)]),
   ) as UniformMap;
   const vao = gl.createVertexArray();
+  return { gl, canvas, program, u, vao };
+}
+
+/**
+ * Build a renderer for `canvas`. `originCss` is in CSS pixels relative to the
+ * canvas's top-left; `dpr` is the device-pixel ratio to render at.
+ *
+ * `shadowCanvas` (optional) is a second, identically-sized full-bleed canvas
+ * composited with `mix-blend-mode: multiply`. When given, every frame also
+ * renders a soft, offset occlusion silhouette of the bright forms onto it, so
+ * the effect casts a real shadow into the UI beneath. The light pass is
+ * byte-for-byte unchanged whether or not a shadow canvas is supplied.
+ */
+export function createSolarbloom(
+  canvas: HTMLCanvasElement,
+  params: RenderParams,
+  originCss: { x: number; y: number },
+  dpr: number,
+  shadowCanvas?: HTMLCanvasElement | null,
+): SolarbloomRenderer {
+  const light = makePass(canvas);
+  const shadow = shadowCanvas ? makePass(shadowCanvas) : null;
   const [c0, c1, c2] = params.palette;
 
-  const resize = () => {
-    const w = Math.max(1, Math.round(canvas.clientWidth * dpr));
-    const h = Math.max(1, Math.round(canvas.clientHeight * dpr));
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w;
-      canvas.height = h;
+  const resizeOne = (c: HTMLCanvasElement) => {
+    const w = Math.max(1, Math.round(c.clientWidth * dpr));
+    const h = Math.max(1, Math.round(c.clientHeight * dpr));
+    if (c.width !== w || c.height !== h) {
+      c.width = w;
+      c.height = h;
     }
+  };
+  const resize = () => {
+    resizeOne(canvas);
+    if (shadowCanvas) resizeOne(shadowCanvas);
   };
   resize();
   window.addEventListener("resize", resize);
 
   let disposed = false;
 
-  const renderAt = (elapsedMs: number) => {
-    if (disposed) return;
-    // Hand-drawn "on twos": snap the animation clock toward a coarse grid as
-    // style (whimsy) rises. style 0 → continuous; style 1 → fully stepped.
-    const stepped = Math.floor(elapsedMs / NPR_TIME_STEP_MS) * NPR_TIME_STEP_MS;
-    const animMs = elapsedMs + (stepped - elapsedMs) * params.style;
-    const life = Math.min(Math.max(animMs, 0) / params.durationMs, 1);
-    const amp = envelope(life, params.overshoot);
-
-    resize();
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clearColor(0, 0, 0, 1);
+  // Shadow geometry: offset + softness scale with bloom radius (≈ element
+  // "height" above the page) and with amplitude (a brighter source throws a
+  // crisper, slightly longer shadow). Direction is down-and-right — a single
+  // implied key light up-and-left of the floating effect.
+  const renderPass = (
+    pass: Pass,
+    animMs: number,
+    life: number,
+    amp: number,
+    isShadow: boolean,
+  ) => {
+    const { gl, canvas: c, program, u, vao } = pass;
+    gl.viewport(0, 0, c.width, c.height);
+    // Shadow layer clears to WHITE (multiply identity); light to BLACK (screen
+    // identity). So an untouched frame is a no-op on either blend mode.
+    if (isShadow) gl.clearColor(1, 1, 1, 1);
+    else gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     gl.useProgram(program);
     gl.bindVertexArray(vao);
-    gl.uniform2f(u.uResolution, canvas.width, canvas.height);
+    gl.uniform2f(u.uResolution, c.width, c.height);
     // Flip Y: gl_FragCoord origin is bottom-left.
-    gl.uniform2f(u.uOrigin, originCss.x * dpr, canvas.height - originCss.y * dpr);
+    gl.uniform2f(u.uOrigin, originCss.x * dpr, c.height - originCss.y * dpr);
     gl.uniform1f(u.uAmp, amp);
     gl.uniform1f(u.uCheck, checkProgress(animMs));
     gl.uniform1f(u.uLife, life);
@@ -140,15 +171,47 @@ export function createSolarbloom(
     gl.uniform3f(u.uC0, c0.r, c0.g, c0.b);
     gl.uniform3f(u.uC1, c1.r, c1.g, c1.b);
     gl.uniform3f(u.uC2, c2.r, c2.g, c2.b);
+
+    gl.uniform1f(u.uShadow, isShadow ? 1 : 0);
+    if (isShadow) {
+      const minDim = Math.min(c.width, c.height);
+      const sg = shadowGeometry({
+        minDim,
+        heightFrac: params.bloomRadius,
+        amp,
+        style: params.style,
+      });
+      gl.uniform2f(u.uShadowOffset, sg.offsetX, sg.offsetY);
+      gl.uniform1f(u.uShadowSoft, sg.soft);
+      gl.uniform1f(u.uShadowStrength, sg.strength);
+    }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+  };
+
+  const renderAt = (elapsedMs: number) => {
+    if (disposed) return;
+    // Hand-drawn "on twos": snap the animation clock toward a coarse grid as
+    // style (whimsy) rises. style 0 → continuous; style 1 → fully stepped.
+    const stepped = Math.floor(elapsedMs / NPR_TIME_STEP_MS) * NPR_TIME_STEP_MS;
+    const animMs = elapsedMs + (stepped - elapsedMs) * params.style;
+    const life = Math.min(Math.max(animMs, 0) / params.durationMs, 1);
+    const amp = envelope(life, params.overshoot);
+
+    resize();
+    if (shadow) renderPass(shadow, animMs, life, amp, true);
+    renderPass(light, animMs, life, amp, false);
   };
 
   const dispose = () => {
     if (disposed) return;
     disposed = true;
     window.removeEventListener("resize", resize);
-    gl.deleteVertexArray(vao);
-    gl.deleteProgram(program);
+    light.gl.deleteVertexArray(light.vao);
+    light.gl.deleteProgram(light.program);
+    if (shadow) {
+      shadow.gl.deleteVertexArray(shadow.vao);
+      shadow.gl.deleteProgram(shadow.program);
+    }
   };
 
   return { durationMs: params.durationMs, renderAt, dispose };
@@ -160,8 +223,9 @@ export function runSolarbloom(
   params: RenderParams,
   originCss: { x: number; y: number },
   dpr: number,
+  shadowCanvas?: HTMLCanvasElement | null,
 ): RunHandle {
-  const renderer = createSolarbloom(canvas, params, originCss, dpr);
+  const renderer = createSolarbloom(canvas, params, originCss, dpr, shadowCanvas);
   let raf = 0;
   let stopped = false;
   const start = performance.now();

@@ -1,40 +1,94 @@
 /**
- * Full-bleed overlay host. Creates a fixed, click-through canvas layered over
- * the target. `mix-blend-mode: screen` is what makes the effect cast colored
- * light onto the UI beneath: black pixels leave content untouched, bright
- * pixels lighten it.
+ * Full-bleed overlay host. Creates fixed, click-through canvases layered over
+ * the target.
+ *
+ * Two stacked compositing layers give the effect real physical presence:
+ *
+ *   - LIGHT layer (`mix-blend-mode: screen`): black pixels leave content
+ *     untouched, bright pixels lighten it — this is what makes the effect cast
+ *     coloured light onto the UI beneath.
+ *   - SHADOW layer (`mix-blend-mode: multiply`): white pixels leave content
+ *     untouched, dark pixels darken it — a soft, offset occlusion silhouette of
+ *     the effect's bright forms, so the effect reads as floating ABOVE the page
+ *     and throwing shadow into it, not just glowing on top of it.
+ *
+ * The shadow layer sits BENEATH the light layer in z-order, so the bright core
+ * always wins where the two overlap (the shadow is pushed out to the edges /
+ * away from the light, which is physically what an offset penumbra does).
+ *
+ * Back-compat: `createOverlay(target)` still returns an object whose `.canvas`
+ * is the single light canvas and `.destroy()` tears everything down — existing
+ * single-canvas callers are unaffected. Pass `{ shadow: true }` to additionally
+ * get a `shadow` canvas (`overlay.shadow`).
  */
 
 export interface Overlay {
+  /** The light-casting canvas (`mix-blend-mode: screen`). */
   canvas: HTMLCanvasElement;
-  /** Remove the overlay from the DOM. */
+  /**
+   * The shadow-casting canvas (`mix-blend-mode: multiply`), present only when
+   * the overlay was created with `{ shadow: true }`.
+   */
+  shadow?: HTMLCanvasElement;
+  /** Remove the overlay (all layers) from the DOM. */
   destroy: () => void;
 }
 
-export function createOverlay(target: HTMLElement): Overlay {
-  const canvas = document.createElement("canvas");
+export interface OverlayOptions {
+  /** Also create a multiply "shadow" layer beneath the light layer. */
+  shadow?: boolean;
+}
+
+const LIGHT_Z = "2147483646";
+// One below the light layer so the bright core composites over the shadow.
+const SHADOW_Z = "2147483645";
+
+function styleCanvas(
+  canvas: HTMLCanvasElement,
+  blend: "screen" | "multiply",
+  zIndex: string,
+  scoped: boolean,
+): void {
   const s = canvas.style;
-  s.position = "fixed";
+  s.position = scoped ? "absolute" : "fixed";
   s.inset = "0";
   s.width = "100%";
   s.height = "100%";
   s.pointerEvents = "none";
-  s.zIndex = "2147483646";
-  s.mixBlendMode = "screen";
+  s.zIndex = zIndex;
+  s.mixBlendMode = blend;
   s.display = "block";
   canvas.setAttribute("aria-hidden", "true");
-  canvas.dataset.dopamine = "solarbloom";
+}
 
-  // If the target isn't the body, scope the overlay to it (absolute within).
-  if (target !== document.body && target !== document.documentElement) {
+export function createOverlay(target: HTMLElement, options: OverlayOptions = {}): Overlay {
+  const scoped = target !== document.body && target !== document.documentElement;
+  if (scoped) {
     const cs = getComputedStyle(target);
     if (cs.position === "static") target.style.position = "relative";
-    s.position = "absolute";
   }
+
+  // Shadow layer is created (and appended) first so it sits beneath the light
+  // layer both in z-index and DOM order.
+  let shadow: HTMLCanvasElement | undefined;
+  if (options.shadow) {
+    shadow = document.createElement("canvas");
+    styleCanvas(shadow, "multiply", SHADOW_Z, scoped);
+    shadow.dataset.dopamine = "shadow";
+    target.appendChild(shadow);
+  }
+
+  const canvas = document.createElement("canvas");
+  styleCanvas(canvas, "screen", LIGHT_Z, scoped);
+  canvas.dataset.dopamine = "solarbloom";
   target.appendChild(canvas);
 
   return {
     canvas,
-    destroy: () => canvas.remove(),
+    shadow,
+    destroy: () => {
+      canvas.remove();
+      shadow?.remove();
+    },
   };
 }

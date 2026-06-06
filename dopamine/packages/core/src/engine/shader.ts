@@ -43,6 +43,10 @@ uniform float uMoteSeed;
 uniform float uIridescence;  // 0..1 thin-film shimmer strength
 uniform float uDispersion;   // 0..1 spectral split strength at the bloom edge
 uniform float uStyle;        // 0..1 photoreal -> non-photoreal (cel-shaded / hand-drawn)
+uniform float uShadow;       // 0 = light pass (screen), 1 = shadow pass (multiply)
+uniform vec2  uShadowOffset; // device-px offset of the cast silhouette (away from light)
+uniform float uShadowSoft;   // penumbra softness in device px (blur tap radius)
+uniform float uShadowStrength;// 0..1 max darkening of the multiply layer
 uniform vec3  uC0;
 uniform vec3  uC1;
 uniform vec3  uC2;
@@ -109,11 +113,107 @@ vec3 tonemapACES(vec3 x){
   return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
 }
 
+// ---------------------------------------------------------------------------
+// SHADOW silhouette — a cheap occlusion field for the bright forms (bloom core,
+// motes, checkmark). Used only by the shadow pass: we don't need the full
+// volumetric look, just where the effect is "solid enough" to block light. It's
+// deliberately a fraction of the cost of the light pass (no FBM, no per-mote
+// streak/twinkle), so the extra pass stays cheap under software WebGL.
+// p is a device-pixel sample point. Returns 0..~1 coverage.
+float solarOcclusion(vec2 p){
+  float minDim = min(uResolution.x, uResolution.y);
+  float r = uBloomRadius * minDim;
+  vec2 rel = p - uOrigin;
+  float d = length(rel);
+  float dn = d / r;
+  // Bloom mass: the focused core casts the bulk of the shadow; the halo only a
+  // faint ambient occlusion. Matches bloomProfile's shape but flatter.
+  float occ = exp(-dn * dn * 2.0) * 0.9 + exp(-dn * 1.4) * 0.18;
+
+  // Motes: a sparse set of soft dots (no streaks/twinkle — just mass).
+  for (int i = 0; i < MAX_MOTES; i++) {
+    if (float(i) >= uMoteCount) break;
+    vec2 h = hash21(float(i) * 13.17 + uMoteSeed);
+    vec2 h2 = hash21(float(i) * 7.91 + uMoteSeed + 1.3);
+    float a0 = h.x * TAU;
+    float spd = 0.5 + h.y;
+    float delay = hash11(float(i) * 7.7 + uMoteSeed) * 0.15;
+    float life = clamp((uLife - delay) / (1.0 - delay), 0.0, 1.0);
+    if (life <= 0.0) continue;
+    float near = step(0.66, h2.x);
+    float depth = mix(0.7, 1.4, near);
+    vec2 dir = vec2(cos(a0), sin(a0));
+    float travel = life * spd * uMoteSpeed * r * 1.3 * depth;
+    vec2 buoy = vec2(0.0, life * life * r * 0.5);
+    vec2 pos = uOrigin + dir * travel + buoy;
+    float size = minDim * 0.006 * (0.6 + h.x * 0.8) * depth;
+    float dd = length(p - pos);
+    float dot = size / (dd + size * 0.6); dot *= dot;
+    float fade = (1.0 - pow(life, 1.3)) * smoothstep(0.0, 0.08, life);
+    occ += dot * fade * 0.5;
+  }
+
+  // Checkmark capsule mass (same geometry as the light pass, no boil jitter).
+  float cr = minDim * 0.11;
+  vec2 A = uOrigin + cr * vec2(-0.9, 0.15);
+  vec2 B = uOrigin + cr * vec2(-0.25, -0.55);
+  vec2 C = uOrigin + cr * vec2(1.0, 0.78);
+  float l1 = length(B - A), l2 = length(C - B);
+  float total = l1 + l2;
+  float drawn = uCheck * total;
+  float vis1 = clamp(drawn, 0.0, l1);
+  vec2 tip = A + (B - A) * (vis1 / l1);
+  float dseg = sdSeg(p, A, tip);
+  if (drawn > l1) {
+    float d2 = clamp(drawn - l1, 0.0, l2);
+    vec2 tip2 = B + (C - B) * (d2 / l2);
+    dseg = min(dseg, sdSeg(p, B, tip2));
+  }
+  float sw = cr * 0.12;
+  occ += (1.0 - smoothstep(sw * 0.6, sw * 1.4, dseg)) * 0.8;
+
+  return clamp(occ * uAmp, 0.0, 1.0);
+}
+
+// Soft, offset cast silhouette → multiply colour. Samples the occlusion field
+// at a small ring of taps around the offset point (a cheap separable-ish blur)
+// for a penumbra, then maps coverage to a darkening factor.
+vec4 shadowColor(vec2 frag){
+  // Sample point is pushed AGAINST the shadow offset, so the resulting dark
+  // silhouette lands offset away from the bright core (toward uShadowOffset).
+  vec2 sp = frag - uShadowOffset;
+  float occ = solarOcclusion(sp);
+  // 8-tap ring blur for a soft penumbra; cheap and isotropic enough.
+  float soft = uShadowSoft;
+  occ += solarOcclusion(sp + vec2( soft, 0.0));
+  occ += solarOcclusion(sp + vec2(-soft, 0.0));
+  occ += solarOcclusion(sp + vec2(0.0,  soft));
+  occ += solarOcclusion(sp + vec2(0.0, -soft));
+  float s2 = soft * 0.7071;
+  occ += solarOcclusion(sp + vec2( s2,  s2));
+  occ += solarOcclusion(sp + vec2(-s2,  s2));
+  occ += solarOcclusion(sp + vec2( s2, -s2));
+  occ += solarOcclusion(sp + vec2(-s2, -s2));
+  occ /= 9.0;
+  // Soften and gate by strength. multiply layer: 1.0 = no change, lower = darker.
+  float dark = clamp(occ, 0.0, 1.0) * uShadowStrength;
+  // Slightly warm/cool tint via palette so the shadow isn't pure neutral grey —
+  // it reads as the effect's own coloured occlusion. Keep it subtle.
+  vec3 tint = mix(vec3(1.0), 0.6 + 0.4 * normalize(uC0 + 1e-3), 0.25);
+  vec3 mul = mix(vec3(1.0), tint, dark);
+  return vec4(mul, 1.0);
+}
+
 void main(){
   vec2 frag = gl_FragCoord.xy;
   float minDim = min(uResolution.x, uResolution.y);
   float r = uBloomRadius * minDim;
   vec3 col = vec3(0.0);
+
+  if (uShadow > 0.5) {
+    fragColor = shadowColor(frag);
+    return;
+  }
 
   vec2 rel = frag - uOrigin;
   float ang = atan(rel.y, rel.x);

@@ -27,6 +27,7 @@ const DEFAULTS = { mood: "celebratory", intensity: 0.7, whimsy: 0.5 } as const;
 
 interface Mounted {
   canvas: HTMLCanvasElement;
+  shadowCanvas: HTMLCanvasElement | null;
   destroyOverlay: () => void;
   params: ReturnType<typeof resolveParams>;
   originLocal: { x: number; y: number };
@@ -55,9 +56,16 @@ function mount(options: DopamineSuccessOptions): Mounted {
       ? origin
       : { x: origin.x - rect.left, y: origin.y - rect.top };
 
-  const overlay = createOverlay(target);
+  const overlay = createOverlay(target, { shadow: true });
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  return { canvas: overlay.canvas, destroyOverlay: overlay.destroy, params, originLocal, dpr };
+  return {
+    canvas: overlay.canvas,
+    shadowCanvas: overlay.shadow ?? null,
+    destroyOverlay: overlay.destroy,
+    params,
+    originLocal,
+    dpr,
+  };
 }
 
 /**
@@ -72,7 +80,7 @@ export function celebrate(options: DopamineSuccessOptions = {}): Promise<void> {
   const m = mount(options);
   let handle: { done: Promise<void>; stop: () => void };
   try {
-    handle = runSolarbloom(m.canvas, m.params, m.originLocal, m.dpr);
+    handle = runSolarbloom(m.canvas, m.params, m.originLocal, m.dpr, m.shadowCanvas);
   } catch (err) {
     m.destroyOverlay();
     return Promise.reject(err);
@@ -101,7 +109,7 @@ export function prepareSolarbloom(options: DopamineSuccessOptions = {}): Prepare
   const m = mount(options);
   let renderer: SolarbloomRenderer;
   try {
-    renderer = createSolarbloom(m.canvas, m.params, m.originLocal, m.dpr);
+    renderer = createSolarbloom(m.canvas, m.params, m.originLocal, m.dpr, m.shadowCanvas);
   } catch (err) {
     m.destroyOverlay();
     throw err;
@@ -205,6 +213,7 @@ export function prepareComic(options: DopamineSuccessOptions = {}): PreparedEffe
 
 interface InkMounted {
   canvas: HTMLCanvasElement;
+  shadowCanvas: HTMLCanvasElement | null;
   destroyOverlay: () => void;
   params: ReturnType<typeof resolveInkParams>;
   dpr: number;
@@ -219,10 +228,16 @@ function mountInk(options: DopamineSuccessOptions): InkMounted {
     whimsy: options.whimsy ?? DEFAULTS.whimsy,
     seed,
   });
-  const overlay = createOverlay(target);
+  const overlay = createOverlay(target, { shadow: true });
   overlay.canvas.dataset.dopamine = "inkstroke";
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  return { canvas: overlay.canvas, destroyOverlay: overlay.destroy, params, dpr };
+  return {
+    canvas: overlay.canvas,
+    shadowCanvas: overlay.shadow ?? null,
+    destroyOverlay: overlay.destroy,
+    params,
+    dpr,
+  };
 }
 
 /**
@@ -237,7 +252,7 @@ export function celebrateInk(options: DopamineSuccessOptions = {}): Promise<void
   const m = mountInk(options);
   let handle: { done: Promise<void>; stop: () => void };
   try {
-    handle = runInkstroke(m.canvas, m.params, m.dpr);
+    handle = runInkstroke(m.canvas, m.params, m.dpr, m.shadowCanvas);
   } catch (err) {
     m.destroyOverlay();
     return Promise.reject(err);
@@ -254,7 +269,7 @@ export function prepareInkstroke(options: DopamineSuccessOptions = {}): Prepared
   const m = mountInk(options);
   let renderer: InkstrokeRenderer;
   try {
-    renderer = createInkstroke(m.canvas, m.params, m.dpr);
+    renderer = createInkstroke(m.canvas, m.params, m.dpr, m.shadowCanvas);
   } catch (err) {
     m.destroyOverlay();
     throw err;
