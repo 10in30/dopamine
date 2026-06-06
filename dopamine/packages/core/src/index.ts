@@ -26,9 +26,10 @@ import type { DopamineSuccessOptions } from "./types.js";
 import { solarbloom } from "./effects/solarbloom.js";
 import { inkstroke } from "./effects/inkstroke.js";
 import { comic } from "./effects/comic.js";
+import { fail as failEffect } from "./effects/fail.js";
 
 /** Force-retain the registrations against tree-shaking; also the built-in set. */
-const BUILTINS = [solarbloom, inkstroke, comic] as const;
+const BUILTINS = [solarbloom, inkstroke, comic, failEffect] as const;
 
 export type { DopamineMood, DopamineSuccessOptions } from "./types.js";
 export type { RGB, OKLCH } from "./engine/color.js";
@@ -69,7 +70,7 @@ export { bakeSdf, decodeSdf, parseSvgPath, type BakedSdf, type DecodedSdf } from
 const DEFAULTS = { mood: "celebratory", intensity: 0.7, whimsy: 0.5 } as const;
 
 /** Built-in effect names usable with the convenience API + the demo/scripts. */
-export type EffectName = "solarbloom" | "inkstroke" | "comic";
+export type EffectName = "solarbloom" | "inkstroke" | "comic" | "fail";
 
 /** The names of the three effects registered by `@dopamine/core` on import. */
 export const builtinEffectNames: readonly EffectName[] = BUILTINS.map(
@@ -189,4 +190,18 @@ export function celebrateComic(options: DopamineSuccessOptions = {}): Promise<vo
 /** Mount Comic Impact and return a manually-driven renderer. */
 export function prepareComic(options: DopamineSuccessOptions = {}): PreparedEffect | null {
   return prepare("comic", options);
+}
+
+/**
+ * Fire the FAIL / error effect — the emotional opposite of `celebrate*`. A red/
+ * amber ✗ is stamped in with a sharp hit + recoil shake, then collapses. Use the
+ * `try-again` / `error` / `denied` moods for gentle → harsh. Resolves when done.
+ */
+export function fail(options: DopamineSuccessOptions = {}): Promise<void> {
+  return play("fail", { mood: "error", ...options });
+}
+
+/** Mount the fail effect and return a manually-driven renderer. `null` off-DOM. */
+export function prepareFail(options: DopamineSuccessOptions = {}): PreparedEffect | null {
+  return prepare("fail", { mood: "error", ...options });
 }

@@ -11,8 +11,12 @@
 export type DopamineMood = "serene" | "celebratory" | "electric";
 
 export interface DopamineSuccessOptions {
-  /** Emotional register. Default `"celebratory"`. */
-  mood?: DopamineMood;
+  /**
+   * Emotional register. Default `"celebratory"`. A built-in success mood, or any
+   * mood registered via `registerMood` (e.g. the fail effect's `try-again` /
+   * `error` / `denied`).
+   */
+  mood?: DopamineMood | (string & {});
   /**
    * How strong the reward feels, 0..1. Drives saturation, brightness, bloom
    * size, mote count and overshoot — grounded in the finding that saturated,

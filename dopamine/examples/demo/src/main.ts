@@ -2,9 +2,11 @@ import {
   celebrate,
   celebrateInk,
   celebrateComic,
+  fail as dopamineFail,
   prepareSolarbloom,
   prepareInkstroke,
   prepareComic,
+  prepareFail,
   ensureComicFonts,
   ensureCheckFonts,
   type DopamineMood,
@@ -16,7 +18,15 @@ const $ = <T extends HTMLElement>(sel: string): T => {
   return el;
 };
 
-type EffectName = "solarbloom" | "inkstroke" | "comic";
+type EffectName = "solarbloom" | "inkstroke" | "comic" | "fail";
+
+// The fail effect speaks failure moods; map the shared success-mood toggle onto
+// gentle → harsh so the one mood control drives every effect.
+const FAIL_MOOD: Record<DopamineMood, string> = {
+  serene: "try-again",
+  celebratory: "error",
+  electric: "denied",
+};
 const state = {
   mood: "celebratory" as DopamineMood,
   intensity: 0.7,
@@ -73,6 +83,9 @@ function fire(overrides: Partial<typeof state> = {}): Promise<void> {
   if (effect === "comic") {
     return celebrateComic({ mood, intensity, whimsy });
   }
+  if (effect === "fail") {
+    return dopamineFail({ mood: FAIL_MOOD[mood], intensity, whimsy });
+  }
   const r = fireBtn.getBoundingClientRect();
   return celebrate({
     mood,
@@ -97,6 +110,9 @@ function prepare(overrides: Partial<typeof state> & { seed?: number } = {}) {
   }
   if (effect === "comic") {
     return prepareComic({ mood, intensity, whimsy, seed });
+  }
+  if (effect === "fail") {
+    return prepareFail({ mood: FAIL_MOOD[mood], intensity, whimsy, seed });
   }
   const r = fireBtn.getBoundingClientRect();
   return prepareSolarbloom({
