@@ -20,6 +20,7 @@
 
 import { impactScale, impactPresence, IMPACT_MS, IMPACT_HOLD_MS } from "./tempo.js";
 import { isCheckmark, type ComicRenderParams } from "./mood.js";
+import { shadowGeometry } from "./shadow.js";
 import { COMIC_FRAGMENT_SRC, COMIC_VERTEX_SRC } from "./comic-shader.js";
 import { mulberry32 } from "./seed.js";
 import { EMBEDDED_FACES } from "./comic-fonts.js";
@@ -39,6 +40,7 @@ const UNIFORMS = [
   "uPanel", "uResolution", "uCenter", "uLife", "uTimeS", "uPresence", "uFlash",
   "uExposure", "uHalftone", "uDotSize", "uSaturation", "uActionLines",
   "uInkBoost", "uSeed", "uStyle", "uC0", "uC1", "uC2",
+  "uShadow", "uShadowOffset", "uShadowSoft", "uShadowStrength",
 ] as const;
 
 type UniformName = (typeof UNIFORMS)[number];
@@ -365,11 +367,16 @@ function drawPanel(
   ctx.restore();
 }
 
-export function createComic(
-  canvas: HTMLCanvasElement,
-  params: ComicRenderParams,
-  dpr: number,
-): ComicRenderer {
+interface Pass {
+  gl: WebGL2RenderingContext;
+  canvas: HTMLCanvasElement;
+  program: WebGLProgram;
+  u: UniformMap;
+  vao: WebGLVertexArrayObject | null;
+  tex: WebGLTexture | null;
+}
+
+function makePass(canvas: HTMLCanvasElement): Pass {
   const gl = canvas.getContext("webgl2", {
     alpha: false,
     antialias: false,
@@ -377,36 +384,55 @@ export function createComic(
     powerPreference: "high-performance",
   });
   if (!gl) throw new Error("dopamine: WebGL2 is not available");
-
   const program = link(gl);
   const u = Object.fromEntries(
     UNIFORMS.map((name) => [name, gl.getUniformLocation(program, name)]),
   ) as UniformMap;
   const vao = gl.createVertexArray();
-  const [c0, c1, c2] = params.palette;
-
-  // Offscreen Canvas2D for the panel (word + burst + ink contours).
-  const panel = document.createElement("canvas");
-  const pctx = panel.getContext("2d", { alpha: true })!;
-
-  // Panel texture.
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return { gl, canvas, program, u, vao, tex };
+}
 
-  const resize = () => {
-    const w = Math.max(1, Math.round(canvas.clientWidth * dpr));
-    const h = Math.max(1, Math.round(canvas.clientHeight * dpr));
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w;
-      canvas.height = h;
+/**
+ * Build a Comic Impact renderer. `shadowCanvas` (optional) is a second
+ * full-bleed `mix-blend-mode: multiply` canvas; when given, each frame also
+ * renders a soft, offset occlusion silhouette of the word + starburst onto it,
+ * so the comic panel casts a real shadow onto the UI beneath. The light pass is
+ * unchanged whether or not a shadow canvas is supplied.
+ */
+export function createComic(
+  canvas: HTMLCanvasElement,
+  params: ComicRenderParams,
+  dpr: number,
+  shadowCanvas?: HTMLCanvasElement | null,
+): ComicRenderer {
+  const light = makePass(canvas);
+  const shadow = shadowCanvas ? makePass(shadowCanvas) : null;
+  const [c0, c1, c2] = params.palette;
+
+  // One offscreen Canvas2D panel (word + burst + ink), shared by both passes.
+  const panel = document.createElement("canvas");
+  const pctx = panel.getContext("2d", { alpha: true })!;
+
+  const resizeOne = (c: HTMLCanvasElement) => {
+    const w = Math.max(1, Math.round(c.clientWidth * dpr));
+    const h = Math.max(1, Math.round(c.clientHeight * dpr));
+    if (c.width !== w || c.height !== h) {
+      c.width = w;
+      c.height = h;
     }
-    if (panel.width !== w || panel.height !== h) {
-      panel.width = w;
-      panel.height = h;
+  };
+  const resize = () => {
+    resizeOne(canvas);
+    if (shadowCanvas) resizeOne(shadowCanvas);
+    if (panel.width !== canvas.width || panel.height !== canvas.height) {
+      panel.width = canvas.width;
+      panel.height = canvas.height;
     }
   };
   resize();
@@ -414,36 +440,26 @@ export function createComic(
 
   let disposed = false;
 
-  const renderAt = (elapsedMs: number) => {
-    if (disposed) return;
-    resize();
-    const W = canvas.width;
-    const H = canvas.height;
-
-    const life = Math.min(Math.max(elapsedMs, 0) / params.durationMs, 1);
-    const scale = impactScale(elapsedMs, params.overshoot);
-    const presence = impactPresence(life);
-
-    // Impact FLASH: a hard spike right at the slam, decaying over ~IMPACT_MS,
-    // with a faint secondary on the recoil settle.
-    const flash =
-      Math.exp(-elapsedMs / (IMPACT_MS * 0.55)) +
-      0.25 * Math.exp(-Math.abs(elapsedMs - IMPACT_HOLD_MS * 0.2) / (IMPACT_MS * 0.8));
-
-    // Redraw the offscreen panel for this frame's scale/presence.
-    // (The flicker "on twos" of the word lives in the panel too: snap presence
-    // grid is unnecessary — scale already settled by IMPACT_MS.)
-    drawPanel(pctx, W, H, params, scale, presence, dpr);
-
-    gl.viewport(0, 0, W, H);
-    gl.clearColor(0, 0, 0, 1);
+  const drawPass = (
+    pass: Pass,
+    life: number,
+    elapsedMs: number,
+    presence: number,
+    flash: number,
+    isShadow: boolean,
+  ) => {
+    const { gl, canvas: c, program, u, vao, tex } = pass;
+    gl.viewport(0, 0, c.width, c.height);
+    // Shadow clears WHITE (multiply identity); light clears BLACK (screen).
+    if (isShadow) gl.clearColor(1, 1, 1, 1);
+    else gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     gl.useProgram(program);
     gl.bindVertexArray(vao);
 
-    // Upload the panel. Canvas2D is top-left origin; flip Y so it matches the
-    // shader's bottom-left vUv space.
+    // Each context has its own texture; upload the shared panel (flip Y to match
+    // the shader's bottom-left vUv).
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
@@ -451,8 +467,8 @@ export function createComic(
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, panel);
     gl.uniform1i(u.uPanel, 0);
 
-    gl.uniform2f(u.uResolution, W, H);
-    gl.uniform2f(u.uCenter, W * 0.5, H * 0.5);
+    gl.uniform2f(u.uResolution, c.width, c.height);
+    gl.uniform2f(u.uCenter, c.width * 0.5, c.height * 0.5);
     gl.uniform1f(u.uLife, life);
     gl.uniform1f(u.uTimeS, elapsedMs / 1000);
     gl.uniform1f(u.uPresence, presence);
@@ -468,16 +484,49 @@ export function createComic(
     gl.uniform3f(u.uC0, c0.r, c0.g, c0.b);
     gl.uniform3f(u.uC1, c1.r, c1.g, c1.b);
     gl.uniform3f(u.uC2, c2.r, c2.g, c2.b);
+
+    gl.uniform1f(u.uShadow, isShadow ? 1 : 0);
+    if (isShadow) {
+      const minDim = Math.min(c.width, c.height);
+      // The comic panel is a large, fairly flat form sitting near the surface.
+      const sg = shadowGeometry({ minDim, heightFrac: 0.5, amp: presence, style: params.style });
+      gl.uniform2f(u.uShadowOffset, sg.offsetX, sg.offsetY);
+      gl.uniform1f(u.uShadowSoft, sg.soft);
+      gl.uniform1f(u.uShadowStrength, sg.strength);
+    }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+  };
+
+  const renderAt = (elapsedMs: number) => {
+    if (disposed) return;
+    resize();
+
+    const life = Math.min(Math.max(elapsedMs, 0) / params.durationMs, 1);
+    const scale = impactScale(elapsedMs, params.overshoot);
+    const presence = impactPresence(life);
+
+    // Impact FLASH: a hard spike right at the slam, decaying over ~IMPACT_MS,
+    // with a faint secondary on the recoil settle.
+    const flash =
+      Math.exp(-elapsedMs / (IMPACT_MS * 0.55)) +
+      0.25 * Math.exp(-Math.abs(elapsedMs - IMPACT_HOLD_MS * 0.2) / (IMPACT_MS * 0.8));
+
+    // Draw the shared offscreen panel once, then composite into each pass.
+    drawPanel(pctx, canvas.width, canvas.height, params, scale, presence, dpr);
+
+    if (shadow) drawPass(shadow, life, elapsedMs, presence, flash, true);
+    drawPass(light, life, elapsedMs, presence, flash, false);
   };
 
   const dispose = () => {
     if (disposed) return;
     disposed = true;
     window.removeEventListener("resize", resize);
-    gl.deleteTexture(tex);
-    gl.deleteVertexArray(vao);
-    gl.deleteProgram(program);
+    for (const pass of shadow ? [light, shadow] : [light]) {
+      pass.gl.deleteTexture(pass.tex);
+      pass.gl.deleteVertexArray(pass.vao);
+      pass.gl.deleteProgram(pass.program);
+    }
   };
 
   return { durationMs: params.durationMs, renderAt, dispose };
@@ -488,8 +537,9 @@ export function runComic(
   canvas: HTMLCanvasElement,
   params: ComicRenderParams,
   dpr: number,
+  shadowCanvas?: HTMLCanvasElement | null,
 ): ComicRunHandle {
-  const renderer = createComic(canvas, params, dpr);
+  const renderer = createComic(canvas, params, dpr, shadowCanvas);
   let raf = 0;
   let stopped = false;
   const start = performance.now();

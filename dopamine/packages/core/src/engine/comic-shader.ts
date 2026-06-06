@@ -54,6 +54,10 @@ uniform float uActionLines;   // count of radiating speed lines
 uniform float uInkBoost;      // ink darkness/spread multiplier (pop fattens ink)
 uniform float uSeed;          // per-fire hash
 uniform float uStyle;         // 0..1 noir -> pop-art (whimsy)
+uniform float uShadow;        // 0 = light pass (screen), 1 = shadow pass (multiply)
+uniform vec2  uShadowOffset;  // device-px offset of the cast silhouette (away from light)
+uniform float uShadowSoft;    // penumbra softness in device px (blur tap radius)
+uniform float uShadowStrength;// 0..1 max darkening of the multiply layer
 uniform vec3  uC0;            // word fill color
 uniform vec3  uC1;            // secondary / burst color
 uniform vec3  uC2;            // dot / accent color
@@ -82,6 +86,28 @@ void main(){
   vec2 frag = vUv * uResolution;
   vec2 res = uResolution;
   float minDim = min(res.x, res.y);
+
+  // ---- SHADOW PASS (multiply layer) ---------------------------------------
+  // Cheap occlusion: the panel's solid forms (word fill + burst fill) sampled
+  // at an offset toward the implied key light, with a small ring blur for a
+  // penumbra. White = no shadow (multiply identity); darker = cast shadow. The
+  // panel already encodes presence, so the shadow fades with the effect.
+  if (uShadow > 0.5) {
+    vec2 px = 1.0 / res;
+    vec2 souv = vUv - uShadowOffset * px;
+    float occ = 0.0;
+    for (int i = 0; i < 8; i++) {
+      float a = float(i) / 8.0 * TAU;
+      vec2 o = vec2(cos(a), sin(a)) * uShadowSoft * px;
+      vec4 s = texture(uPanel, souv + o);
+      occ += clamp(s.r + s.b, 0.0, 1.0);
+    }
+    occ /= 8.0;
+    float dark = clamp(occ * uShadowStrength, 0.0, 1.0);
+    fragColor = vec4(vec3(1.0 - dark), 1.0);
+    return;
+  }
+
   vec2 fromC = frag - uCenter;
   float rad = length(fromC);
   float ang = atan(fromC.y, fromC.x);

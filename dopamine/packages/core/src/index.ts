@@ -138,6 +138,7 @@ export function prepareSolarbloom(options: DopamineSuccessOptions = {}): Prepare
 
 interface ComicMounted {
   canvas: HTMLCanvasElement;
+  shadowCanvas: HTMLCanvasElement | null;
   destroyOverlay: () => void;
   params: ReturnType<typeof resolveComicParams>;
   dpr: number;
@@ -152,10 +153,16 @@ function mountComic(options: DopamineSuccessOptions): ComicMounted {
     whimsy: options.whimsy ?? DEFAULTS.whimsy,
     seed,
   });
-  const overlay = createOverlay(target);
+  const overlay = createOverlay(target, { shadow: true });
   overlay.canvas.dataset.dopamine = "comic";
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  return { canvas: overlay.canvas, destroyOverlay: overlay.destroy, params, dpr };
+  return {
+    canvas: overlay.canvas,
+    shadowCanvas: overlay.shadow ?? null,
+    destroyOverlay: overlay.destroy,
+    params,
+    dpr,
+  };
 }
 
 /**
@@ -170,7 +177,7 @@ export function celebrateComic(options: DopamineSuccessOptions = {}): Promise<vo
   const m = mountComic(options);
   let handle: { done: Promise<void>; stop: () => void };
   try {
-    handle = runComic(m.canvas, m.params, m.dpr);
+    handle = runComic(m.canvas, m.params, m.dpr, m.shadowCanvas);
   } catch (err) {
     m.destroyOverlay();
     return Promise.reject(err);
@@ -187,7 +194,7 @@ export function prepareComic(options: DopamineSuccessOptions = {}): PreparedEffe
   const m = mountComic(options);
   let renderer: ComicRenderer;
   try {
-    renderer = createComic(m.canvas, m.params, m.dpr);
+    renderer = createComic(m.canvas, m.params, m.dpr, m.shadowCanvas);
   } catch (err) {
     m.destroyOverlay();
     throw err;
