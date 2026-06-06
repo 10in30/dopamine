@@ -1,0 +1,117 @@
+{
+  "fmt": "dopamine-effect",
+  "v": "1.0.0",
+  "id": "dopamine.success.solarbloom",
+  "meta": {
+    "name": "Solarbloom",
+    "description": "A centered radial volumetric bloom — light radiating from a point — with drifting motes and a checkmark drawn in light.",
+    "tags": ["success", "bloom", "radial"]
+  },
+  "controls": {
+    "mood": { "type": "enum", "label": "Mood", "default": "celebratory", "options": ["serene", "celebratory", "electric"], "ui": "segmented" },
+    "intensity": { "type": "scalar", "label": "Intensity", "default": 0.7, "min": 0, "max": 1, "step": 0.01, "ui": "slider", "help": "Saturation, brightness, bloom size, overshoot." },
+    "whimsy": { "type": "scalar", "label": "Whimsy", "default": 0.5, "min": 0, "max": 1, "step": 0.01, "ui": "slider", "help": "Photoreal (0) to cel / hand-drawn (1)." },
+    "seed": { "type": "int", "label": "Seed", "default": null, "nullable": true, "help": "Null = unique palette per fire; pin to reproduce." },
+    "origin": { "type": "point", "label": "Origin", "default": "center" },
+    "target": { "type": "selector", "label": "Target", "default": "document.body" }
+  },
+  "baselines": {
+    "serene": {
+      "durationMs": 2600, "lightness": 0.84, "chroma": 0.09,
+      "hueCenter": 230, "hueRange": 120,
+      "bloomRadius": 0.85, "moteCount": 22, "moteSpeed": 0.55,
+      "turbulence": 0.35, "overshoot": 0.55, "iridescence": 0.85, "dispersion": 0.35
+    },
+    "celebratory": {
+      "durationMs": 1800, "lightness": 0.8, "chroma": 0.16,
+      "hueCenter": 50, "hueRange": 320,
+      "bloomRadius": 0.7, "moteCount": 48, "moteSpeed": 0.85,
+      "turbulence": 0.6, "overshoot": 1.0, "iridescence": 0.6, "dispersion": 0.6
+    },
+    "electric": {
+      "durationMs": 1200, "lightness": 0.78, "chroma": 0.23,
+      "hueCenter": 35, "hueRange": 150,
+      "bloomRadius": 0.6, "moteCount": 72, "moteSpeed": 1.25,
+      "turbulence": 0.9, "overshoot": 1.45, "iridescence": 0.4, "dispersion": 0.95
+    }
+  },
+  "palette": {
+    "model": "oklch",
+    "space": "linear-srgb",
+    "generator": "golden-angle",
+    "goldenAngleDeg": 137.50776405003785,
+    "stops": 3,
+    "hueSpread": 0.55,
+    "lightness": { "baseline": "lightness", "perStop": [0.0, 0.06, -0.05] },
+    "chroma": {
+      "from": { "mul": [{ "baseline": "chroma" }, { "lerp": ["intensity", 0.7, 1.5] }] },
+      "perStop": [0.0, 0.02, -0.01]
+    },
+    "seed": { "deterministic": true, "source": "controls.seed", "prng": "mulberry32" },
+    "perMood": {
+      "serene": { "hueCenter": 230, "hueRange": 120, "lightness": 0.84, "chroma": 0.09 },
+      "celebratory": { "hueCenter": 50, "hueRange": 320, "lightness": 0.8, "chroma": 0.16 },
+      "electric": { "hueCenter": 35, "hueRange": 150, "lightness": 0.78, "chroma": 0.23 }
+    }
+  },
+  "tempo": {
+    "durationMs": {
+      "from": { "round": { "mul": [{ "baseline": "durationMs" }, { "lerp": ["intensity", 1.1, 0.9] }] } }
+    }
+  },
+  "geometry": {
+    "kind": "radial",
+    "viewBox": [0, 0, 100, 100],
+    "outlines": {
+      "checkmark": {
+        "role": "confirm-glyph",
+        "svgPath": "M 5 55 L 38 88 L 95 12"
+      }
+    }
+  },
+  "render": {
+    "params": {
+      "exposure": { "type": "float", "from": { "lerp": ["intensity", 0.75, 1.5] } },
+      "bloomRadius": {
+        "type": "float",
+        "from": { "mul": [{ "baseline": "bloomRadius" }, { "lerp": ["intensity", 0.8, 1.15] }] }
+      },
+      "moteCount": {
+        "type": "int", "clampMax": "MAX_MOTES",
+        "from": { "round": { "mul": [{ "baseline": "moteCount" }, { "lerp": ["intensity", 0.85, 1.25] }] } }
+      },
+      "moteSpeed": { "type": "float", "from": { "baseline": "moteSpeed" } },
+      "turbulence": {
+        "type": "float",
+        "from": { "mul": [{ "baseline": "turbulence" }, { "lerp": ["intensity", 0.85, 1.2] }] }
+      },
+      "overshoot": {
+        "type": "float",
+        "from": { "mul": [{ "baseline": "overshoot" }, { "lerp": ["intensity", 0.7, 1.25] }] }
+      },
+      "iridescence": {
+        "type": "float", "clamp01": true,
+        "from": { "mul": [{ "baseline": "iridescence" }, { "lerp": ["whimsy", 1.0, 0.12] }] }
+      },
+      "dispersion": {
+        "type": "float", "clamp01": true,
+        "from": {
+          "mul": [
+            { "baseline": "dispersion" },
+            { "lerp": ["whimsy", 1.0, 0.45] },
+            { "lerp": ["intensity", 0.85, 1.1] }
+          ]
+        }
+      },
+      "style": { "type": "float", "from": { "control": "whimsy" } }
+    },
+    "backends": {
+      "webgl2": {
+        "stage": "fullscreen-triangle",
+        "blend": "screen",
+        "shader": { "$ref": "shaders/solarbloom.frag.glsl" }
+      }
+    },
+    "fallbackOrder": ["webgl2"]
+  }
+}

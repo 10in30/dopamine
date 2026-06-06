@@ -150,6 +150,19 @@ await celebrate({ mood: "triumphant" });
 **Add an effect** — implement `EffectFactory` and `registerEffect(...)`; then
 `play("my-effect", { mood, intensity, whimsy })`. See `effects/solarbloom.ts`.
 
+### Data-driven effects — the `.dope` format
+
+An effect's mood → params mapping can live in a declarative **`.dope`** JSON
+document (`docs/effect-format.md`) instead of code. The loader
+(`framework/loader.ts`) evaluates a tiny mapping grammar (`lerp`/`mul`/`baseline`
+/`control`/`round`/`clamp…`) + the OKLCH golden-angle palette into the same
+render params the shader consumes — with the PRNG consumed in the same order, so
+output is byte-identical to the code path (proven by `loader.test.ts`).
+Solarbloom + Verdict are **fully** data-driven (`effects/*.dope.json` drive them
+through the loader → registry → conductor); Comic is data-driven for its numeric
+panel + palette, with its typography + per-fire word composed in code. Shader
+bodies stay referenced GLSL — the format references them; it is not a transpiler.
+
 ## Roadmap
 
 - More components (progress, error, attention) and animated icons.

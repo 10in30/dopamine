@@ -6,12 +6,22 @@
  */
 
 import { envelope, strokeProgress, NPR_TIME_STEP_MS } from "../engine/tempo.js";
-import { resolveInkParams, type InkRenderParams } from "../engine/mood.js";
+import { MAX_DROPS, type InkRenderParams } from "../engine/mood.js";
 import { shadowGeometry } from "../engine/shadow.js";
 import { INK_FRAGMENT_SRC, INK_VERTEX_SRC } from "../engine/inkstroke-shader.js";
 import type { EffectContext, EffectFactory, EffectInstance } from "../framework/effect.js";
 import { registerEffect } from "../framework/registry.js";
+import { parseDope, resolveDopeParams } from "../framework/loader.js";
 import type { GLContext } from "../engine/context.js";
+import doc from "./inkstroke.dope.json";
+
+// Verdict is fully DATA-DRIVEN from inkstroke.dope.json (loader-resolved params
+// are byte-identical to the legacy resolveInkParams — see loader.test.ts).
+const DOPE = parseDope(doc as object);
+
+function resolveFromDope(feeling: { mood: string; intensity: number; whimsy: number; seed: number }): InkRenderParams {
+  return resolveDopeParams(DOPE, feeling, { MAX_DROPS }, "inkSeed") as unknown as InkRenderParams;
+}
 
 const UNIFORMS = [
   "uResolution", "uDraw", "uLife", "uTimeS", "uAmp", "uExposure", "uScale",
@@ -77,13 +87,7 @@ function createInstance(params: InkRenderParams, ctx: EffectContext): EffectInst
 
 export const inkstroke: EffectFactory<InkRenderParams> = {
   name: "inkstroke",
-  resolve: (feeling) =>
-    resolveInkParams({
-      mood: feeling.mood,
-      intensity: feeling.intensity,
-      whimsy: feeling.whimsy,
-      seed: feeling.seed,
-    }),
+  resolve: (feeling) => resolveFromDope(feeling),
   create: createInstance,
   reducedMotion: { peakMs: 300, holdMs: 360 },
 };

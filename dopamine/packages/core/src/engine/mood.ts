@@ -664,36 +664,7 @@ export function resolveComicParams({ mood, intensity, whimsy, seed }: ResolveInp
   // Ink outline weight thickens toward the bold pop-art register.
   const inkWeight = lerp(5.0, 12.0, w) * lerp(0.85, 1.1, i);
 
-  // ---- TYPOGRAPHY: mood gives the face + character, whimsy shifts the
-  // treatment (noir = restrained inked caps → pop-art = fat, inflated, balloon
-  // lettering with heavy multi-layer ink, 3D extrude/drop and bouncier
-  // per-letter rotation + baseline jitter). -------------------------------
-  const fontStack = `${base.face}, ${FALLBACK_STACK}`;
-  // Pop-art inflates and widens the body; noir keeps the mood's own width.
-  const fontStretchX = base.stretchX * lerp(1.0, 1.18, w);
-  // Keep the mood's italic lean, but relax it a touch toward the bouncy pop end
-  // (balloon caps sit more upright); intensity sharpens the lean a little.
-  const fontSkew = base.skew * lerp(1.0, 0.7, w) * lerp(0.9, 1.1, i);
-  // Mood tilt plus a whimsy-driven bounce; pop-art tips the whole word more.
-  const fontTilt = base.tilt + lerp(0.0, -0.04, w);
-  // Tracking opens up slightly with inflation so fat letters don't collide.
-  const fontTracking = base.tracking + lerp(0.0, 0.02, w);
-  // Ink: a single clean contour at noir → up to a 3-pass fat balloon outline at
-  // pop-art (intensity nudges it heavier).
-  const outlineLayers = Math.max(
-    1,
-    Math.round(lerp(1, 3, w) * lerp(0.95, 1.05, i)),
-  );
-  // 3D extrude/drop: flat inked caps at noir → a chunky drop-shadow pop at the
-  // pop-art end. As a fraction of font size.
-  const extrudeDepth = lerp(0.0, 0.13, w) * lerp(0.85, 1.15, i);
-  // Per-letter bounce: near-zero at noir (composed, classic) → lively rotation
-  // and baseline jitter at pop-art (hand-bounced lettering).
-  const letterRotJitter = lerp(0.0, 0.16, w);
-  const letterBaselineJitter = lerp(0.0, 0.06, w);
-  // Ink joins round out toward pop-art (inflated, balloon-y), within the mood's
-  // own roundness ceiling so electric still reads sharper than serene.
-  const inkRoundness = clamp01(lerp(base.roundness * 0.6, 1.0, w));
+  const typo = comicTypography(mood, i, w);
 
   const palette = buildPalette(rng, {
     lightness: base.lightness,
@@ -721,15 +692,42 @@ export function resolveComicParams({ mood, intensity, whimsy, seed }: ResolveInp
     saturation,
     comicSeed,
     style,
-    fontStack,
-    fontSkew,
-    fontTilt,
-    fontStretchX,
-    fontTracking,
-    outlineLayers,
-    extrudeDepth,
-    letterRotJitter,
-    letterBaselineJitter,
-    inkRoundness,
+    ...typo,
+  };
+}
+
+/** The typographic fields of `ComicRenderParams` — pure (no rng). */
+export type ComicTypography = Pick<
+  ComicRenderParams,
+  | "fontStack" | "fontSkew" | "fontTilt" | "fontStretchX" | "fontTracking"
+  | "outlineLayers" | "extrudeDepth" | "letterRotJitter" | "letterBaselineJitter" | "inkRoundness"
+>;
+
+/**
+ * Compute Comic's lettering treatment from mood + intensity + whimsy. The
+ * comic effect is data-driven for its numeric panel + palette params (via the
+ * `.dope` loader); the TYPOGRAPHY (font stacks, skew/stretch curves, ink
+ * stacking) is genuinely code-shaped, so it stays here and is composed on top.
+ * Pure function, no randomness — same inputs → same lettering.
+ */
+export function comicTypography(mood: MoodName, intensity: number, whimsy: number): ComicTypography {
+  const i = clamp01(intensity);
+  const w = clamp01(whimsy);
+  const base = comicBaseline(mood);
+  // Mood gives the face + character, whimsy shifts the treatment (noir =
+  // restrained inked caps → pop-art = fat, inflated, balloon lettering).
+  const fontStack = `${base.face}, ${FALLBACK_STACK}`;
+  const fontStretchX = base.stretchX * lerp(1.0, 1.18, w);
+  const fontSkew = base.skew * lerp(1.0, 0.7, w) * lerp(0.9, 1.1, i);
+  const fontTilt = base.tilt + lerp(0.0, -0.04, w);
+  const fontTracking = base.tracking + lerp(0.0, 0.02, w);
+  const outlineLayers = Math.max(1, Math.round(lerp(1, 3, w) * lerp(0.95, 1.05, i)));
+  const extrudeDepth = lerp(0.0, 0.13, w) * lerp(0.85, 1.15, i);
+  const letterRotJitter = lerp(0.0, 0.16, w);
+  const letterBaselineJitter = lerp(0.0, 0.06, w);
+  const inkRoundness = clamp01(lerp(base.roundness * 0.6, 1.0, w));
+  return {
+    fontStack, fontSkew, fontTilt, fontStretchX, fontTracking,
+    outlineLayers, extrudeDepth, letterRotJitter, letterBaselineJitter, inkRoundness,
   };
 }

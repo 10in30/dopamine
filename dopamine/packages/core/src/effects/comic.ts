@@ -11,14 +11,33 @@
  */
 
 import { impactScale, impactPresence, IMPACT_MS, IMPACT_HOLD_MS } from "../engine/tempo.js";
-import { type ComicRenderParams } from "../engine/mood.js";
-import { resolveComicParams } from "../engine/mood.js";
+import { type ComicRenderParams, comicTypography, pickWord } from "../engine/mood.js";
 import { shadowGeometry } from "../engine/shadow.js";
 import { COMIC_FRAGMENT_SRC, COMIC_VERTEX_SRC } from "../engine/comic-shader.js";
 import { drawPanel } from "../engine/comic-renderer.js";
-import type { EffectContext, EffectFactory, EffectInstance } from "../framework/effect.js";
+import type { EffectContext, EffectFactory, EffectInstance, FeelingInput } from "../framework/effect.js";
 import { registerEffect } from "../framework/registry.js";
+import { parseDope, resolveDopeParams } from "../framework/loader.js";
 import type { GLContext } from "../engine/context.js";
+import doc from "./comic.dope.json";
+
+// Comic is PARTIALLY data-driven: its numeric panel + palette params come from
+// comic.dope.json via the loader (byte-identical to resolveComicParams — see
+// loader.test.ts), while the TYPOGRAPHY (font stacks, skew/ink curves) and the
+// per-fire word selection are genuinely code-shaped and composed on top.
+const DOPE = parseDope(doc as object);
+
+function resolveFromDope(feeling: FeelingInput): ComicRenderParams {
+  const numeric = resolveDopeParams(DOPE, feeling, {}, "comicSeed") as unknown as Omit<
+    ComicRenderParams,
+    keyof ReturnType<typeof comicTypography> | "word"
+  >;
+  return {
+    ...numeric,
+    word: pickWord(feeling.seed),
+    ...comicTypography(feeling.mood, feeling.intensity, feeling.whimsy),
+  } as ComicRenderParams;
+}
 
 const UNIFORMS = [
   "uPanel", "uResolution", "uCenter", "uLife", "uTimeS", "uPresence", "uFlash",
@@ -133,13 +152,7 @@ function createInstance(params: ComicRenderParams, ctx: EffectContext): EffectIn
 
 export const comic: EffectFactory<ComicRenderParams> = {
   name: "comic",
-  resolve: (feeling) =>
-    resolveComicParams({
-      mood: feeling.mood,
-      intensity: feeling.intensity,
-      whimsy: feeling.whimsy,
-      seed: feeling.seed,
-    }),
+  resolve: (feeling) => resolveFromDope(feeling),
   create: createInstance,
   reducedMotion: { peakMs: 220, holdMs: 360 },
 };

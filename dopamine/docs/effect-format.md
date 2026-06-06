@@ -629,25 +629,34 @@ to the zip root (or http(s) for remote, with same-origin/allowlist rules).
 
 ---
 
-## 11. Migration plan (off hardcoded `resolve*Params`)
+## 11. Migration plan (off hardcoded `resolve*Params`) — IMPLEMENTED
 
-The format is designed so today's engine is the *reference implementation*. Plan:
+The format is designed so today's engine is the *reference implementation*. The
+plan below is now built (`framework/loader.ts` + bundled
+`packages/core/src/effects/*.dope.json`):
 
-**Phase 0 — encode (this doc).** Author `solarbloom.dope` and `verdict.dope` that
-reproduce `BASELINES`/`INK_BASELINES` + the lerp ranges + color/tempo exactly.
+**Phase 0 — encode. DONE.** `solarbloom.dope.json`, `inkstroke.dope.json` and
+`comic.dope.json` reproduce `BASELINES`/`INK_BASELINES`/`COMIC_BASELINES` + the
+lerp ranges + color/tempo exactly, in a `baselines` per-mood table + the
+`render.params` mapping grammar.
 
-**Phase 1 — parity test.** Add a loader (`loadEffect` → `RenderParams`) behind a
-flag. A vitest asserts, across a grid of `{mood × intensity × whimsy × seed}`,
-that file-resolved params equal `resolveParams`/`resolveInkParams` within float
-epsilon. This proves the grammar captures the engine (the schemas below + §12
-loader sketch are built for this).
+**Phase 1 — parity test. DONE.** The loader (`resolveDopeParams`) evaluates the
+mapping grammar + the OKLCH palette in the SAME rng order as the engine. A
+vitest (`test/loader.test.ts`) asserts, across a `mood × intensity × whimsy ×
+seed` grid, that loader-resolved params equal `resolveParams` /
+`resolveInkParams` / `resolveComicParams` **byte-for-byte** (the correctness
+anchor — exact equality, not epsilon).
 
-**Phase 2 — flip the source of truth.** `resolveParams` becomes a thin wrapper
-that loads the bundled `.dope` and evaluates the mappings. `BASELINES` move into
-the file's `perMood`/`baseline` tables. Delete the duplicated constants.
+**Phase 2 — flip the source of truth. DONE.** Each effect's `resolve()`
+(`effects/*.ts`) now drives off its bundled `.dope` document through the loader.
+Solarbloom + Verdict are fully data-driven; Comic is numeric+palette data-driven
+with its typography + per-fire word composed in code (genuinely code-shaped).
+The legacy `resolve*Params` remain in `mood.ts` as the parity reference.
 
-**Phase 3 — open it up.** Ship `loadEffect` publicly; document overrides &
-packaging; Bodymovin import for `outlines`.
+**Phase 3 — open it up.** (Future) A public `loadEffect(url|doc)` that returns a
+registered effect from an arbitrary `.dope`, host overrides (§9), and Bodymovin
+import for `outlines`. The internal loader + registry already support this; only
+the public fetch/override seam remains.
 
 ### 11.1 Concrete mapping — Solarbloom (`resolveParams`)
 

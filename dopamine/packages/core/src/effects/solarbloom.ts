@@ -12,11 +12,24 @@
 
 import { FRAGMENT_SRC, VERTEX_SRC } from "../engine/shader.js";
 import { checkProgress, envelope, NPR_TIME_STEP_MS } from "../engine/tempo.js";
-import { resolveParams, type RenderParams } from "../engine/mood.js";
+import { MAX_MOTES, type RenderParams } from "../engine/mood.js";
 import { shadowGeometry } from "../engine/shadow.js";
 import type { EffectContext, EffectFactory, EffectInstance } from "../framework/effect.js";
 import { registerEffect } from "../framework/registry.js";
+import { parseDope, resolveDopeParams } from "../framework/loader.js";
 import type { GLContext } from "../engine/context.js";
+import doc from "./solarbloom.dope.json";
+
+// Solarbloom is fully DATA-DRIVEN: its mood→params mapping lives in the bundled
+// `.dope` document (solarbloom.dope.json), evaluated by the loader. A vitest
+// proves the loader output is byte-identical to the legacy `resolveParams`, so
+// flipping the source of truth to the file changes nothing visually.
+const DOPE = parseDope(doc as object);
+
+/** Resolve via the `.dope` loader → the typed RenderParams the shader consumes. */
+function resolveFromDope(feeling: { mood: string; intensity: number; whimsy: number; seed: number }): RenderParams {
+  return resolveDopeParams(DOPE, feeling, { MAX_MOTES }, "moteSeed") as unknown as RenderParams;
+}
 
 const UNIFORMS = [
   "uResolution", "uOrigin", "uAmp", "uCheck", "uLife", "uTimeS", "uExposure",
@@ -89,13 +102,7 @@ function createInstance(params: RenderParams, ctx: EffectContext): EffectInstanc
 
 export const solarbloom: EffectFactory<RenderParams> = {
   name: "solarbloom",
-  resolve: (feeling) =>
-    resolveParams({
-      mood: feeling.mood,
-      intensity: feeling.intensity,
-      whimsy: feeling.whimsy,
-      seed: feeling.seed,
-    }),
+  resolve: (feeling) => resolveFromDope(feeling),
   create: createInstance,
   reducedMotion: { peakMs: 260, holdMs: 360 },
 };
