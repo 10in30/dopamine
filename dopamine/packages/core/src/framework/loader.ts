@@ -20,6 +20,7 @@
 
 import { buildPalette, type RGB } from "../engine/color.js";
 import { mulberry32, type Rng } from "../engine/seed.js";
+import type { BakedSdf } from "../engine/sdf.js";
 
 const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * clamp01(t);
@@ -32,9 +33,36 @@ export interface DopeDoc {
   meta?: { name?: string; description?: string; tags?: string[] };
   palette: DopePalette;
   tempo: { durationMs?: DopeParamSpec };
-  render: { params: Record<string, DopeParamSpec> };
+  render: { params: Record<string, DopeParamSpec>; backends?: unknown; fallbackOrder?: string[] };
   /** Per-mood baseline table (color + non-color baselines), keyed by mood name. */
   baselines: Record<string, Record<string, number>>;
+  /** Outline geometry — icon paths + (after the pack/bake step) baked SDFs. */
+  geometry?: DopeGeometry;
+  /** Free-form per-effect content (word sets, tokens) consumed by renderers. */
+  content?: Record<string, unknown>;
+  /** Typography tables (mood→face + whimsy/intensity curves) for letter effects. */
+  typography?: Record<string, unknown>;
+}
+
+/** An outline entry: an authored `svgPath` and/or its baked SDF + a role tag. */
+export interface DopeOutline {
+  role?: string;
+  source?: string;
+  svgPath?: string;
+  /** Inline baked signed-distance field (a `data:` URI blob); see engine/sdf.ts. */
+  sdf?: BakedSdf;
+  note?: string;
+}
+
+export interface DopeGeometry {
+  kind?: string;
+  viewBox?: [number, number, number, number];
+  outlines?: Record<string, DopeOutline>;
+}
+
+/** Read a named outline from a doc's geometry, or undefined. */
+export function getOutline(doc: DopeDoc, name: string): DopeOutline | undefined {
+  return doc.geometry?.outlines?.[name];
 }
 
 interface DopePalette {

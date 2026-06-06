@@ -67,6 +67,10 @@ uniform vec3  uC2;
 uniform sampler2D uCheckTex; // alpha mask of the chosen check GLYPH (✓ / ✔), centred, premult-free
 uniform float uCheckTexOn;   // 1 = sample the real font glyph; 0 = analytic SDF fallback
 uniform float uCheckBox;     // half-size (device px) of the square glyph box around uOrigin
+uniform sampler2D uSdfTex;   // baked outline SDF (R/A = normalized distance-to-stroke 0..1)
+uniform float uSdfOn;        // 1 = drive the icon from the baked SDF (geometry seam)
+uniform float uSdfRangePx;   // device px that map to the SDF's full 0..1 distance range
+uniform float uSdfStrokePx;  // half stroke width (device px) the SDF coverage reads at
 
 #define MAX_MOTES 80
 ${GLSL_CONSTANTS}
@@ -130,6 +134,29 @@ float glyphCoverage(vec2 frag, out float axisHere){
 }
 
 // ---------------------------------------------------------------------------
+// BAKED-SDF ICON — the geometry seam. The icon outline (a checkmark, a cross,
+// any swapped svgPath) is baked into a small distance field at build time and
+// uploaded as uSdfTex; this shader only SAMPLES it. The texture stores, per
+// texel, the normalized distance to the stroke centerline (0 = on the stroke,
+// 1 = uSdfRange author-units away). We turn that into crisp stroke coverage +
+// a soft glow at sample time, reusing the SAME diagonal draw-in wipe + leading
+// spark as the glyph path so swapping the path changes the rendered icon with
+// NO shader edit.
+// ---------------------------------------------------------------------------
+float sdfCoverage(vec2 frag, out float axisHere, out float distPx){
+  vec2 uv = glyphUV(frag);
+  axisHere = glyphDrawAxis(uv);
+  distPx = 1e9;
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
+  // SDF texel = normalized distance; *uSdfRangePx → device px to the stroke.
+  float nd = texture(uSdfTex, uv).r;
+  distPx = nd * uSdfRangePx;
+  float frontier = uCheck * 1.12;
+  float wipe = smoothstep(frontier, frontier - 0.07, axisHere);
+  return wipe;
+}
+
+// ---------------------------------------------------------------------------
 // SHADOW silhouette — a cheap occlusion field for the bright forms (bloom core,
 // motes, checkmark). Used only by the shadow pass: we don't need the full
 // volumetric look, just where the effect is "solid enough" to block light. It's
@@ -173,7 +200,11 @@ float solarOcclusion(vec2 p){
   // silhouette matches: the real font glyph when present, else the analytic SDF.
   float cr = minDim * 0.11;
   float sw = cr * 0.12;
-  if (uCheckTexOn > 0.5) {
+  if (uSdfOn > 0.5) {
+    float axisHere; float distPx;
+    float wipe = sdfCoverage(p, axisHere, distPx);
+    occ += (1.0 - smoothstep(uSdfStrokePx * 0.6, uSdfStrokePx * 1.4, distPx)) * wipe * 0.8;
+  } else if (uCheckTexOn > 0.5) {
     float axisHere;
     float cov = glyphCoverage(p, axisHere);
     occ += cov * 0.8;
@@ -352,7 +383,27 @@ void main(){
   vec2  tip;     // leading-edge point for the spark
   float drawing; // 1 while the stroke is being laid down (gates the spark)
 
-  if (uCheckTexOn > 0.5) {
+  if (uSdfOn > 0.5) {
+    // -- BAKED-SDF PATH: sample the build-time distance field for the icon. The
+    // icon's SHAPE comes entirely from the .dope svgPath (baked → uSdfTex), so a
+    // host swapping the path changes the rendered icon with no shader edit. Same
+    // boil jitter + diagonal wipe + leading spark as the glyph path.
+    float bt = floor(uTimeS * 12.0);
+    vec2 boil = (hash21(bt + 1.7) - 0.5) * cr * 0.05 * uStyle;
+    vec2 gfrag = frag - boil;
+    float axisHere; float distPx;
+    float wipe = sdfCoverage(gfrag, axisHere, distPx);
+    float sw2 = uSdfStrokePx;
+    float softCore = smoothstep(sw2, sw2 * 0.35, distPx);
+    float hardCore = 1.0 - smoothstep(sw2 * 0.85, sw2, distPx);
+    ccore = mix(softCore, hardCore, uStyle) * wipe;
+    cglow = exp(-distPx / (sw2 * 2.0)) * 0.6 * (1.0 - 0.7 * uStyle) * wipe;
+    float frontier = clamp(uCheck * 1.12, 0.0, 1.0);
+    vec2 boxUVtoPx = vec2(2.0 * uCheckBox);
+    vec2 frontUV = vec2(frontier, 0.30 + frontier * 0.55);
+    tip = uOrigin + (frontUV - 0.5) * boxUVtoPx;
+    drawing = smoothstep(0.0, 0.04, uCheck) * (1.0 - smoothstep(0.92, 1.06, uCheck));
+  } else if (uCheckTexOn > 0.5) {
     // -- GLYPH PATH: sample the rasterized font check, revealed by a diagonal --
     // wipe so it "draws itself". A tiny screen-space boil jitter (on twos, scaled
     // by style) keeps the hand-drawn feel at high whimsy.

@@ -17,7 +17,8 @@ import { shadowGeometry } from "../engine/shadow.js";
 import { drawCheckGlyph } from "../engine/check-renderer.js";
 import type { EffectContext, EffectFactory, EffectInstance } from "../framework/effect.js";
 import { registerEffect } from "../framework/registry.js";
-import { parseDope, resolveDopeParams } from "../framework/loader.js";
+import { parseDope, resolveDopeParams, getOutline } from "../framework/loader.js";
+import { decodeSdf, type DecodedSdf } from "../engine/sdf.js";
 import type { GLContext } from "../engine/context.js";
 import doc from "./solarbloom.dope.json";
 
@@ -26,6 +27,22 @@ import doc from "./solarbloom.dope.json";
 // proves the loader output is byte-identical to the legacy `resolveParams`, so
 // flipping the source of truth to the file changes nothing visually.
 const DOPE = parseDope(doc as object);
+
+// GEOMETRY SEAM: the checkmark icon's SHAPE comes from the .dope's
+// `geometry.outlines.checkmark.svgPath`, baked at build time into an inline SDF
+// (engine/sdf.ts + scripts/bake-sdf.mjs). We DECODE it once here; the shader only
+// samples it. Swapping the svgPath in the .dope (and re-baking) changes the
+// rendered icon with NO shader edit. If the .dope carries no baked SDF we fall
+// back to the font-glyph path, then the analytic SDF — the win always confirms.
+const CHECK_SDF: DecodedSdf | null = (() => {
+  const outline = getOutline(DOPE, "checkmark");
+  if (!outline?.sdf) return null;
+  try {
+    return decodeSdf(outline.sdf);
+  } catch {
+    return null;
+  }
+})();
 
 /**
  * Resolve via the `.dope` loader → the typed RenderParams the shader consumes.
@@ -45,6 +62,7 @@ const UNIFORMS = [
   "uIridescence", "uDispersion", "uStyle", "uC0", "uC1", "uC2",
   "uShadow", "uShadowOffset", "uShadowSoft", "uShadowStrength",
   "uCheckTex", "uCheckTexOn", "uCheckBox",
+  "uSdfTex", "uSdfOn", "uSdfRangePx", "uSdfStrokePx",
 ] as const;
 
 // Half-size of the checkmark glyph box as a fraction of min viewport dim. Matches
@@ -65,6 +83,29 @@ function makeGlyphTexture(glc: GLContext): WebGLTexture {
   return tex!;
 }
 
+/**
+ * Upload the decoded SDF as a single-channel R8 texture (linear-filtered, edge-
+ * clamped). The shader reads `.r` as the normalized distance-to-stroke. The SDF
+ * rows are top-down (author space) so we FLIP_Y to match the gl y-up sampling
+ * used by glyphUV, keeping the baked icon upright.
+ */
+function makeSdfTexture(glc: GLContext, sdf: DecodedSdf): WebGLTexture {
+  const { gl } = glc;
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(
+    gl.TEXTURE_2D, 0, gl.R8, sdf.size, sdf.size, 0, gl.RED, gl.UNSIGNED_BYTE, sdf.bytes,
+  );
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  return tex!;
+}
+
 function createInstance(params: RenderParams, ctx: EffectContext): EffectInstance {
   const [c0, c1, c2] = params.palette;
   const dpr = ctx.dpr;
@@ -75,7 +116,10 @@ function createInstance(params: RenderParams, ctx: EffectContext): EffectInstanc
   // the shader reveals with a draw-in wipe. If the bundled face hasn't loaded the
   // shader falls back to its analytic SDF checkmark (uCheckTexOn = 0), so the
   // effect always confirms the win even if a FontFace failed.
-  const glyphCanvas = typeof document !== "undefined" ? document.createElement("canvas") : null;
+  // Skip the font-glyph raster entirely when the baked-SDF seam is active.
+  const sdfActive = CHECK_SDF !== null;
+  const glyphCanvas =
+    !sdfActive && typeof document !== "undefined" ? document.createElement("canvas") : null;
   let glyphOn = false;
   if (glyphCanvas) {
     glyphCanvas.width = GLYPH_TEX_SIZE;
@@ -85,9 +129,16 @@ function createInstance(params: RenderParams, ctx: EffectContext): EffectInstanc
       glyphOn = drawCheckGlyph(gctx, GLYPH_TEX_SIZE, params.checkGlyph.family, params.checkGlyph.char);
     }
   }
-  // One texture per context (light + shadow); pixels uploaded on first use.
-  const lightTex = glyphOn ? makeGlyphTexture(ctx.light) : null;
-  const shadowTex = glyphOn && ctx.shadow ? makeGlyphTexture(ctx.shadow) : null;
+  // GEOMETRY SEAM: prefer the baked SDF icon (driven by the .dope svgPath) when
+  // present; it takes priority over the font glyph and the analytic fallback.
+  const sdfOn = CHECK_SDF !== null;
+  const lightSdfTex = sdfOn ? makeSdfTexture(ctx.light, CHECK_SDF!) : null;
+  const shadowSdfTex = sdfOn && ctx.shadow ? makeSdfTexture(ctx.shadow, CHECK_SDF!) : null;
+
+  // One glyph texture per context (light + shadow); pixels uploaded on first use.
+  // Only built when the SDF seam is unavailable.
+  const lightTex = !sdfOn && glyphOn ? makeGlyphTexture(ctx.light) : null;
+  const shadowTex = !sdfOn && glyphOn && ctx.shadow ? makeGlyphTexture(ctx.shadow) : null;
   const uploaded = new WeakSet<WebGLTexture>();
 
   const drawPass = (glc: GLContext, animMs: number, life: number, amp: number, isShadow: boolean): void => {
@@ -98,9 +149,26 @@ function createInstance(params: RenderParams, ctx: EffectContext): EffectInstanc
     gl.useProgram(prog.program);
     gl.bindVertexArray(glc.vao);
 
+    const checkBoxPx = CHECK_BOX_FRAC * Math.min(c.width, c.height);
+
+    // Baked-SDF icon (the geometry seam) — bound to TEXTURE1, sampled by .r.
+    const sdfTex = isShadow ? shadowSdfTex : lightSdfTex;
+    if (sdfOn && sdfTex && CHECK_SDF) {
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, sdfTex);
+      gl.uniform1i(u.uSdfTex, 1);
+      // The SDF spans its full viewBox, mapped onto the 2*checkBox px box. Convert
+      // the SDF's author-unit `range` and a target stroke half-width into px.
+      const vbW = CHECK_SDF.viewBox[2] || 100;
+      const pxPerUnit = (2 * checkBoxPx) / vbW;
+      gl.uniform1f(u.uSdfRangePx, CHECK_SDF.range * pxPerUnit);
+      gl.uniform1f(u.uSdfStrokePx, checkBoxPx * 0.11);
+    }
+    gl.uniform1f(u.uSdfOn, sdfOn ? 1 : 0);
+
     // Bind / upload the glyph texture (once per context — it's static per fire).
     const tex = isShadow ? shadowTex : lightTex;
-    const on = glyphOn && tex !== null;
+    const on = !sdfOn && glyphOn && tex !== null;
     if (on && tex) {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -113,7 +181,7 @@ function createInstance(params: RenderParams, ctx: EffectContext): EffectInstanc
       gl.uniform1i(u.uCheckTex, 0);
     }
     gl.uniform1f(u.uCheckTexOn, on ? 1 : 0);
-    gl.uniform1f(u.uCheckBox, CHECK_BOX_FRAC * Math.min(c.width, c.height));
+    gl.uniform1f(u.uCheckBox, checkBoxPx);
     gl.uniform2f(u.uResolution, c.width, c.height);
     // Flip Y: gl_FragCoord origin is bottom-left.
     gl.uniform2f(u.uOrigin, ctx.anchor.x * dpr, c.height - ctx.anchor.y * dpr);
@@ -165,6 +233,8 @@ function createInstance(params: RenderParams, ctx: EffectContext): EffectInstanc
       disposed = true;
       if (lightTex) ctx.light.gl.deleteTexture(lightTex);
       if (shadowTex && ctx.shadow) ctx.shadow.gl.deleteTexture(shadowTex);
+      if (lightSdfTex) ctx.light.gl.deleteTexture(lightSdfTex);
+      if (shadowSdfTex && ctx.shadow) ctx.shadow.gl.deleteTexture(shadowSdfTex);
     },
   };
 }

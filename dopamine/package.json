@@ -14,7 +14,9 @@
     "test:watch": "vitest",
     "dev": "npm run dev -w @dopamine/demo",
     "record": "node scripts/record.mjs",
-    "render": "node scripts/render-offline.mjs"
+    "render": "node scripts/render-offline.mjs",
+    "bake-sdf": "node scripts/bake-sdf.mjs",
+    "pack-dope": "node scripts/pack-dope.mjs"
   },
   "devDependencies": {
     "ffmpeg-static": "^5.3.0",
