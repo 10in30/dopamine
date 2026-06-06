@@ -4,18 +4,19 @@
  *
  * Governing metaphor: a master's confident SIGNATURE STROKE. Instead of light
  * radiating outward from a point, a single calligraphic ink/light gesture WRITES
- * ITSELF horizontally across the frame — a downward dip and an upward flick (an
- * abstracted check / approving flourish). The composition is directional and
- * asymmetric, not concentric.
+ * ITSELF across the frame as a real CHECKMARK — a short down-stroke into the
+ * vertex, then a long up-flick to the right (an unambiguous approving tick). The
+ * composition is directional and asymmetric, not concentric.
  *
  * Layers, summed as light (canvas is black, composited `mix-blend-mode: screen`,
  * so black == no change, bright == cast light onto the page beneath):
  *   1. PAPER WASH — a faint, low, off-center horizontal band of light that the
  *      stroke is laid onto (gives the gesture a "ground" without a radial core).
- *   2. THE STROKE — a quadratic-Bezier brush path with PRESSURE-modulated width
- *      (thin entry, heavy belly, thin exit), wet-ink bleed via FBM along the
- *      edge, bristle/dry-brush streaks raked along the travel direction, and a
- *      bright WET LEADING TIP that races ahead of the fill (the "pen").
+ *   2. THE STROKE — a two-leg checkmark brush path (down-stroke + up-flick) with
+ *      PRESSURE-modulated width (thin entry, heavy belly through the vertex, thin
+ *      exit), wet-ink bleed via FBM along the edge, bristle/dry-brush streaks
+ *      raked along each leg's travel direction, and a bright WET LEADING TIP that
+ *      races ahead of the fill (the "pen") and rides the corner.
  *   3. DROPLET SPRAY — ink flung off the tip on flick, arcing under gravity.
  *   4. AFTER-SHIMMER — a brief calligraphic underline of light that settles.
  *
@@ -82,25 +83,60 @@ ${GLSL_DITHER}
 ${GLSL_SD_SEG}
 ${GLSL_PARTICLES}
 
-// Quadratic Bezier B(t) = (1-t)^2 P0 + 2(1-t)t P1 + t^2 P2 (Verdict-specific).
-vec2 bez(vec2 a, vec2 b, vec2 c, float t){
-  float s = 1.0 - t;
-  return s*s*a + 2.0*s*t*b + t*t*c;
-}
-
-// Stroke control points — shared by the light pass and the shadow silhouette so
-// the cast shadow tracks exactly what's drawn. jitterScale lets the shadow drop
-// the cel "on twos" jitter (a shadow shouldn't shimmer).
-void strokeGeom(float jitterScale, out vec2 P0, out vec2 P1, out vec2 P2){
+// The gesture is now a real CHECKMARK: two straight legs A->B->C. A is the
+// upper-left start, B is the bottom vertex (a SHORT down-stroke), C is the far
+// upper-right (a LONG up-flick) — a confident tick. The pen writes leg1 then
+// leg2; uDraw advances along TOTAL ARC LENGTH so the wet tip rides the corner.
+// (y is up in gl_FragCoord space.)
+//
+// Shared by the light pass and the shadow silhouette so the cast shadow tracks
+// exactly what's drawn. jitterScale lets the shadow drop the cel "on twos"
+// jitter (a shadow shouldn't shimmer).
+void strokeGeom(float jitterScale, out vec2 A, out vec2 B, out vec2 C){
   vec2 res = uResolution;
   float minDim = min(res.x, res.y);
   float len = uScale * res.x;
   vec2 mid = vec2(res.x * 0.5, res.y * 0.46);
   float bt = floor(uTimeS * 12.0);
   vec2 jit = (hash21(bt + uSeed) - 0.5) * minDim * 0.02 * uStyle * jitterScale;
-  P0 = mid + vec2(-0.52, 0.10) * len + jit;
-  P1 = mid + vec2(-0.02, 0.42) * len + jit;
-  P2 = mid + vec2(0.55, -0.30) * len + jit;
+  A = mid + vec2(-0.42, 0.18) * len + jit;   // upper-left: pen touches down
+  B = mid + vec2(-0.12, -0.30) * len + jit;  // bottom vertex: short down-stroke
+  C = mid + vec2(0.55, 0.42) * len + jit;    // far upper-right: long up-flick
+}
+
+// Sample the checkmark path at arc-distance fraction u in [0,1]: returns the
+// position, and outputs the local segment param (segT in 0..1) plus which leg
+// (0 = down-stroke, 1 = up-flick) so callers can shape pressure along travel.
+// u01 is the SAME for every fragment (a property of the path, not the pixel),
+// so it's a clean coordinate for the pressure / wet / bristle profiles.
+vec2 checkPos(vec2 A, vec2 B, vec2 C, float u, out float segT, out float leg){
+  float l1 = length(B - A);
+  float l2 = length(C - B);
+  float total = max(l1 + l2, 1e-3);
+  float d = u * total;
+  if (d <= l1) {
+    segT = d / max(l1, 1e-3);
+    leg = 0.0;
+    return mix(A, B, segT);
+  }
+  segT = (d - l1) / max(l2, 1e-3);
+  leg = 1.0;
+  return mix(B, C, segT);
+}
+
+// PRESSURE profile along the whole tick (arc fraction u in 0..1): thin where
+// the pen first touches down, swelling into a heavy BELLY through the vertex and
+// the base of the up-flick (where a real brush digs in hardest as it changes
+// direction), then tapering to a thin exit on the flick's tip. A broad bump
+// centered just past the corner makes the belly the dominant mass of the mark.
+float inkPressure(float u){
+  return exp(-pow((u - 0.46) * 2.2, 2.0)) * uPressure;
+}
+
+// End-cap taper (arc fraction u): fade the very entry and the very exit so the
+// stroke reads as a written tick with thin terminals, not a blunt bar.
+float inkTaper(float u){
+  return smoothstep(0.0, 0.05, u) * (1.0 - smoothstep(0.88, 1.0, u));
 }
 
 // ---------------------------------------------------------------------------
@@ -110,29 +146,32 @@ void strokeGeom(float jitterScale, out vec2 P0, out vec2 P1, out vec2 P2){
 float inkOcclusion(vec2 p){
   vec2 res = uResolution;
   float minDim = min(res.x, res.y);
-  vec2 P0, P1, P2;
-  strokeGeom(0.0, P0, P1, P2);   // drop the cel jitter for the shadow
+  vec2 A, B, C;
+  strokeGeom(0.0, A, B, C);   // drop the cel jitter for the shadow
   float base = minDim * 0.045;
   float occ = 0.0;
 
+  // Walk the two-leg tick by arc fraction; only the drawn portion casts shadow.
+  float segT, leg;
   const int STEPS = 16;
   for (int i = 0; i < STEPS; i++) {
-    float t0 = float(i) / float(STEPS);
-    float t1 = float(i + 1) / float(STEPS);
-    if (t0 > uDraw) break;
-    float tc = clamp((t0 + t1) * 0.5, 0.0, uDraw);
-    vec2 a = bez(P0, P1, P2, t0);
-    vec2 b = bez(P0, P1, P2, min(t1, uDraw));
-    float belly = exp(-pow((tc - 0.42) * 2.1, 2.0)) * uPressure;
-    float taper = smoothstep(0.0, 0.05, tc) * (1.0 - smoothstep(0.86, 1.0, tc));
+    float u0 = float(i) / float(STEPS);
+    float u1 = float(i + 1) / float(STEPS);
+    if (u0 > uDraw) break;
+    float uc = clamp((u0 + u1) * 0.5, 0.0, uDraw);
+    vec2 a = checkPos(A, B, C, u0, segT, leg);
+    vec2 b = checkPos(A, B, C, min(u1, uDraw), segT, leg);
+    float belly = inkPressure(uc);
+    float taper = inkTaper(uc);
     float rad = base * (0.55 + 1.25 * belly) * (0.4 + 0.6 * taper);
     float dist = sdSeg(p, a, b);
     occ = max(occ, 1.0 - smoothstep(rad * 0.7, rad, dist));
   }
 
-  // Droplets: soft round mass.
-  vec2 launch = bez(P0, P1, P2, 0.78);
-  vec2 launchDir = normalize(bez(P0, P1, P2, 0.85) - bez(P0, P1, P2, 0.7));
+  // Droplets: soft round mass, flung off the up-flick near its tip.
+  vec2 launch = checkPos(A, B, C, 0.86, segT, leg);
+  vec2 launchDir = normalize(checkPos(A, B, C, 0.92, segT, leg)
+                           - checkPos(A, B, C, 0.78, segT, leg));
   float len = uScale * res.x;
   for (int i = 0; i < MAX_DROPS; i++) {
     if (float(i) >= uDroplets) break;
@@ -183,62 +222,62 @@ void main(){
     return;
   }
 
-  // ---- Stroke geometry: a left->right gesture that dips then flicks up. ----
-  // Anchored low-left, control point pulls the belly down, exit flicks up-right
-  // (the approving check / signature flourish). Off-center on purpose.
+  // ---- Stroke geometry: a real CHECKMARK written in one motion. ----
+  // A SHORT down-stroke from the upper-left (A) to the bottom vertex (B), then a
+  // LONG up-flick to the far upper-right (C) — an unambiguous approving tick. The
+  // pen writes leg1 then leg2; uDraw advances along total arc length.
   float len = uScale * res.x;
-  vec2 mid = vec2(res.x * 0.5, res.y * 0.46);
-  // Animate-on-twos jitter of the whole gesture toward the cel end.
-  float bt = floor(uTimeS * 12.0);
-  vec2 jit = (hash21(bt + uSeed) - 0.5) * minDim * 0.02 * uStyle;
-  vec2 P0 = mid + vec2(-0.52, 0.10) * len + jit;
-  vec2 P1 = mid + vec2(-0.02, 0.42) * len + jit;   // belly dips DOWN
-  vec2 P2 = mid + vec2(0.55, -0.30) * len + jit;   // flick UP and right
+  vec2 A, B, C;
+  strokeGeom(1.0, A, B, C);   // includes the cel "on twos" jitter (whimsy)
 
-  // The pen has drawn up to parameter uDraw along the curve. Walk the curve in
-  // a few steps; for each, treat it as a capsule with pressure-varying radius
+  // The pen has written up to arc fraction uDraw along the tick. Walk the path
+  // in a few steps; for each, treat it as a capsule with pressure-varying radius
   // and accumulate coverage. (Cheap analytic approximation of a swept brush.)
   float base = minDim * 0.045;                     // base half-width (bold)
   float ink = 0.0;       // 0..1 ink coverage (solid body)
   float edge = 0.0;      // proximity to the wet outer edge (for bleed/spray)
-  float bodyT = 0.0;     // curve param at the nearest body sample (0..1)
+  float bodyT = 0.0;     // arc fraction at the nearest body sample (0..1)
   float nearAcross = 0.0;// signed across-offset / radius at nearest point (-1..1)
-  vec2 tipPos = P0; float tipR = base;             // running leading-tip pos
+  vec2 tipPos = A; float tipR = base;              // running leading-tip pos
   float bestDist = 1e9;
-
-  vec2 dirN = normalize(P2 - P0);
-  vec2 across2 = vec2(-dirN.y, dirN.x);
+  float segT, leg;
 
   const int STEPS = 28;
   for (int i = 0; i < STEPS; i++) {
-    float t0 = float(i) / float(STEPS);
-    float t1 = float(i + 1) / float(STEPS);
-    // Only consider drawn portion of the curve.
-    if (t0 > uDraw) break;
-    float tc = clamp((t0 + t1) * 0.5, 0.0, uDraw);
-    vec2 a = bez(P0, P1, P2, t0);
-    vec2 b = bez(P0, P1, P2, min(t1, uDraw));
+    float u0 = float(i) / float(STEPS);
+    float u1 = float(i + 1) / float(STEPS);
+    // Only consider the written portion of the path.
+    if (u0 > uDraw) break;
+    float uc = clamp((u0 + u1) * 0.5, 0.0, uDraw);
+    vec2 a = checkPos(A, B, C, u0, segT, leg);
+    vec2 b = checkPos(A, B, C, min(u1, uDraw), segT, leg);
 
-    // PRESSURE profile: thin in, heavy belly, thin flick out. A broad bump
-    // centered near t=0.42 makes the belly the dominant mass of the gesture.
-    float belly = exp(-pow((tc - 0.42) * 2.1, 2.0)) * uPressure;
-    float taper = smoothstep(0.0, 0.05, tc) * (1.0 - smoothstep(0.86, 1.0, tc));
+    // Across-direction of THIS leg (the two legs travel differently), so the
+    // bristle rake and the signed offset stay true to the local travel.
+    vec2 ba = b - a;
+    vec2 dirL = normalize(length(ba) > 1e-3 ? ba : (leg < 0.5 ? B - A : C - B));
+    vec2 across2 = vec2(-dirL.y, dirL.x);
+
+    // PRESSURE profile along arc length: thin in, heavy belly through the
+    // vertex/flick base, thin flick out. Applied identically on both legs.
+    float belly = inkPressure(uc);
+    float taper = inkTaper(uc);
     float rad = base * (0.55 + 1.25 * belly) * (0.4 + 0.6 * taper);
 
     // Wet-edge wobble: perturb radius with FBM so the contour is irregular
     // (only really visible at high wetness; bounded so the body stays solid).
-    float wob = (fbm(vec2(tc * 8.0 + uSeed, uTimeS * 0.2)) - 0.5) * uWetness;
+    float wob = (fbm(vec2(uc * 8.0 + uSeed, uTimeS * 0.2)) - 0.5) * uWetness;
     rad *= (1.0 + 0.30 * wob);
 
     // Capsule SDF for this short segment.
-    vec2 pa = frag - a, ba = b - a;
+    vec2 pa = frag - a;
     float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-3), 0.0, 1.0);
     vec2 near = a + ba * h;
     float dist = length(frag - near);
 
     if (dist < bestDist) {
       bestDist = dist;
-      bodyT = tc;
+      bodyT = uc;
       tipR = rad;
       // signed normalized across-offset of this fragment from the spine
       nearAcross = clamp(dot(frag - near, across2) / max(rad, 1.0), -1.0, 1.0);
@@ -306,10 +345,12 @@ void main(){
   float tipGlow = (tipR * 1.7) / (td + tipR * 0.5); tipGlow *= tipGlow;
   col += vec3(1.0) * tipGlow * drawing * gain * 1.8;
 
-  // DROPLET SPRAY: ink flung off the flick. Each droplet launches near the tip
-  // once the stroke passes ~0.6, arcs out and falls under gravity, fading.
-  vec2 launch = bez(P0, P1, P2, 0.78);
-  vec2 launchDir = normalize(bez(P0, P1, P2, 0.85) - bez(P0, P1, P2, 0.7));
+  // DROPLET SPRAY: ink flung off the up-flick. Each droplet launches from near
+  // the flick tip once the stroke passes ~0.6, arcs out along the flick's travel
+  // direction and falls under gravity, fading.
+  vec2 launch = checkPos(A, B, C, 0.86, segT, leg);
+  vec2 launchDir = normalize(checkPos(A, B, C, 0.92, segT, leg)
+                           - checkPos(A, B, C, 0.78, segT, leg));
   for (int i = 0; i < MAX_DROPS; i++) {
     if (float(i) >= uDroplets) break;
     vec2 hh = hash21(float(i) * 5.3 + uSeed + 11.0);
@@ -337,8 +378,10 @@ void main(){
   // horizontal sweep of light settles beneath the gesture (a confident
   // "signed" underline) then fades — reinforces the success read without a core.
   float ul = smoothstep(0.78, 0.92, uDraw) * (1.0 - smoothstep(0.45, 1.0, uLife));
-  float uy = exp(-pow((frag.y - (mid.y - len * 0.12)) / (minDim * 0.012), 2.0));
-  float ux = smoothstep(P0.x, P0.x + len * 0.1, frag.x) * (1.0 - smoothstep(P2.x - len * 0.05, P2.x, frag.x));
+  // Settle the underline just below the tick's bottom vertex, spanning its width.
+  float ulY = B.y - len * 0.10;
+  float uy = exp(-pow((frag.y - ulY) / (minDim * 0.012), 2.0));
+  float ux = smoothstep(A.x, A.x + len * 0.1, frag.x) * (1.0 - smoothstep(C.x - len * 0.05, C.x, frag.x));
   col += paletteMix(0.4) * uy * ux * ul * gain * 0.8;
 
   // ---- Tone + finishing ----

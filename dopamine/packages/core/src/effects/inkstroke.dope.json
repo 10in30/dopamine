@@ -56,7 +56,7 @@
     "kind": "directional",
     "viewBox": [0, 0, 100, 100],
     "outlines": {
-      "signature-stroke": { "role": "signature-stroke", "svgPath": "M 24 56 Q 49 71 78 31" }
+      "signature-stroke": { "role": "signature-stroke", "svgPath": "M 33 47 L 45 66 L 72 37" }
     }
   },
   "render": {
