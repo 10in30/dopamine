@@ -13,7 +13,14 @@ const clampNum = (v: string | null, fallback: number): number => {
   return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : fallback;
 };
 
-export class DopamineSuccessElement extends HTMLElement {
+// SSR-safe base: in a non-DOM environment (server render, vitest `node`)
+// `HTMLElement` doesn't exist, and `extends HTMLElement` would throw at module
+// load. Fall back to a harmless stub there; the custom element is only ever
+// actually registered + used in a real browser (see `registerElement`).
+const ElementBase: typeof HTMLElement =
+  typeof HTMLElement !== "undefined" ? HTMLElement : (class {} as unknown as typeof HTMLElement);
+
+export class DopamineSuccessElement extends ElementBase {
   static get observedAttributes(): string[] {
     return ["trigger"];
   }

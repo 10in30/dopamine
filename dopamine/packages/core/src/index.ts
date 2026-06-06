@@ -1,293 +1,181 @@
 /**
  * @dopamine/core — framework-agnostic entry point.
  *
- * `celebrate()` fires a one-shot "successful completion" effect in real time.
- * `prepareSolarbloom()` is the lower-level primitive: it mounts the overlay and
- * hands back a renderer you drive with your own clock — used for frame-perfect
- * offline capture, or to sync the effect to an external timeline.
+ * The library is a thin runtime + pluggable effects:
+ *   - A `conductor` owns the persistent overlay (light + shadow canvas), the
+ *     shared program-cached GL contexts, and one RAF loop (see framework/).
+ *   - Each effect is an `EffectFactory` that self-registers on import
+ *     (effects/*.ts) and only maps feelings → params and draws frames.
+ *
+ * The named exports below (`celebrate`, `celebrateInk`, `celebrateComic`,
+ * `prepareSolarbloom`, …) are thin wrappers over the generic `play(effect, …)`
+ * / `prepare(effect, …)`, preserving the original API + behavior exactly.
  */
 
-import { resolveParams, resolveInkParams, resolveComicParams } from "./engine/mood.js";
-import { createSolarbloom, runSolarbloom, type SolarbloomRenderer } from "./engine/renderer.js";
-import {
-  createInkstroke,
-  runInkstroke,
-  type InkstrokeRenderer,
-} from "./engine/inkstroke-renderer.js";
-import { createComic, runComic, type ComicRenderer } from "./engine/comic-renderer.js";
+import { play as conductorPlay, prepare as conductorPrepare } from "./framework/conductor.js";
+import { getEffect } from "./framework/registry.js";
+import type { Anchor, FeelingInput } from "./framework/effect.js";
 import { randomSeed } from "./engine/seed.js";
-import { createOverlay } from "./overlay.js";
+import { isBrowser } from "./framework/runtime.js";
 import type { DopamineSuccessOptions } from "./types.js";
+
+// Register the built-in effects. Each module calls `registerEffect(...)` at
+// import time; we import the factory VALUES (not bare side-effect imports) and
+// reference them in `BUILTINS` so a bundler can't tree-shake the registration
+// away. Importing one effect still pulls in nothing from the others.
+import { solarbloom } from "./effects/solarbloom.js";
+import { inkstroke } from "./effects/inkstroke.js";
+import { comic } from "./effects/comic.js";
+
+/** Force-retain the registrations against tree-shaking; also the built-in set. */
+const BUILTINS = [solarbloom, inkstroke, comic] as const;
 
 export type { DopamineMood, DopamineSuccessOptions } from "./types.js";
 export type { RGB, OKLCH } from "./engine/color.js";
 export { registerElement, DopamineSuccessElement } from "./element.js";
 export { ensureComicFonts } from "./engine/comic-renderer.js";
 
+// Framework surface — for adding new effects / moods and lower-level control.
+export type {
+  Effect,
+  EffectFactory,
+  EffectInstance,
+  EffectContext,
+  FeelingInput,
+  Anchor,
+} from "./framework/effect.js";
+export { registerEffect, getEffect, hasEffect, effectNames } from "./framework/registry.js";
+export {
+  registerMood,
+  resolveMood,
+  hasMood,
+  moodNames,
+  type MoodSpec,
+  type ResolvedMood,
+} from "./framework/mood-registry.js";
+export { teardown, type PreparedHandle } from "./framework/conductor.js";
+
 const DEFAULTS = { mood: "celebratory", intensity: 0.7, whimsy: 0.5 } as const;
 
-interface Mounted {
-  canvas: HTMLCanvasElement;
-  shadowCanvas: HTMLCanvasElement | null;
-  destroyOverlay: () => void;
-  params: ReturnType<typeof resolveParams>;
-  originLocal: { x: number; y: number };
-  dpr: number;
-}
+/** Built-in effect names usable with the convenience API + the demo/scripts. */
+export type EffectName = "solarbloom" | "inkstroke" | "comic";
 
-/** Resolve options → params, then mount the overlay anchored at the origin. */
-function mount(options: DopamineSuccessOptions): Mounted {
+/** The names of the three effects registered by `@dopamine/core` on import. */
+export const builtinEffectNames: readonly EffectName[] = BUILTINS.map(
+  (e) => e.name as EffectName,
+);
+
+/**
+ * Resolve the shared options into a target, a feeling, and an overlay-local
+ * anchor. Effects that aren't anchored (Verdict, Comic) simply ignore the
+ * anchor — matching how the original API ignored `origin` for them.
+ */
+function resolveRequest(
+  effect: string,
+  options: DopamineSuccessOptions,
+): { factory: ReturnType<typeof getEffect>; target: HTMLElement; anchor: Anchor; feeling: FeelingInput } | null {
+  const factory = getEffect(effect);
+  if (!factory) throw new Error(`dopamine: unknown effect "${effect}"`);
   const target = options.target ?? document.body;
   const seed = options.seed ?? randomSeed();
-  const params = resolveParams({
+  const feeling: FeelingInput = {
     mood: options.mood ?? DEFAULTS.mood,
     intensity: options.intensity ?? DEFAULTS.intensity,
     whimsy: options.whimsy ?? DEFAULTS.whimsy,
     seed,
-  });
-
+  };
   const rect = target.getBoundingClientRect();
   const origin = options.origin ?? {
     x: rect.left + rect.width / 2,
     y: rect.top + rect.height / 2,
   };
-  // Origin is relative to the overlay's own box.
-  const originLocal =
+  // Anchor is overlay-local (relative to the target's own box).
+  const anchor: Anchor =
     target === document.body || target === document.documentElement
       ? origin
       : { x: origin.x - rect.left, y: origin.y - rect.top };
-
-  const overlay = createOverlay(target, { shadow: true });
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  return {
-    canvas: overlay.canvas,
-    shadowCanvas: overlay.shadow ?? null,
-    destroyOverlay: overlay.destroy,
-    params,
-    originLocal,
-    dpr,
-  };
+  return { factory, target, anchor, feeling };
 }
 
 /**
- * Fire a success celebration. Resolves when the animation has fully played out.
+ * Generic real-time fire: play a registered effect by name. Resolves when the
+ * animation has fully played out. SSR-safe (resolves immediately off-DOM).
  *
  * ```ts
- * await celebrate({ mood: "electric", intensity: 0.9 });
+ * await play("comic", { mood: "electric", intensity: 0.9, whimsy: 1 });
  * ```
  */
-export function celebrate(options: DopamineSuccessOptions = {}): Promise<void> {
-  if (typeof document === "undefined") return Promise.resolve();
-  const m = mount(options);
-  let handle: { done: Promise<void>; stop: () => void };
-  try {
-    handle = runSolarbloom(m.canvas, m.params, m.originLocal, m.dpr, m.shadowCanvas);
-  } catch (err) {
-    m.destroyOverlay();
-    return Promise.reject(err);
-  }
-  return handle.done.then(() => m.destroyOverlay());
+export function play(effect: string, options: DopamineSuccessOptions = {}): Promise<void> {
+  if (!isBrowser()) return Promise.resolve();
+  const req = resolveRequest(effect, options);
+  if (!req || !req.factory) return Promise.resolve();
+  return conductorPlay({
+    factory: req.factory,
+    target: req.target,
+    anchor: req.anchor,
+    feeling: req.feeling,
+  });
 }
 
-export interface PreparedEffect extends SolarbloomRenderer {
-  /** Dispose the renderer *and* remove the overlay. */
+/** A prepared, manually-driven effect handle (offline capture / external clock). */
+export interface PreparedEffect {
+  readonly durationMs: number;
+  /** Draw the frame at `elapsedMs` since the start. */
+  renderAt(elapsedMs: number): void;
+  /** Dispose the renderer *and* release the overlay. */
   dispose(): void;
 }
 
 /**
- * Mount the overlay and return a renderer you drive yourself via
- * `renderAt(elapsedMs)`. Call `dispose()` when finished. Returns `null` in
- * non-DOM environments.
- *
- * ```ts
- * const fx = prepareSolarbloom({ mood: "serene" });
- * fx.renderAt(300); // draw the frame at t=300ms
- * fx.dispose();
- * ```
+ * Generic prepared effect: mount the overlay and return a renderer you drive
+ * yourself via `renderAt(elapsedMs)`. Call `dispose()` when finished. Returns
+ * `null` in non-DOM environments.
  */
+export function prepare(effect: string, options: DopamineSuccessOptions = {}): PreparedEffect | null {
+  if (!isBrowser()) return null;
+  const req = resolveRequest(effect, options);
+  if (!req || !req.factory) return null;
+  return conductorPrepare({
+    factory: req.factory,
+    target: req.target,
+    anchor: req.anchor,
+    feeling: req.feeling,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Named convenience wrappers — preserve the original public API exactly.
+// ---------------------------------------------------------------------------
+
+/**
+ * Fire a Solarbloom success celebration (a centered radial volumetric bloom).
+ * Resolves when the animation has fully played out.
+ */
+export function celebrate(options: DopamineSuccessOptions = {}): Promise<void> {
+  return play("solarbloom", options);
+}
+
+/** Mount Solarbloom and return a manually-driven renderer. `null` off-DOM. */
 export function prepareSolarbloom(options: DopamineSuccessOptions = {}): PreparedEffect | null {
-  if (typeof document === "undefined") return null;
-  const m = mount(options);
-  let renderer: SolarbloomRenderer;
-  try {
-    renderer = createSolarbloom(m.canvas, m.params, m.originLocal, m.dpr, m.shadowCanvas);
-  } catch (err) {
-    m.destroyOverlay();
-    throw err;
-  }
-  return {
-    durationMs: renderer.durationMs,
-    renderAt: (ms) => renderer.renderAt(ms),
-    dispose: () => {
-      renderer.dispose();
-      m.destroyOverlay();
-    },
-  };
+  return prepare("solarbloom", options);
 }
 
-// ---------------------------------------------------------------------------
-// Comic Impact — the "BAM! POW!" fight-panel success effect.
-//
-// Same feeling-API + light-casting overlay, but a Golden/Silver-Age comic
-// visual language: a hand-lettered onomatopoeia word slams in over a jagged
-// starburst with bold ink outlines, Ben-Day halftone shading and radiating
-// action lines. whimsy maps NOIR (high-contrast chiaroscuro inking, one spot
-// color, subtle halftone) ↔ POP-ART (screaming saturation, loud Ben-Day dots,
-// fat ink, animate-on-twos). `origin` is ignored (the punch is centred).
-// ---------------------------------------------------------------------------
-
-interface ComicMounted {
-  canvas: HTMLCanvasElement;
-  shadowCanvas: HTMLCanvasElement | null;
-  destroyOverlay: () => void;
-  params: ReturnType<typeof resolveComicParams>;
-  dpr: number;
-}
-
-function mountComic(options: DopamineSuccessOptions): ComicMounted {
-  const target = options.target ?? document.body;
-  const seed = options.seed ?? randomSeed();
-  const params = resolveComicParams({
-    mood: options.mood ?? DEFAULTS.mood,
-    intensity: options.intensity ?? DEFAULTS.intensity,
-    whimsy: options.whimsy ?? DEFAULTS.whimsy,
-    seed,
-  });
-  const overlay = createOverlay(target, { shadow: true });
-  overlay.canvas.dataset.dopamine = "comic";
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  return {
-    canvas: overlay.canvas,
-    shadowCanvas: overlay.shadow ?? null,
-    destroyOverlay: overlay.destroy,
-    params,
-    dpr,
-  };
-}
-
-/**
- * Fire a Comic Impact celebration. Resolves once it has fully played.
- *
- * ```ts
- * await celebrateComic({ mood: "electric", intensity: 0.9, whimsy: 1 }); // POW!
- * ```
- */
-export function celebrateComic(options: DopamineSuccessOptions = {}): Promise<void> {
-  if (typeof document === "undefined") return Promise.resolve();
-  const m = mountComic(options);
-  let handle: { done: Promise<void>; stop: () => void };
-  try {
-    handle = runComic(m.canvas, m.params, m.dpr, m.shadowCanvas);
-  } catch (err) {
-    m.destroyOverlay();
-    return Promise.reject(err);
-  }
-  return handle.done.then(() => m.destroyOverlay());
-}
-
-/**
- * Mount the overlay and return a comic-impact renderer you drive yourself via
- * `renderAt(elapsedMs)`. Call `dispose()` when finished. `null` outside a DOM.
- */
-export function prepareComic(options: DopamineSuccessOptions = {}): PreparedEffect | null {
-  if (typeof document === "undefined") return null;
-  const m = mountComic(options);
-  let renderer: ComicRenderer;
-  try {
-    renderer = createComic(m.canvas, m.params, m.dpr, m.shadowCanvas);
-  } catch (err) {
-    m.destroyOverlay();
-    throw err;
-  }
-  return {
-    durationMs: renderer.durationMs,
-    renderAt: (ms) => renderer.renderAt(ms),
-    dispose: () => {
-      renderer.dispose();
-      m.destroyOverlay();
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Calligraphic Verdict — the ink-stroke success effect.
-//
-// Same feeling-API (mood/intensity/whimsy/seed/target), same light-casting
-// overlay, but a fundamentally different visual language: a directional
-// calligraphic gesture that writes itself across the frame rather than a
-// radial bloom from a point. `origin` is ignored (the gesture is composed in
-// viewport space). Solarbloom is untouched, so the two can be compared.
-// ---------------------------------------------------------------------------
-
-interface InkMounted {
-  canvas: HTMLCanvasElement;
-  shadowCanvas: HTMLCanvasElement | null;
-  destroyOverlay: () => void;
-  params: ReturnType<typeof resolveInkParams>;
-  dpr: number;
-}
-
-function mountInk(options: DopamineSuccessOptions): InkMounted {
-  const target = options.target ?? document.body;
-  const seed = options.seed ?? randomSeed();
-  const params = resolveInkParams({
-    mood: options.mood ?? DEFAULTS.mood,
-    intensity: options.intensity ?? DEFAULTS.intensity,
-    whimsy: options.whimsy ?? DEFAULTS.whimsy,
-    seed,
-  });
-  const overlay = createOverlay(target, { shadow: true });
-  overlay.canvas.dataset.dopamine = "inkstroke";
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  return {
-    canvas: overlay.canvas,
-    shadowCanvas: overlay.shadow ?? null,
-    destroyOverlay: overlay.destroy,
-    params,
-    dpr,
-  };
-}
-
-/**
- * Fire a Calligraphic Verdict celebration. Resolves once it has fully played.
- *
- * ```ts
- * await celebrateInk({ mood: "electric", intensity: 0.9, whimsy: 1 });
- * ```
- */
+/** Fire a Calligraphic Verdict (the ink-stroke gesture). */
 export function celebrateInk(options: DopamineSuccessOptions = {}): Promise<void> {
-  if (typeof document === "undefined") return Promise.resolve();
-  const m = mountInk(options);
-  let handle: { done: Promise<void>; stop: () => void };
-  try {
-    handle = runInkstroke(m.canvas, m.params, m.dpr, m.shadowCanvas);
-  } catch (err) {
-    m.destroyOverlay();
-    return Promise.reject(err);
-  }
-  return handle.done.then(() => m.destroyOverlay());
+  return play("inkstroke", options);
 }
 
-/**
- * Mount the overlay and return an ink-stroke renderer you drive yourself via
- * `renderAt(elapsedMs)`. Call `dispose()` when finished. `null` outside a DOM.
- */
+/** Mount Calligraphic Verdict and return a manually-driven renderer. */
 export function prepareInkstroke(options: DopamineSuccessOptions = {}): PreparedEffect | null {
-  if (typeof document === "undefined") return null;
-  const m = mountInk(options);
-  let renderer: InkstrokeRenderer;
-  try {
-    renderer = createInkstroke(m.canvas, m.params, m.dpr, m.shadowCanvas);
-  } catch (err) {
-    m.destroyOverlay();
-    throw err;
-  }
-  return {
-    durationMs: renderer.durationMs,
-    renderAt: (ms) => renderer.renderAt(ms),
-    dispose: () => {
-      renderer.dispose();
-      m.destroyOverlay();
-    },
-  };
+  return prepare("inkstroke", options);
+}
+
+/** Fire a Comic Impact ("BAM! POW!") success shout. */
+export function celebrateComic(options: DopamineSuccessOptions = {}): Promise<void> {
+  return play("comic", options);
+}
+
+/** Mount Comic Impact and return a manually-driven renderer. */
+export function prepareComic(options: DopamineSuccessOptions = {}): PreparedEffect | null {
+  return prepare("comic", options);
 }

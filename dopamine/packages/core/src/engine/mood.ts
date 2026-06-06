@@ -12,6 +12,13 @@
 import type { DopamineMood } from "../types.js";
 import { buildPalette, type RGB } from "./color.js";
 import { mulberry32, type Rng } from "./seed.js";
+import { resolveMood } from "../framework/mood-registry.js";
+
+/** A built-in mood name, or any custom mood registered via `registerMood`. */
+type MoodName = DopamineMood | (string & {});
+
+/** clamp helper shared by the baseline derivations below. */
+const clampN = (x: number, lo: number, hi: number): number => (x < lo ? lo : x > hi ? hi : x);
 
 export interface RenderParams {
   seed: number;
@@ -116,8 +123,35 @@ export const MAX_MOTES = 80;
 const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
+/**
+ * Solarbloom baseline for a mood. Built-in moods return their exact tuned table
+ * (so output stays byte-identical to the legacy engine); a custom mood
+ * registered via `registerMood` derives a sensible baseline from its register +
+ * energy, so a new mood lights up Solarbloom without a code edit.
+ */
+function solarBaseline(mood: MoodName): MoodBaseline {
+  const tuned = (BASELINES as Record<string, MoodBaseline>)[mood];
+  if (tuned) return tuned;
+  const m = resolveMood(mood);
+  const e = clamp01(m.energy);
+  return {
+    durationMs: Math.round(lerp(2600, 1200, e)),
+    lightness: m.lightness,
+    chroma: m.chroma,
+    hueCenter: m.hueCenter,
+    hueRange: m.hueRange,
+    bloomRadius: lerp(0.85, 0.6, e),
+    moteCount: Math.round(lerp(22, 72, e)),
+    moteSpeed: lerp(0.55, 1.25, e),
+    turbulence: lerp(0.35, 0.9, e),
+    overshoot: lerp(0.55, 1.45, e),
+    iridescence: lerp(0.85, 0.4, e),
+    dispersion: lerp(0.35, 0.95, e),
+  };
+}
+
 export interface ResolveInput {
-  mood: DopamineMood;
+  mood: MoodName;
   intensity: number;
   whimsy: number;
   seed: number;
@@ -127,7 +161,7 @@ export interface ResolveInput {
 export function resolveParams({ mood, intensity, whimsy, seed }: ResolveInput): RenderParams {
   const i = clamp01(intensity);
   const w = clamp01(whimsy);
-  const base = BASELINES[mood];
+  const base = solarBaseline(mood);
   const rng: Rng = mulberry32(seed);
 
   // intensity drives saturation + brightness (arousal & positive valence).
@@ -274,11 +308,35 @@ const INK_BASELINES: Record<DopamineMood, InkBaseline> = {
   },
 };
 
+/**
+ * Calligraphic Verdict baseline for a mood. Built-in moods return their exact
+ * tuned table; a custom mood derives from its register + energy.
+ */
+function inkBaseline(mood: MoodName): InkBaseline {
+  const tuned = (INK_BASELINES as Record<string, InkBaseline>)[mood];
+  if (tuned) return tuned;
+  const m = resolveMood(mood);
+  const e = clamp01(m.energy);
+  return {
+    durationMs: Math.round(lerp(2600, 1300, e)),
+    lightness: m.lightness,
+    chroma: m.chroma,
+    hueCenter: m.hueCenter,
+    hueRange: m.hueRange,
+    scale: lerp(0.62, 0.82, e),
+    pressure: lerp(1.05, 1.45, e),
+    wetness: lerp(0.95, 0.4, e),
+    bristle: lerp(0.25, 0.9, e),
+    droplets: Math.round(lerp(10, 52, e)),
+    overshoot: lerp(0.55, 1.45, e),
+  };
+}
+
 /** Map the human knobs onto deterministic ink-stroke render parameters. */
 export function resolveInkParams({ mood, intensity, whimsy, seed }: ResolveInput): InkRenderParams {
   const i = clamp01(intensity);
   const w = clamp01(whimsy);
-  const base = INK_BASELINES[mood];
+  const base = inkBaseline(mood);
   const rng: Rng = mulberry32(seed);
 
   // intensity → saturation, brightness, gesture boldness, spray volume.
@@ -548,11 +606,42 @@ const COMIC_BASELINES: Record<DopamineMood, ComicBaseline> = {
   },
 };
 
+/**
+ * Comic Impact baseline for a mood. Built-in moods return their exact tuned
+ * table; a custom mood derives its slam/spike feel from energy and borrows the
+ * neutral celebratory typographic character (Bangers) — the procedural treatment
+ * still differentiates it via mood color + whimsy.
+ */
+function comicBaseline(mood: MoodName): ComicBaseline {
+  const tuned = (COMIC_BASELINES as Record<string, ComicBaseline>)[mood];
+  if (tuned) return tuned;
+  const m = resolveMood(mood);
+  const e = clamp01(m.energy);
+  const neutral = COMIC_BASELINES.celebratory;
+  return {
+    durationMs: Math.round(lerp(2400, 1500, e)),
+    lightness: m.lightness,
+    chroma: m.chroma,
+    hueCenter: m.hueCenter,
+    hueRange: m.hueRange,
+    scale: lerp(0.34, 0.46, e),
+    burstPoints: Math.round(lerp(14, 28, e)),
+    actionLines: Math.round(lerp(18, 44, e)),
+    overshoot: lerp(0.55, 1.45, e),
+    face: neutral.face,
+    skew: lerp(0.0, -0.26, e),
+    tilt: lerp(-0.015, -0.1, e),
+    stretchX: lerp(1.0, 0.82, e),
+    tracking: lerp(0.04, -0.02, e),
+    roundness: clampN(lerp(1.0, 0.1, e), 0, 1),
+  };
+}
+
 /** Map the human knobs onto deterministic comic-impact render parameters. */
 export function resolveComicParams({ mood, intensity, whimsy, seed }: ResolveInput): ComicRenderParams {
   const i = clamp01(intensity);
   const w = clamp01(whimsy);
-  const base = COMIC_BASELINES[mood];
+  const base = comicBaseline(mood);
   const rng: Rng = mulberry32(seed);
 
   // intensity → saturation/brightness, slam force, word size, spike + line count.

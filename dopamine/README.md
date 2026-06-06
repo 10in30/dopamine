@@ -117,12 +117,41 @@ npm run record  # headless: record solarbloom.webm + .mp4 across all three moods
   `mix-blend-mode: screen`, so bright pixels lighten the page → real cast light.
 - **Color** (`engine/color.ts`): OKLCH golden-angle palettes → linear sRGB.
 - **Tempo** (`engine/tempo.ts`): two-layer timing (fast confirm + lingering,
-  non-blocking afterglow).
+  non-blocking afterglow), plus an impact/recoil envelope for the comic slam.
 - **Mood** (`engine/mood.ts`): maps the three knobs onto shader uniforms.
+
+### Architecture: a thin runtime + pluggable effects
+
+`@dopamine/core` is a small **backbone** with the three effects plugged into it:
+
+- **Conductor** (`framework/conductor.ts`) — owns ONE persistent overlay
+  (light `screen` + shadow `multiply` canvas) and ONE program-cached WebGL2
+  context per layer, per target. Shaders **link once per page**, not once per
+  fire (the old path leaked the per-fire contexts browsers cap at ~16). A single
+  RAF loop hosts concurrent fires (additive light / `MIN` shadow), caps DPR,
+  pauses on hidden tabs, and honours `prefers-reduced-motion` (one calm held
+  frame). Everything is SSR-safe — `celebrate()` off-DOM is a no-op.
+- **Effect registry** (`framework/registry.ts`) + **mood registry**
+  (`framework/mood-registry.ts`) — effects and moods register by name; moods are
+  effect-agnostic, so a new mood lights up every effect.
+- **Effects** (`effects/*.ts`) — each is an `EffectFactory` that `resolve`s a
+  feeling → params and `create`s a per-frame `renderAt`. `celebrate*` are thin
+  wrappers over the generic `play(effect, opts)` / `prepare(effect, opts)`.
+
+**Add a mood** (lights up all three effects, no per-effect code):
+
+```ts
+import { registerMood, celebrate } from "@dopamine/core";
+registerMood("triumphant", { hueCenter: 280, hueRange: 160,
+                             lightness: 0.8, chroma: 0.22, energy: 0.9 });
+await celebrate({ mood: "triumphant" });
+```
+
+**Add an effect** — implement `EffectFactory` and `registerEffect(...)`; then
+`play("my-effect", { mood, intensity, whimsy })`. See `effects/solarbloom.ts`.
 
 ## Roadmap
 
-- Shadows (a `multiply` companion layer) in addition to cast light.
 - More components (progress, error, attention) and animated icons.
 - **iOS (SwiftUI + Metal)**, then Android & macOS — porting the same
   color/tempo/mood model. iOS build + simulator recording will run on a macOS

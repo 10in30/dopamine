@@ -30,6 +30,12 @@ export interface Overlay {
    * the overlay was created with `{ shadow: true }`.
    */
   shadow?: HTMLCanvasElement;
+  /**
+   * Lazily create (or return the existing) shadow canvas, inserting it beneath
+   * the light layer. Lets a persistent overlay gain a shadow layer when a later
+   * effect needs one without recreating the whole overlay.
+   */
+  ensureShadow: () => HTMLCanvasElement;
   /** Remove the overlay (all layers) from the DOM. */
   destroy: () => void;
 }
@@ -71,12 +77,15 @@ export function createOverlay(target: HTMLElement, options: OverlayOptions = {})
   // Shadow layer is created (and appended) first so it sits beneath the light
   // layer both in z-index and DOM order.
   let shadow: HTMLCanvasElement | undefined;
-  if (options.shadow) {
-    shadow = document.createElement("canvas");
-    styleCanvas(shadow, "multiply", SHADOW_Z, scoped);
-    shadow.dataset.dopamine = "shadow";
-    target.appendChild(shadow);
-  }
+  const makeShadow = (): HTMLCanvasElement => {
+    const s = document.createElement("canvas");
+    styleCanvas(s, "multiply", SHADOW_Z, scoped);
+    s.dataset.dopamine = "shadow";
+    // Insert at the front so it sits beneath the (later-appended) light canvas.
+    target.insertBefore(s, target.firstChild);
+    return s;
+  };
+  if (options.shadow) shadow = makeShadow();
 
   const canvas = document.createElement("canvas");
   styleCanvas(canvas, "screen", LIGHT_Z, scoped);
@@ -85,7 +94,13 @@ export function createOverlay(target: HTMLElement, options: OverlayOptions = {})
 
   return {
     canvas,
-    shadow,
+    get shadow() {
+      return shadow;
+    },
+    ensureShadow(): HTMLCanvasElement {
+      if (!shadow) shadow = makeShadow();
+      return shadow;
+    },
     destroy: () => {
       canvas.remove();
       shadow?.remove();

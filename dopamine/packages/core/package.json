@@ -13,7 +13,12 @@
     }
   },
   "files": ["dist", "src", "assets"],
-  "sideEffects": ["./src/element.ts", "./dist/element.js"],
+  "sideEffects": [
+    "./src/element.ts",
+    "./dist/element.js",
+    "./src/effects/*.ts",
+    "./dist/effects/*.js"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json"
   }
