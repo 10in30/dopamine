@@ -1,0 +1,24 @@
+{
+  "name": "dopamine-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Dopamine — gorgeous, next-generation visual effects & animated icons.",
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @dopamine/core && npm run build -w @dopamine/react && npm run build -w @dopamine/demo",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "npm run dev -w @dopamine/demo",
+    "record": "node scripts/record.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.4"
+  }
+}
