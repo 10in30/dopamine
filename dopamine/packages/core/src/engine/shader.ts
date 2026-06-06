@@ -17,6 +17,20 @@
  * stays cheap and is identical frame-to-frame (pure function of uTimeS).
  */
 
+import {
+  GLSL_CONSTANTS,
+  GLSL_DISPERSION,
+  GLSL_DITHER,
+  GLSL_DOMAIN_WARP,
+  GLSL_FBM,
+  GLSL_HASH,
+  GLSL_IRIDESCENT,
+  GLSL_PALETTE_MIX,
+  GLSL_SD_SEG,
+  GLSL_TONEMAP_ACES,
+} from "./look/glsl.js";
+import { GLSL_PARTICLES } from "./look/particles.glsl.js";
+
 export const VERTEX_SRC = /* glsl */ `#version 300 es
 void main() {
   // Single full-screen triangle from gl_VertexID — no vertex buffers needed.
@@ -52,48 +66,17 @@ uniform vec3  uC1;
 uniform vec3  uC2;
 
 #define MAX_MOTES 80
-#define TAU 6.28318530718
-
-float hash11(float p){ p = fract(p * 0.1031); p *= p + 33.33; p *= p + p; return fract(p); }
-vec2 hash21(float p){
-  vec3 p3 = fract(vec3(p) * vec3(0.1031, 0.1030, 0.0973));
-  p3 += dot(p3, p3.yzx + 33.33);
-  return fract((p3.xx + p3.yz) * p3.zy);
-}
-float vnoise(vec2 p){
-  vec2 i = floor(p), f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  float a = hash11(dot(i, vec2(1.0, 57.0)));
-  float b = hash11(dot(i + vec2(1.0, 0.0), vec2(1.0, 57.0)));
-  float c = hash11(dot(i + vec2(0.0, 1.0), vec2(1.0, 57.0)));
-  float d = hash11(dot(i + vec2(1.0, 1.0), vec2(1.0, 57.0)));
-  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
-}
-float fbm(vec2 p){
-  float s = 0.0, a = 0.5;
-  // 4 octaves with a gentle rotation per octave kills axis-aligned artifacts.
-  mat2 rot = mat2(0.80, -0.60, 0.60, 0.80);
-  for (int i = 0; i < 4; i++) { s += a * vnoise(p); p = rot * p * 2.03; a *= 0.5; }
-  return s;
-}
-
-vec3 paletteMix(float t){
-  t = clamp(t, 0.0, 1.0);
-  return t < 0.5 ? mix(uC0, uC1, t * 2.0) : mix(uC1, uC2, (t - 0.5) * 2.0);
-}
-
-// Inigo Quilez cosine palette — a smooth spectral sweep used for the thin-film
-// iridescence so the shimmer cycles through complementary hues, not the
-// mood palette (that contrast is what makes it read as "oil on water").
-vec3 iridescent(float t){
-  return 0.55 + 0.45 * cos(TAU * (vec3(1.0) * t + vec3(0.0, 0.33, 0.67)));
-}
-
-float sdSeg(vec2 p, vec2 a, vec2 b){
-  vec2 pa = p - a, ba = b - a;
-  float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
-  return length(pa - ba * h);
-}
+${GLSL_CONSTANTS}
+${GLSL_HASH}
+${GLSL_FBM}
+${GLSL_DOMAIN_WARP}
+${GLSL_PALETTE_MIX}
+${GLSL_IRIDESCENT}
+${GLSL_DISPERSION}
+${GLSL_SD_SEG}
+${GLSL_TONEMAP_ACES}
+${GLSL_DITHER}
+${GLSL_PARTICLES}
 
 // Radial bloom intensity at a normalized radius dn (1.0 == bloom edge). Sampled
 // three times at channel-shifted radii to get a spectral split at the rim.
@@ -104,13 +87,6 @@ float bloomProfile(float dn){
   float core = exp(-dn * dn * 2.4) * 0.92;
   float halo = exp(-dn * 1.3) * 0.5;
   return core + halo;
-}
-
-// ACES filmic tonemap (Narkowicz approximation) — richer rolloff than 1-exp,
-// keeps highlights from going chalky while preserving saturated mid-lights.
-vec3 tonemapACES(vec3 x){
-  const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
-  return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
 }
 
 // ---------------------------------------------------------------------------
@@ -225,16 +201,16 @@ void main(){
   // sample fbm again. This gives the smoke-like, living interior of a real bloom
   // instead of a clean gaussian.
   vec2 sp = vec2(ang * 1.6, d / r * 2.2) + uMoteSeed;
-  vec2 warp = vec2(fbm(sp + uTimeS * 0.18), fbm(sp.yx - uTimeS * 0.12)) - 0.5;
-  float fbmTex = fbm(sp + warp * 1.2 * uTurbulence + uTimeS * 0.25);
+  // Shared two-level domain warp (look/glsl domainWarp): the smoke-like interior.
+  float fbmTex = domainWarp(sp, uTimeS, uTurbulence);
   // The warp perturbs the radius only modestly, so the core stays a focused
   // burst rather than blooming into an all-over haze.
   float dn = d / r * (1.0 + 0.18 * (fbmTex - 0.5) * uTurbulence);
 
   // Spectral split: sample the radial falloff at slightly different radii per
   // channel. Strength grows toward the rim (where dn ~ 1) — like dispersion at
-  // a refractive edge — and is gated by uDispersion + amplitude.
-  float disp = uDispersion * (0.06 + 0.12 * smoothstep(0.2, 1.1, dn)) * (0.7 + 0.5 * uAmp);
+  // a refractive edge — and is gated by uDispersion + amplitude (shared helper).
+  float disp = dispersionAmount(uDispersion, dn, uAmp);
   float pr = bloomProfile(dn * (1.0 - disp));
   float pg = bloomProfile(dn);
   float pb = bloomProfile(dn * (1.0 + disp));
@@ -301,8 +277,7 @@ void main(){
     float dist = length(vec2(along * (1.0 - streak), across));
 
     float size = minDim * 0.006 * (0.6 + h.x * 0.8) * depth;
-    float spark = size / (dist + size * 0.5);
-    spark *= spark;
+    float spark = particleSprite(dist, size);   // shared soft round sprite
     // Toward the NPR end, crisp the spark and add a screen-aligned 4-point
     // sparkle "star" so motes read as hand-drawn twinkles, not soft photons.
     if (uStyle > 0.001) {
@@ -376,11 +351,10 @@ void main(){
     col = mix(col, styled, uStyle);
   }
 
-  // Ordered dither (~1/255) to break up the smooth-gradient banding the screen
-  // blend would otherwise reveal on the page beneath. Triangular hash noise.
-  // Fade it out toward the cel end, where hard bands are the intended look.
-  float dz = hash11(dot(frag, vec2(12.989, 78.233)) + uTimeS) - 0.5;
-  col += (dz / 255.0) * (1.0 - uStyle);
+  // Ordered dither (~1/255, shared look/glsl ditherAdd) to break up the
+  // smooth-gradient banding the screen blend would otherwise reveal on the page.
+  // Faded out toward the cel end, where hard bands are the intended look.
+  col = ditherAdd(col, frag, uTimeS, 1.0 - uStyle);
 
   fragColor = vec4(col, 1.0);
 }`;

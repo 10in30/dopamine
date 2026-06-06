@@ -26,6 +26,15 @@
  * Pure function of uniforms → frame-perfect & cheap under SwiftShader.
  */
 
+import {
+  GLSL_CONSTANTS,
+  GLSL_DITHER,
+  GLSL_HALFTONE,
+  GLSL_HASH,
+  GLSL_ROT2,
+  GLSL_TONEMAP_ACES,
+} from "./look/glsl.js";
+
 export const COMIC_VERTEX_SRC = /* glsl */ `#version 300 es
 out vec2 vUv;
 void main() {
@@ -62,25 +71,12 @@ uniform vec3  uC0;            // word fill color
 uniform vec3  uC1;            // secondary / burst color
 uniform vec3  uC2;            // dot / accent color
 
-#define TAU 6.28318530718
-
-float hash11(float p){ p = fract(p * 0.1031); p *= p + 33.33; p *= p + p; return fract(p); }
-
-mat2 rot(float a){ float s = sin(a), c = cos(a); return mat2(c, -s, s, c); }
-
-// Ben-Day halftone coverage: 1 inside a dot, 0 outside, AAd. Dot RADIUS grows
-// with the requested tone v (0 = no dot, 1 = dots touch / near-solid). The
-// screen is rotated by ang (classic per-channel screen angle) to avoid a
-// mechanical grid and to read as printed halftone.
-float benday(vec2 frag, float cell, float v, float ang){
-  vec2 p = rot(ang) * frag / cell;
-  vec2 g = fract(p) - 0.5;
-  float d = length(g);
-  // max dot radius ~0.5 (touching). value->radius, slight gamma so mids read.
-  float r = 0.52 * sqrt(clamp(v, 0.0, 1.0));
-  float aa = 0.7 / cell + fwidth(d);
-  return 1.0 - smoothstep(r - aa, r + aa, d);
-}
+${GLSL_CONSTANTS}
+${GLSL_HASH}
+${GLSL_ROT2}
+${GLSL_HALFTONE}
+${GLSL_TONEMAP_ACES}
+${GLSL_DITHER}
 
 void main(){
   vec2 frag = vUv * uResolution;
@@ -210,8 +206,11 @@ void main(){
   col += vec3(1.0) * core * uFlash * uFlash * 1.6;
 
   // ---- TONE + FINISH ------------------------------------------------------
-  // Gentle filmic roll-off so the flash highlights compress, mid ink stays rich.
-  col = col / (1.0 + col * 0.5);
+  // ACES filmic tonemap (shared look/glsl) for a cleaner highlight rolloff than
+  // the old x/(1+x) compress — the impact flash highlights roll off gracefully
+  // while the saturated printed mids stay rich. A mild pre-exposure keeps the
+  // pop-art color from dimming.
+  col = tonemapACES(col * 0.85);
 
   // Pop-art posterize: snap the lit panel to a few flat ink levels toward the
   // pop end (flat printed color), leaving the dark page untouched so we don't
@@ -222,9 +221,9 @@ void main(){
     col = mix(col, mix(col, q, lit), uStyle * 0.7);
   }
 
-  // Ordered dither to kill banding the screen-blend would reveal (fade at pop).
-  float dz = hash11(dot(frag, vec2(12.989, 78.233)) + uTimeS) - 0.5;
-  col += (dz / 255.0) * (1.0 - uStyle * 0.7);
+  // Ordered dither (shared look/glsl) to kill banding the screen-blend reveals
+  // (faded toward the pop end where the flat printed look is intended).
+  col = ditherAdd(col, frag, uTimeS, 1.0 - uStyle * 0.7);
 
   fragColor = vec4(max(col, 0.0), 1.0);
 }`;

@@ -28,6 +28,18 @@
  *   neon core, animate-on-twos jitter on the path, a chunky outline.
  */
 
+import {
+  GLSL_CONSTANTS,
+  GLSL_DITHER,
+  GLSL_FBM,
+  GLSL_HASH,
+  GLSL_IRIDESCENT,
+  GLSL_PALETTE_MIX,
+  GLSL_SD_SEG,
+  GLSL_TONEMAP_ACES,
+} from "./look/glsl.js";
+import { GLSL_PARTICLES } from "./look/particles.glsl.js";
+
 export const INK_VERTEX_SRC = /* glsl */ `#version 300 es
 void main() {
   vec2 pos = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
@@ -59,40 +71,21 @@ uniform vec3  uC0;           // ink core color
 uniform vec3  uC1;           // mid
 uniform vec3  uC2;           // edge / spray accent
 
-#define TAU 6.28318530718
 #define MAX_DROPS 64
+${GLSL_CONSTANTS}
+${GLSL_HASH}
+${GLSL_FBM}
+${GLSL_PALETTE_MIX}
+${GLSL_IRIDESCENT}
+${GLSL_TONEMAP_ACES}
+${GLSL_DITHER}
+${GLSL_SD_SEG}
+${GLSL_PARTICLES}
 
-float hash11(float p){ p = fract(p * 0.1031); p *= p + 33.33; p *= p + p; return fract(p); }
-vec2 hash21(float p){
-  vec3 p3 = fract(vec3(p) * vec3(0.1031, 0.1030, 0.0973));
-  p3 += dot(p3, p3.yzx + 33.33);
-  return fract((p3.xx + p3.yz) * p3.zy);
-}
-float vnoise(vec2 p){
-  vec2 i = floor(p), f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  float a = hash11(dot(i, vec2(1.0, 57.0)));
-  float b = hash11(dot(i + vec2(1.0, 0.0), vec2(1.0, 57.0)));
-  float c = hash11(dot(i + vec2(0.0, 1.0), vec2(1.0, 57.0)));
-  float d = hash11(dot(i + vec2(1.0, 1.0), vec2(1.0, 57.0)));
-  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
-}
-float fbm(vec2 p){
-  float s = 0.0, a = 0.5;
-  mat2 rot = mat2(0.80, -0.60, 0.60, 0.80);
-  for (int i = 0; i < 4; i++) { s += a * vnoise(p); p = rot * p * 2.03; a *= 0.5; }
-  return s;
-}
-
-// Quadratic Bezier B(t) = (1-t)^2 P0 + 2(1-t)t P1 + t^2 P2
+// Quadratic Bezier B(t) = (1-t)^2 P0 + 2(1-t)t P1 + t^2 P2 (Verdict-specific).
 vec2 bez(vec2 a, vec2 b, vec2 c, float t){
   float s = 1.0 - t;
   return s*s*a + 2.0*s*t*b + t*t*c;
-}
-
-vec3 paletteMix(float t){
-  t = clamp(t, 0.0, 1.0);
-  return t < 0.5 ? mix(uC0, uC1, t * 2.0) : mix(uC1, uC2, (t - 0.5) * 2.0);
 }
 
 // Stroke control points — shared by the light pass and the shadow silhouette so
@@ -108,12 +101,6 @@ void strokeGeom(float jitterScale, out vec2 P0, out vec2 P1, out vec2 P2){
   P0 = mid + vec2(-0.52, 0.10) * len + jit;
   P1 = mid + vec2(-0.02, 0.42) * len + jit;
   P2 = mid + vec2(0.55, -0.30) * len + jit;
-}
-
-float sdSeg(vec2 p, vec2 a, vec2 b){
-  vec2 pa = p - a, ba = b - a;
-  float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-3), 0.0, 1.0);
-  return length(pa - ba * h);
 }
 
 // ---------------------------------------------------------------------------
@@ -293,6 +280,25 @@ void main(){
   col += mix(uC1, uC2, 0.6) * bleed * gain * 0.85;
   col += mix(uC0, uC1, 0.4) * wash * gain;
 
+  // WET-EDGE IRIDESCENCE + DISPERSION (borrowed from Solarbloom): on the wet,
+  // serene end the bleeding edge catches an oil-on-water sheen — a faint
+  // IQ-cosine spectral tint riding the wet halo — plus a slight chromatic split
+  // that fringes the contact edge. Gated by wetness (so it's a WET-ink quality,
+  // not a property of the dry slash) and faded out toward the cel/neon end. The
+  // body keeps its single-ink identity; only the wet rim shimmers.
+  float wetSheen = bleed * uWetness * (1.0 - uStyle);
+  if (wetSheen > 0.001) {
+    float irPhase = bodyT * 0.7 + nearAcross * 0.5 + uTimeS * 0.25
+                  + fbm(frag / minDim * 9.0 + uSeed) * 1.2;
+    vec3 irid = iridescent(fract(irPhase));
+    col = mix(col, col * (0.55 + 1.2 * irid), wetSheen * 0.35);
+    col += irid * wetSheen * 0.10 * gain;
+    // Chromatic split at the wet contact edge: a thin per-channel offset.
+    float disp = (0.04 + 0.08 * edge) * uWetness * (1.0 - uStyle) * (0.7 + 0.5 * uAmp);
+    col.r += edge * disp * 0.6 * gain;
+    col.b -= edge * disp * 0.5 * gain;
+  }
+
   // WET LEADING TIP: a bright hot point that races at the pen head while
   // drawing, with a short afterglow. This is the "it's happening now" spark.
   float drawing = smoothstep(0.0, 0.05, uDraw) * (1.0 - smoothstep(0.9, 1.04, uDraw));
@@ -313,11 +319,11 @@ void main(){
     float spd = (0.4 + hh.y) * len * 0.9;
     float spread = (hh.x - 0.5) * 1.4;
     vec2 dir = normalize(launchDir + vec2(-launchDir.y, launchDir.x) * spread);
-    // Ballistic arc: outward + gravity pulling down (screen y is up here).
-    vec2 dp = launch + dir * spd * dlife - vec2(0.0, 1.0) * (minDim * 0.9) * dlife * dlife;
+    // Ballistic arc via the shared particle helper (outward + gravity; y is up).
+    vec2 dp = ballisticPos(launch, dir, spd, minDim * 0.9, dlife);
     float dsz = minDim * 0.006 * (0.4 + hh.y * 0.9) * (1.0 - 0.5 * dlife);
     float dd = length(frag - dp);
-    float drop = dsz / (dd + dsz * 0.5); drop *= drop;
+    float drop = particleSprite(dd, dsz);   // shared soft round sprite
     // toon: crisp the droplet into a hard dot toward the cel end.
     if (uStyle > 0.001) {
       float crisp = 1.0 - smoothstep(dsz * 0.9, dsz, dd);
@@ -336,8 +342,11 @@ void main(){
   col += paletteMix(0.4) * uy * ux * ul * gain * 0.8;
 
   // ---- Tone + finishing ----
-  // Gentle filmic-ish compress so wet highlights roll off, mid ink stays rich.
-  col = col / (1.0 + col * 0.55);
+  // ACES filmic tonemap (shared look/glsl, borrowed from Solarbloom) for a
+  // cleaner highlight rolloff + richer mid-ink than the old x/(1+x) compress —
+  // gentler gradients on the page beneath. A mild pre-exposure keeps the wet
+  // mid-ink from dimming while letting the wet highlights roll off gracefully.
+  col = tonemapACES(col * 0.82);
 
   // ---- Non-photoreal pass: cel / neon flattening (whimsy) ----
   // Toward the cel end we want a FLAT, bold neon slash with a clean glowing
@@ -363,10 +372,9 @@ void main(){
     col = mix(col, styled, uStyle);
   }
 
-  // Ordered dither (~1/255) to kill banding the screen blend would reveal;
-  // fade it out toward the cel end where hard bands are intended.
-  float dz = hash11(dot(frag, vec2(12.989, 78.233)) + uTimeS) - 0.5;
-  col += (dz / 255.0) * (1.0 - uStyle);
+  // Ordered dither (~1/255, shared look/glsl) to kill banding the screen blend
+  // would reveal; faded out toward the cel end where hard bands are intended.
+  col = ditherAdd(col, frag, uTimeS, 1.0 - uStyle);
 
   fragColor = vec4(max(col, 0.0), 1.0);
 }`;
