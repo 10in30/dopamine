@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dopamine.dev/schemas/effect-format-1.0.0.json",
-  "title": "Dopamine Effect Format",
-  "description": "Declarative, renderer-agnostic format for Dopamine visual effects. Inspired-by-Lottie: reuses Lottie keyframe + shape encodings at the leaves, but is parametric (controls -> mappings -> render params -> backend) at the top. SKETCH: covers the load-bearing structure, not every leaf.",
+  "$id": "https://dopamine.dev/schemas/dope-1.0.0.json",
+  "title": "Dopamine Effect Format (.dope)",
+  "description": "Declarative, renderer-agnostic format for Dopamine visual effects (file extension .dope). Inspired-by-Lottie: reuses Lottie keyframe + shape encodings at the leaves, but is parametric (controls -> mappings -> render params -> backend) at the top.",
   "type": "object",
   "required": ["fmt", "v", "id", "controls", "palette", "tempo", "render"],
   "additionalProperties": true,

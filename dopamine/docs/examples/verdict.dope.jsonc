@@ -1,5 +1,5 @@
 // ============================================================================
-// EXAMPLE .dopa — "Calligraphic Verdict" (the ink-stroke success effect).
+// EXAMPLE .dope — "Calligraphic Verdict" (the ink-stroke success effect).
 //
 // This file reproduces today's `resolveInkParams` + `INK_BASELINES` (mood.ts),
 // the OKLCH golden-angle palette (color.ts), and the tempo/stepping (tempo.ts),

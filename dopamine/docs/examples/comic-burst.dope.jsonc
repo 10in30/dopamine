@@ -1,9 +1,9 @@
 // ============================================================================
-// EXAMPLE .dopa — "Comic Burst" — demonstrates the explicitly-requested comic
+// EXAMPLE .dope — "Comic Burst" — demonstrates the explicitly-requested comic
 // OUTLINE glyphs (starburst + onomatopoeia "POW"/"ZAP" letterforms) as embedded
 // vector outline paths, alongside a Solarbloom-style radial render. Trimmed to
 // highlight the outline-path + step-function pieces; palette/tempo blocks are
-// the same shape as verdict.dopa.jsonc (see that file for the fully-annotated
+// the same shape as verdict.dope.jsonc (see that file for the fully-annotated
 // mappings). JSONC comments are annotation only.
 // ============================================================================
 {
@@ -88,7 +88,7 @@
 
   // render.params / backends inherited from `extends` (solarbloom); the only
   // additions are the burst-frame + word-glyph outline roles the comic shader
-  // consumes. (Omitted here — see verdict.dopa.jsonc for the full render block.)
+  // consumes. (Omitted here — see verdict.dope.jsonc for the full render block.)
   "render": {
     "params": {},                     // inherited
     "backends": {

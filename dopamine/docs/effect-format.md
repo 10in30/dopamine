@@ -1,4 +1,4 @@
-# Dopamine Effect Format (`.dopa`) — Design Doc
+# Dopamine Effect Format (`.dope`) — Design Doc
 
 Status: DRAFT / RFC. Author: principal eng. Date: 2026-06-06.
 Scope: a **declarative file format** that lets Dopamine effects be embedded and
@@ -41,7 +41,7 @@ Why, in three lines:
 ## 1. Goals & non-goals
 
 ### Goals
-- **No-code embedding & theming.** A host drops in a `.dopa` file, optionally
+- **No-code embedding & theming.** A host drops in a `.dope` file, optionally
   overrides controls (palette, ranges, icon path), and fires it.
 - **Introspectable controls.** A host can render a UI for an effect (sliders,
   swatches, pickers) purely from the file — no per-effect code.
@@ -81,14 +81,14 @@ Why, in three lines:
 1:1 onto our engine, *and* we keep Lottie's proven leaf encodings so:
 - outline glyphs can be authored in any Lottie/SVG tool and pasted in;
 - easing & step curves use the keyframe object designers already know;
-- a `.dopa` can embed or `$ref` a real `.json`/`.lottie` for a degraded
+- a `.dope` can embed or `$ref` a real `.json`/`.lottie` for a degraded
   pure-Lottie fallback on hosts without our runtime.
 
 ---
 
 ## 3. Top-level document structure
 
-A `.dopa` document is JSON (UTF-8). Top-level keys:
+A `.dope` document is JSON (UTF-8). Top-level keys:
 
 ```jsonc
 {
@@ -521,7 +521,7 @@ the `UNIFORMS` arrays + `gl.uniform*` calls in `renderer.ts` /
 
 **Shader source handling.** GLSL and MSL are NOT embedded as the canonical
 source (cross-compiling is out of scope, §1 non-goals). Instead each backend
-`$ref`s its own shader file inside the `.dopa` zip (§9). The *contract* the
+`$ref`s its own shader file inside the `.dope` zip (§9). The *contract* the
 shaders must honor — uniform names, units (device pixels, gl-y-up origin),
 blend mode — lives in the file and is validated. A host on a platform with no
 matching shader walks `fallbackOrder` down to a raster/outline approximation.
@@ -529,7 +529,7 @@ This is exactly how the same params already drive two different shaders today
 (Solarbloom vs Verdict share the mood/tempo/color model but ship distinct GLSL).
 
 **The Metal story in one paragraph (matches the roadmap).** The iOS port reads
-the *same* `.dopa`: it evaluates `controls`+mappings to the identical param bag
+the *same* `.dope`: it evaluates `controls`+mappings to the identical param bag
 (the mapping grammar is trivially portable to Swift — it's arithmetic), runs the
 same OKLCH/golden-angle palette with `mulberry32(seed)` (so a pinned seed matches
 web byte-for-byte), samples the same tempo curves, and binds the params into an
@@ -547,7 +547,7 @@ is selected.
 ```ts
 import { loadEffect } from "@dopamine/core";
 
-const fx = await loadEffect("/effects/verdict.dopa", {
+const fx = await loadEffect("/effects/verdict.dope", {
   overrides: {
     "controls.intensity.max": 0.8,            // clamp the range
     "controls.intensity.default": 0.6,
@@ -570,13 +570,13 @@ resolution. Three host customization tiers, all no-code from the host's POV:
 The loader **re-validates** the merged doc against the schema and rejects
 out-of-range overrides, so a host can't push the effect into an invalid state.
 
-### 9.2 Packaging — `.dopa` (a dotLottie-style zip)
+### 9.2 Packaging — `.dope` (a dotLottie-style zip)
 
-A single `.dopa` is either a bare `.json` or a **zip** (recommended for anything
+A single `.dope` is either a bare `.json` or a **zip** (recommended for anything
 with external shaders/assets), structured like dotLottie:
 
 ```
-verdict.dopa  (zip)
+verdict.dope  (zip)
 ├── manifest.json          // { "fmt":"dopamine-effect", "version":"1.0.0",
 │                          //   "effects":[{ "id":"...","path":"effects/verdict.json"}] }
 ├── effects/
@@ -614,7 +614,7 @@ to the zip root (or http(s) for remote, with same-origin/allowlist rules).
 - **Format version** `v` (semver). Loader policy: accept same major; warn on
   newer minor (ignore unknown keys → forward-compatible); reject newer major.
 - **JSON Schema** at `docs/effect-format.schema.json` (Draft 2020-12). CI
-  validates every shipped `.dopa`. The schema covers the document, the control
+  validates every shipped `.dope`. The schema covers the document, the control
   descriptors, the mapping mini-grammar (recursive `$defs/expr`), palette, tempo
   curves (Lottie keyframe + step), geometry, and backends.
 - **Extensibility:**
@@ -633,7 +633,7 @@ to the zip root (or http(s) for remote, with same-origin/allowlist rules).
 
 The format is designed so today's engine is the *reference implementation*. Plan:
 
-**Phase 0 — encode (this doc).** Author `solarbloom.dopa` and `verdict.dopa` that
+**Phase 0 — encode (this doc).** Author `solarbloom.dope` and `verdict.dope` that
 reproduce `BASELINES`/`INK_BASELINES` + the lerp ranges + color/tempo exactly.
 
 **Phase 1 — parity test.** Add a loader (`loadEffect` → `RenderParams`) behind a
@@ -643,7 +643,7 @@ epsilon. This proves the grammar captures the engine (the schemas below + §12
 loader sketch are built for this).
 
 **Phase 2 — flip the source of truth.** `resolveParams` becomes a thin wrapper
-that loads the bundled `.dopa` and evaluates the mappings. `BASELINES` move into
+that loads the bundled `.dope` and evaluates the mappings. `BASELINES` move into
 the file's `perMood`/`baseline` tables. Delete the duplicated constants.
 
 **Phase 3 — open it up.** Ship `loadEffect` publicly; document overrides &

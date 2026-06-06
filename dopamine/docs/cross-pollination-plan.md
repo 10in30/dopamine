@@ -48,7 +48,7 @@ change must sharpen an effect's own metaphor, never blur the three together.
 
 ## The big lever: extract shared capability modules
 Most rows above are reimplemented per effect (or absent). The highest-leverage
-move — and the natural content of the **backbone refactor** + the `.dopa`
+move — and the natural content of the **backbone refactor** + the `.dope`
 **file format** — is to lift the best implementation of each into a shared,
 composable module the effects draw from:
 
