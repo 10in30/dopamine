@@ -11,32 +11,45 @@
  */
 
 import { impactScale, impactPresence, IMPACT_MS, IMPACT_HOLD_MS } from "../engine/tempo.js";
-import { type ComicRenderParams, comicTypography, pickWord } from "../engine/mood.js";
+import { type ComicRenderParams, type ComicWord } from "../engine/mood.js";
 import { shadowGeometry } from "../engine/shadow.js";
 import { COMIC_FRAGMENT_SRC, COMIC_VERTEX_SRC } from "../engine/comic-shader.js";
 import { drawPanel } from "../engine/comic-renderer.js";
 import type { EffectContext, EffectFactory, EffectInstance, FeelingInput } from "../framework/effect.js";
 import { registerEffect } from "../framework/registry.js";
+import { registerProgram } from "../framework/programs.js";
 import { parseDope, resolveDopeParams } from "../framework/loader.js";
+import {
+  pickFromList,
+  resolveTypography,
+  type DopeTypography,
+} from "../framework/content.js";
 import type { GLContext } from "../engine/context.js";
 import doc from "./comic.dope.json";
 
-// Comic is PARTIALLY data-driven: its numeric panel + palette params come from
-// comic.dope.json via the loader (byte-identical to resolveComicParams — see
-// loader.test.ts), while the TYPOGRAPHY (font stacks, skew/ink curves) and the
-// per-fire word selection are genuinely code-shaped and composed on top.
+// Comic is now FULLY data-driven: numeric panel + palette params, the per-fire
+// WORD/checkmark token (content.pool), and the TYPOGRAPHY (mood→face + the
+// whimsy/intensity curve table) all come from comic.dope.json via the loader +
+// content resolver — byte-identical to the legacy resolveComicParams /
+// comicTypography / pickWord (parity-tested). Reskinning (different words, font,
+// curves, palette, timing) is no-code.
 const DOPE = parseDope(doc as object);
+const CONTENT = (DOPE.content ?? {}) as { pool?: readonly string[] };
+const TYPO = DOPE.typography as unknown as DopeTypography;
 
 function resolveFromDope(feeling: FeelingInput): ComicRenderParams {
-  const numeric = resolveDopeParams(DOPE, feeling, {}, "comicSeed") as unknown as Omit<
-    ComicRenderParams,
-    keyof ReturnType<typeof comicTypography> | "word"
-  >;
+  const numeric = resolveDopeParams(DOPE, feeling, {}, "comicSeed") as unknown as Record<string, unknown>;
+  return composeComic(numeric, feeling);
+}
+
+/** Compose the non-numeric Comic params (word + typography) from the .dope. */
+function composeComic(numeric: Record<string, unknown>, feeling: FeelingInput): ComicRenderParams {
+  const pool = CONTENT.pool ?? ["DONE!"];
   return {
     ...numeric,
-    word: pickWord(feeling.seed),
-    ...comicTypography(feeling.mood, feeling.intensity, feeling.whimsy),
-  } as ComicRenderParams;
+    word: pickFromList(pool, feeling.seed) as ComicWord,
+    ...resolveTypography(TYPO, feeling.mood, feeling.intensity, feeling.whimsy),
+  } as unknown as ComicRenderParams;
 }
 
 const UNIFORMS = [
@@ -156,5 +169,17 @@ export const comic: EffectFactory<ComicRenderParams> = {
   create: createInstance,
   reducedMotion: { peakMs: 220, holdMs: 360 },
 };
+
+// Expose as a bundled program so loadEffect() can bind a host-authored comic
+// variant (different words/font/curves) with no code; composeParams adds the
+// word + typography from the (possibly overridden) doc's content/typography.
+registerProgram<ComicRenderParams>("comic", {
+  create: createInstance,
+  scatterKey: "comicSeed",
+  consts: {},
+  reducedMotion: { peakMs: 220, holdMs: 360 },
+  composeParams: (numeric, feeling) =>
+    composeComic(numeric, feeling) as unknown as Record<string, unknown>,
+});
 
 export default registerEffect(comic);

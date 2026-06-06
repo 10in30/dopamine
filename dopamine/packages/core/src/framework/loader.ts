@@ -92,7 +92,13 @@ export type ExprNode =
   | { add: ExprNode[] }
   | { sub: ExprNode[] }
   | { round: ExprNode }
-  | { floor: ExprNode };
+  | { floor: ExprNode }
+  // Extensions (§10: nodes may grow without a major bump as long as old nodes
+  // keep their meaning). Used by the typography tables (Phase 3) so curves whose
+  // endpoints are themselves expressions stay declarative.
+  | { mix: [ExprNode, ExprNode, string] } // a + (b-a)*clamp01(control)
+  | { max: ExprNode[] }
+  | { min: ExprNode[] };
 
 /** Evaluation context for the grammar. */
 export interface EvalCtx {
@@ -123,6 +129,14 @@ export function evalExpr(node: ExprNode, ctx: EvalCtx): number {
   }
   if ("round" in node) return Math.round(evalExpr(node.round, ctx));
   if ("floor" in node) return Math.floor(evalExpr(node.floor, ctx));
+  if ("mix" in node) {
+    const [a, b, c] = node.mix;
+    const va = evalExpr(a, ctx);
+    const vb = evalExpr(b, ctx);
+    return va + (vb - va) * clamp01(ctx.controls[c] ?? 0);
+  }
+  if ("max" in node) return Math.max(...node.max.map((n) => evalExpr(n, ctx)));
+  if ("min" in node) return Math.min(...node.min.map((n) => evalExpr(n, ctx)));
   throw new Error(`dope: unknown expr node ${JSON.stringify(node)}`);
 }
 

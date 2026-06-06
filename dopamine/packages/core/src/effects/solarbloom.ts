@@ -12,13 +12,14 @@
 
 import { FRAGMENT_SRC, VERTEX_SRC } from "../engine/shader.js";
 import { checkProgress, envelope, NPR_TIME_STEP_MS } from "../engine/tempo.js";
-import { MAX_MOTES, pickCheckGlyph, type RenderParams } from "../engine/mood.js";
+import { MAX_MOTES, type CheckGlyph, type RenderParams } from "../engine/mood.js";
 import { shadowGeometry } from "../engine/shadow.js";
 import { drawCheckGlyph } from "../engine/check-renderer.js";
 import type { EffectContext, EffectFactory, EffectInstance } from "../framework/effect.js";
 import { registerEffect } from "../framework/registry.js";
 import { registerProgram } from "../framework/programs.js";
 import { parseDope, resolveDopeParams, getOutline } from "../framework/loader.js";
+import { pickBand } from "../framework/content.js";
 import { decodeSdf, type DecodedSdf } from "../engine/sdf.js";
 import type { GLContext } from "../engine/context.js";
 import doc from "./solarbloom.dope.json";
@@ -45,16 +46,21 @@ const CHECK_SDF: DecodedSdf | null = (() => {
   }
 })();
 
+// The whimsy→check-glyph fallback BANDS now live in the .dope (content.glyphBands)
+// and are picked with the generic content resolver — byte-identical to the legacy
+// `pickCheckGlyph`. (Only used when the baked SDF is absent.)
+const GLYPH_BANDS = ((DOPE.content as { glyphBands?: CheckGlyph[] })?.glyphBands ?? [
+  { family: "Dopamine Check Symbols", char: "✓" },
+]) as CheckGlyph[];
+
 /**
  * Resolve via the `.dope` loader → the typed RenderParams the shader consumes.
- * The numeric/palette params come from the bundled `.dope` document (byte-
- * identical to `resolveParams` — see loader.test.ts). The whimsy-derived
- * CHECK GLYPH (face + char) is genuinely code-shaped (a non-numeric pick, no
- * rng), so it's composed on top here — mirroring how Comic adds its typography.
+ * The numeric/palette params + the whimsy-derived CHECK GLYPH band both come
+ * from the bundled `.dope` (byte-identical to `resolveParams` / `pickCheckGlyph`).
  */
 function resolveFromDope(feeling: { mood: string; intensity: number; whimsy: number; seed: number }): RenderParams {
   const numeric = resolveDopeParams(DOPE, feeling, { MAX_MOTES }, "moteSeed") as unknown as RenderParams;
-  return { ...numeric, checkGlyph: pickCheckGlyph(feeling.whimsy) };
+  return { ...numeric, checkGlyph: pickBand(GLYPH_BANDS, feeling.whimsy) };
 }
 
 const UNIFORMS = [
@@ -258,7 +264,7 @@ registerProgram<RenderParams>("solarbloom", {
   reducedMotion: { peakMs: 260, holdMs: 360 },
   composeParams: (numeric, feeling) => ({
     ...numeric,
-    checkGlyph: pickCheckGlyph(feeling.whimsy),
+    checkGlyph: pickBand(GLYPH_BANDS, feeling.whimsy),
   }),
 });
 

@@ -171,10 +171,17 @@ document (`docs/effect-format.md`) instead of code. The loader
 /`control`/`round`/`clamp…`) + the OKLCH golden-angle palette into the same
 render params the shader consumes — with the PRNG consumed in the same order, so
 output is byte-identical to the code path (proven by `loader.test.ts`).
-Solarbloom + Verdict are **fully** data-driven (`effects/*.dope.json` drive them
-through the loader → registry → conductor); Comic is data-driven for its numeric
-panel + palette, with its typography + per-fire word composed in code. Shader
-bodies stay referenced GLSL — the format references them; it is not a transpiler.
+All three built-ins are now **fully** data-driven (`effects/*.dope.json` drive
+them through the loader → registry → conductor). Comic's per-fire word/checkmark
+pool (`content.pool`) and its typography (mood→face + the whimsy/intensity curve
+table, `typography.*`) live in the `.dope` and are reproduced byte-for-byte by
+the content resolver (`framework/content.ts`); Solarbloom's icon comes from its
+`.dope` `svgPath` baked to an SDF (`engine/sdf.ts`), with the whimsy→glyph
+fallback bands also in the file. A public `loadEffect(doc | json | .dope-zip)`
+registers an arbitrary `.dope` against a bundled shader **program**
+(`framework/programs.ts`) — recolor / re-icon / retime a built-in or ship a new
+effect with no code. Shader bodies stay referenced GLSL — the format references
+them; it is not a transpiler.
 
 ## Roadmap
 
