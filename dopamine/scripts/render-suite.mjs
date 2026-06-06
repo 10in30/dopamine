@@ -25,6 +25,8 @@ const SEGMENTS = [
   { effect: "solarbloom", mood: "celebratory", intensity: 0.85, whimsy: 0.35 },
   { effect: "inkstroke", mood: "celebratory", intensity: 0.85, whimsy: 0.45 },
   { effect: "comic", mood: "celebratory", intensity: 0.85, whimsy: 0.5 },
+  // Fail: the demo maps the success-mood toggle → fail registers (electric → denied).
+  { effect: "fail", mood: "electric", intensity: 0.9, whimsy: 0.4 },
 ];
 
 const ARGS = [
