@@ -125,6 +125,6 @@ three together, don't.
 
 ## Verification
 Per change: single-frame stills across the 3 moods × {whimsy 0, 1} (read them),
-plus a 60fps offline render (`scripts/render-*.mjs`) for motion; unit tests for
+plus a 30fps offline render (`scripts/render-*.mjs`) for motion; unit tests for
 any new pure logic; `npm test` + `npm run build` green; Solarbloom/Verdict/Comic
 all still distinct in a side-by-side.

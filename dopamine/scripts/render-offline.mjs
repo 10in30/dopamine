@@ -1,6 +1,6 @@
 /**
  * Frame-perfect offline render. Drives the effect by an explicit fixed timestep
- * (not the wall clock), screenshots each frame, and muxes to a true 60fps video.
+ * (not the wall clock), screenshots each frame, and muxes to a true 30fps video.
  *
  * Because we wait for each frame to finish computing before capturing it, the
  * output is buttery-smooth and pixel-identical to GPU hardware — only the
@@ -20,7 +20,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const demoDir = join(root, "examples", "demo");
 const outDir = join(root, "e2e", "output");
 const VIEWPORT = { width: 1100, height: 720 };
-const FPS = 60;
+const FPS = 30;
 const TAIL_FRAMES = 14; // hold past the end so the fade fully resolves
 
 const MOODS = [

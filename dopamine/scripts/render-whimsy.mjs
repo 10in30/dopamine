@@ -1,5 +1,5 @@
 /**
- * Smooth 60fps render of the WHIMSY axis (photoreal → cel/hand-drawn).
+ * Smooth 30fps render of the WHIMSY axis (photoreal → cel/hand-drawn).
  *
  * Plays the celebratory success at several whimsy levels and stitches them into
  * one montage so you can see the same effect morph from true volumetric light
@@ -19,7 +19,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const demoDir = join(root, "examples", "demo");
 const outDir = join(root, "e2e", "output");
 const VIEWPORT = { width: 1100, height: 720 };
-const FPS = 60;
+const FPS = 30;
 const TAIL_FRAMES = 14;
 const LEVELS = [0.0, 0.5, 1.0];
 const MOOD = "celebratory";

@@ -1,6 +1,6 @@
 /**
  * Render a montage of ALL three success effects over the depthy, shadow-casting
- * demo scene, at 60fps, into one mp4 (e2e/output/dopamine-suite.mp4).
+ * demo scene, at 30fps, into one mp4 (e2e/output/dopamine-suite.mp4).
  * Frame-perfect fixed-timestep capture (see render-offline.mjs) so it's smooth
  * regardless of software-WebGL speed. On-screen controls are set to match each
  * segment so the clip is self-labeling.
@@ -18,7 +18,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const demoDir = join(root, "examples", "demo");
 const outDir = join(root, "e2e", "output");
 const VIEWPORT = { width: 1100, height: 720 };
-const FPS = 60;
+const FPS = 30;
 const TAIL = 16;
 
 const SEGMENTS = [
