@@ -1,0 +1,314 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dopamine.dev/schemas/effect-format-1.0.0.json",
+  "title": "Dopamine Effect Format",
+  "description": "Declarative, renderer-agnostic format for Dopamine visual effects. Inspired-by-Lottie: reuses Lottie keyframe + shape encodings at the leaves, but is parametric (controls -> mappings -> render params -> backend) at the top. SKETCH: covers the load-bearing structure, not every leaf.",
+  "type": "object",
+  "required": ["fmt", "v", "id", "controls", "palette", "tempo", "render"],
+  "additionalProperties": true,
+  "properties": {
+    "fmt": { "const": "dopamine-effect" },
+    "v": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)*$" },
+    "extends": { "type": "string" },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "author": { "type": "string" },
+        "description": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "controls": {
+      "type": "object",
+      "description": "The introspectable feeling API. Each control is a UI-renderable descriptor.",
+      "additionalProperties": { "$ref": "#/$defs/control" },
+      "properties": {
+        "mood":      { "$ref": "#/$defs/control" },
+        "intensity": { "$ref": "#/$defs/control" },
+        "whimsy":    { "$ref": "#/$defs/control" }
+      }
+    },
+
+    "palette": {
+      "type": "object",
+      "required": ["model", "generator"],
+      "properties": {
+        "model": { "const": "oklch" },
+        "space": { "enum": ["linear-srgb", "srgb"], "default": "linear-srgb" },
+        "generator": { "enum": ["golden-angle", "explicit"] },
+        "goldenAngleDeg": { "type": "number" },
+        "stops": { "type": "integer", "minimum": 1 },
+        "hueStep": { "$ref": "#/$defs/exprOrNumber" },
+        "hueSpread": { "type": "number" },
+        "baseHue": {
+          "type": "object",
+          "properties": {
+            "from": { "enum": ["rng", "const"] },
+            "center": { "$ref": "#/$defs/exprOrNumber" },
+            "range": { "$ref": "#/$defs/exprOrNumber" }
+          }
+        },
+        "lightness": { "$ref": "#/$defs/channelSpec" },
+        "chroma": { "$ref": "#/$defs/channelSpec" },
+        "seed": {
+          "type": "object",
+          "properties": {
+            "deterministic": { "type": "boolean" },
+            "source": { "type": "string" },
+            "prng": { "const": "mulberry32" },
+            "note": { "type": "string" }
+          }
+        },
+        "perMood": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "hueCenter": { "type": "number" },
+              "hueRange": { "type": "number" },
+              "lightness": { "type": "number" },
+              "chroma": { "type": "number" }
+            }
+          }
+        },
+        "override": {
+          "type": "array",
+          "description": "Host theme: explicit OKLCH stops that bypass the generator.",
+          "items": { "$ref": "#/$defs/oklch" }
+        }
+      }
+    },
+
+    "tempo": {
+      "type": "object",
+      "properties": {
+        "durationMs": { "$ref": "#/$defs/paramExpr" },
+        "confirm": {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "draw-window" },
+            "windowMs": { "type": "object", "properties": { "perEffect": { "type": "object" } } },
+            "progress": { "$ref": "#/$defs/curveRef" }
+          }
+        },
+        "envelope": {
+          "type": "object",
+          "properties": {
+            "curve": { "$ref": "#/$defs/curveRef" },
+            "overshoot": { "type": "object", "properties": { "param": { "type": "string" } } }
+          }
+        },
+        "stepping": {
+          "type": "object",
+          "properties": { "curve": { "$ref": "#/$defs/curveRef" } }
+        },
+        "curves": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/curve" }
+        }
+      }
+    },
+
+    "geometry": {
+      "type": "object",
+      "properties": {
+        "kind": { "enum": ["radial", "directional"] },
+        "viewBox": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+        "outlines": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/outline" }
+        }
+      }
+    },
+
+    "render": {
+      "type": "object",
+      "required": ["params", "backends"],
+      "properties": {
+        "params": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/paramSpec" }
+        },
+        "derived": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/paramExpr" }
+        },
+        "backends": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/backend" }
+        },
+        "fallbackOrder": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "compat": {
+      "type": "object",
+      "properties": {
+        "lottieFallback": {
+          "oneOf": [
+            { "type": "object", "properties": { "$ref": { "type": "string" } }, "required": ["$ref"] },
+            { "type": "object", "description": "inline Lottie animation" }
+          ]
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "control": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["enum", "scalar", "int", "point", "selector"] },
+        "label": { "type": "string" },
+        "help": { "type": "string" },
+        "ui": { "type": "string" },
+        "default": {},
+        "nullable": { "type": "boolean" },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "step": { "type": "number" },
+        "options": { "type": "array", "items": { "type": "string" } },
+        "appliesWhen": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "enum" } } },
+          "then": { "required": ["options"] }
+        }
+      ]
+    },
+
+    "expr": {
+      "description": "Mapping mini-grammar: a non-Turing-complete arithmetic tree over controls + mood baselines.",
+      "oneOf": [
+        { "type": "number" },
+        { "type": "object", "properties": { "const": { "type": "number" } }, "required": ["const"] },
+        { "type": "object", "properties": { "control": { "type": "string" } }, "required": ["control"] },
+        { "type": "object", "properties": { "baseline": { "type": "string" } }, "required": ["baseline"] },
+        { "type": "object", "properties": { "lerp": { "type": "array", "minItems": 3, "maxItems": 3,
+            "prefixItems": [ { "type": "string" }, { "type": "number" }, { "type": "number" } ] } }, "required": ["lerp"] },
+        { "type": "object", "properties": { "mul": { "type": "array", "items": { "$ref": "#/$defs/expr" } } }, "required": ["mul"] },
+        { "type": "object", "properties": { "add": { "type": "array", "items": { "$ref": "#/$defs/expr" } } }, "required": ["add"] },
+        { "type": "object", "properties": { "sub": { "type": "array", "items": { "$ref": "#/$defs/expr" } } }, "required": ["sub"] },
+        { "type": "object", "properties": { "round": { "$ref": "#/$defs/expr" } }, "required": ["round"] },
+        { "type": "object", "properties": { "floor": { "$ref": "#/$defs/expr" } }, "required": ["floor"] },
+        { "type": "object", "properties": { "curve": { "type": "array" } }, "required": ["curve"] },
+        { "type": "object", "properties": { "expr": { "type": "string", "description": "string formula; restricted whitelist of identifiers/ops" } }, "required": ["expr"] }
+      ]
+    },
+    "exprOrNumber": { "$ref": "#/$defs/expr" },
+
+    "paramExpr": {
+      "type": "object",
+      "properties": { "from": { "$ref": "#/$defs/expr" }, "param": { "type": "string" } }
+    },
+
+    "paramSpec": {
+      "type": "object",
+      "required": ["type", "from"],
+      "properties": {
+        "type": { "enum": ["float", "int"] },
+        "from": { "$ref": "#/$defs/expr" },
+        "clamp01": { "type": "boolean" },
+        "clampMax": { "type": "string", "description": "name of a known constant, e.g. MAX_MOTES" },
+        "clampMin": { "type": "string" }
+      }
+    },
+
+    "channelSpec": {
+      "type": "object",
+      "properties": {
+        "baseline": { "type": "string" },
+        "from": { "$ref": "#/$defs/expr" },
+        "perStop": { "type": "array", "items": { "type": "number" } }
+      }
+    },
+
+    "oklch": {
+      "type": "object",
+      "required": ["L", "C", "h"],
+      "properties": {
+        "L": { "type": "number", "minimum": 0, "maximum": 1 },
+        "C": { "type": "number", "minimum": 0 },
+        "h": { "type": "number" }
+      }
+    },
+
+    "curve": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["bezier", "step"] },
+        "domain": { "enum": ["life", "timeSeconds", "norm"] },
+        "gridHz": { "type": "number" },
+        "blendControl": { "type": "string" },
+        "generator": { "type": "object" },
+        "note": { "type": "string" },
+        "keys": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/keyframe" }
+        }
+      }
+    },
+
+    "keyframe": {
+      "description": "Lottie-compatible keyframe. t=time, s=value(s), i/o=bezier handles, h=1 -> HOLD (step). This is exactly Lottie's keyframe object.",
+      "type": "object",
+      "required": ["t"],
+      "properties": {
+        "t": { "type": "number" },
+        "s": { "type": "array" },
+        "e": { "type": "array" },
+        "h": { "enum": [0, 1] },
+        "i": { "type": "object", "properties": { "x": { "type": "array" }, "y": { "type": "array" } } },
+        "o": { "type": "object", "properties": { "x": { "type": "array" }, "y": { "type": "array" } } }
+      }
+    },
+
+    "outline": {
+      "description": "An icon/glyph outline. Provide svgPath OR a Lottie shape (i/o/v).",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string" },
+        "svgPath": { "type": "string" },
+        "lottie": {
+          "type": "object",
+          "description": "Lottie shape vertex data.",
+          "required": ["v"],
+          "properties": {
+            "c": { "type": "boolean" },
+            "v": { "type": "array", "items": { "type": "array", "items": { "type": "number" } } },
+            "i": { "type": "array", "items": { "type": "array", "items": { "type": "number" } } },
+            "o": { "type": "array", "items": { "type": "array", "items": { "type": "number" } } }
+          }
+        }
+      },
+      "anyOf": [ { "required": ["svgPath"] }, { "required": ["lottie"] } ]
+    },
+
+    "curveRef": {
+      "oneOf": [
+        { "type": "string", "pattern": "^\\$ref:" },
+        { "$ref": "#/$defs/curve" }
+      ]
+    },
+
+    "backend": {
+      "type": "object",
+      "properties": {
+        "stage": { "type": "string" },
+        "blend": { "enum": ["screen", "add", "normal", "multiply"] },
+        "strategy": { "type": "string" },
+        "fallbackOf": { "type": "string" },
+        "caps": { "type": "array", "items": { "type": "string" } },
+        "shader": { "type": "object", "properties": { "$ref": { "type": "string" } } },
+        "uniforms": { "type": "object", "additionalProperties": { "type": "string" } },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}
