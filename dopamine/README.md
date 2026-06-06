@@ -51,10 +51,6 @@ The design is grounded in published research:
 | Unpredictable reward beats predictable; novelty resists habituation | variable-reward psychology | **unique OKLCH golden-angle palette every fire** |
 | Linear motion feels wrong; physical motion calms | NN/g, motion design | spring envelope + buoyant, curling mote paths |
 
-**Ethics:** these are the same levers used by addictive design. Dopamine ties
-rewards to *genuine accomplishment*, fires once per real completion, and never
-manufactures uncertainty to farm engagement. Delight, not compulsion.
-
 ## Usage
 
 Framework-agnostic core:
