@@ -17,6 +17,7 @@ import { shadowGeometry } from "../engine/shadow.js";
 import { drawCheckGlyph } from "../engine/check-renderer.js";
 import type { EffectContext, EffectFactory, EffectInstance } from "../framework/effect.js";
 import { registerEffect } from "../framework/registry.js";
+import { registerProgram } from "../framework/programs.js";
 import { parseDope, resolveDopeParams, getOutline } from "../framework/loader.js";
 import { decodeSdf, type DecodedSdf } from "../engine/sdf.js";
 import type { GLContext } from "../engine/context.js";
@@ -245,5 +246,20 @@ export const solarbloom: EffectFactory<RenderParams> = {
   create: createInstance,
   reducedMotion: { peakMs: 260, holdMs: 360 },
 };
+
+// Expose the renderer as a bundled PROGRAM so `loadEffect()` can bind an
+// arbitrary host-authored `.dope` (one that references program "solarbloom") to
+// it with no code. The numeric/palette bag comes from the loader; the whimsy-
+// picked check glyph is composed on top (genuinely code-shaped, no rng).
+registerProgram<RenderParams>("solarbloom", {
+  create: createInstance,
+  scatterKey: "moteSeed",
+  consts: { MAX_MOTES },
+  reducedMotion: { peakMs: 260, holdMs: 360 },
+  composeParams: (numeric, feeling) => ({
+    ...numeric,
+    checkGlyph: pickCheckGlyph(feeling.whimsy),
+  }),
+});
 
 export default registerEffect(solarbloom);

@@ -18,7 +18,7 @@
  * port to Swift for the Metal backend.
  */
 
-import { buildPalette, type RGB } from "../engine/color.js";
+import { buildPalette, oklchToLinearSrgb, type OKLCH, type RGB } from "../engine/color.js";
 import { mulberry32, type Rng } from "../engine/seed.js";
 import type { BakedSdf } from "../engine/sdf.js";
 
@@ -155,6 +155,13 @@ export function resolveDopeParams(
   input: DopeResolveInput,
   consts: Record<string, number>,
   scatterKey: string,
+  /**
+   * Host theme override: three explicit OKLCH stops that REPLACE the generated
+   * golden-angle palette (a pinned brand palette). The base-hue rng() is still
+   * consumed first, so the per-fire scatter offset stays identical to the
+   * generated path — pinning the palette never shifts the mote/spray layout.
+   */
+  paletteOverride?: [OKLCH, OKLCH, OKLCH],
 ): Record<string, number | RGB[] | number[]> {
   const i = clamp01(input.intensity);
   const w = clamp01(input.whimsy);
@@ -187,13 +194,16 @@ export function resolveDopeParams(
   // matching the engine's call order exactly.
   const reg = doc.palette.perMood[input.mood] ?? doc.palette.perMood.celebratory;
   const chroma = evalExpr(doc.palette.chroma.from, { ...ctx, baseline: reg as Record<string, number> });
-  out.palette = buildPalette(rng, {
+  const generated = buildPalette(rng, {
     lightness: reg.lightness,
     chroma,
     hueCenter: reg.hueCenter,
     hueRange: reg.hueRange,
     hueSpread: doc.palette.hueSpread,
   }) as RGB[];
+  // A host palette override REPLACES the generated stops (the base-hue rng() above
+  // was still consumed, so scatter parity holds), pinning a brand palette.
+  out.palette = paletteOverride ? (paletteOverride.map(oklchToLinearSrgb) as RGB[]) : generated;
 
   // THEN the per-fire scatter offset (same rng() * 1000 as the engine).
   out[scatterKey] = rng() * 1000;

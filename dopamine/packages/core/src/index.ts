@@ -55,6 +55,16 @@ export {
   type ResolvedMood,
 } from "./framework/mood-registry.js";
 export { teardown, type PreparedHandle } from "./framework/conductor.js";
+export {
+  loadEffect,
+  loadEffectSync,
+  type LoadEffectOptions,
+  type LoadOverrides,
+  type LoadedEffect,
+} from "./framework/load-effect.js";
+export { registerProgram, getProgram, programNames, type RenderProgram } from "./framework/programs.js";
+export { parseDope, getOutline, type DopeDoc, type DopeOutline } from "./framework/loader.js";
+export { bakeSdf, decodeSdf, parseSvgPath, type BakedSdf, type DecodedSdf } from "./engine/sdf.js";
 
 const DEFAULTS = { mood: "celebratory", intensity: 0.7, whimsy: 0.5 } as const;
 
