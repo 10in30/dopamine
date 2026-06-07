@@ -196,37 +196,54 @@ jobs:
           xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" || true
           sleep 2
 
-          # --- Record the REAL composited screen (GPU-accelerated) ---
-          # With the GPU attached (defaults + Simulator.app above), recordVideo's
-          # encode pipeline can finalize a playable file — so this captures the
-          # actual full app (card + controls + the live bloom cast over them) at the
-          # simulator's real frame rate. Detach the recorder's stdio so it can't
-          # hold the step's pipe; stop with SIGINT to the simctl process (which
-          # writes the moov atom); bounded wait + SIGKILL fallback.
+          # --- Record the REAL composited screen via a PTY ---
+          # `simctl io recordVideo` only finalizes (writes the moov atom) on an
+          # interactive Ctrl-C; a bare `kill -INT` to a backgrounded process is
+          # ignored (proven: it kept recording through a 180s wait, 23MB, no moov).
+          # So drive it under a pseudo-terminal and send a real ^C (0x03), which the
+          # tty line discipline turns into SIGINT for the recorder's process group —
+          # exactly like pressing Ctrl-C in Terminal. Then wait for it to flush.
           rm -f /tmp/solarbloom.mp4
-          xcrun simctl io "$UDID" recordVideo --codec=h264 --force /tmp/solarbloom.mp4 \
-            </dev/null >/tmp/rec.log 2>&1 &
-          REC=$!
-          echo "recordVideo pid=$REC"
-          sleep 10   # ~3 clean autoplay fires
-          echo "stopping recordVideo (SIGINT to simctl) ..."
-          pgrep simctl | while read -r p; do kill -s INT "$p" 2>/dev/null || true; done
-          kill -INT "$REC" 2>/dev/null || true
-          # Finalizing the .mp4 (writing the moov atom) is a SOFTWARE encode here —
-          # it can take much longer than the recording itself. Earlier runs killed
-          # simctl after only 20s, which may have aborted the flush before the moov
-          # was written. Wait up to ~180s for a clean exit; watch the file size to
-          # see finalize progress; only force-kill as a last resort.
-          for _ in $(seq 1 360); do
-            kill -0 "$REC" 2>/dev/null || { echo "recordVideo exited cleanly"; break; }
-            sleep 0.5
-          done
-          if kill -0 "$REC" 2>/dev/null; then
-            echo "recordVideo still alive after 180s — force-killing"
-            pkill -9 -x simctl 2>/dev/null || true
-            kill -9 "$REC" 2>/dev/null || true
-          fi
-          echo "--- recordVideo log ---"; cat /tmp/rec.log || true
+          UDID="$UDID" python3 <<'PY'
+          import os, pty, time, select, signal, sys
+          udid = os.environ["UDID"]
+          pid, fd = pty.fork()
+          if pid == 0:
+              os.execvp("xcrun", ["xcrun", "simctl", "io", udid, "recordVideo",
+                                  "--codec=h264", "--force", "/tmp/solarbloom.mp4"])
+              os._exit(127)
+          def pump(seconds):
+              end = time.time() + seconds
+              while time.time() < end:
+                  r, _, _ = select.select([fd], [], [], 0.3)
+                  if r:
+                      try:
+                          d = os.read(fd, 4096)
+                          if d: sys.stdout.write(d.decode(errors="replace")); sys.stdout.flush()
+                      except OSError:
+                          return
+          pump(10)                         # record ~3 clean autoplay fires
+          print(">>> sending Ctrl-C to recordVideo via PTY", flush=True)
+          os.write(fd, b"\x03")            # ^C → SIGINT to the recorder's pgroup
+          deadline = time.time() + 90
+          exited = False
+          while time.time() < deadline:
+              r, _, _ = select.select([fd], [], [], 0.5)
+              if r:
+                  try:
+                      d = os.read(fd, 4096)
+                      if d: sys.stdout.write(d.decode(errors="replace")); sys.stdout.flush()
+                  except OSError:
+                      pass
+              wpid, _ = os.waitpid(pid, os.WNOHANG)
+              if wpid == pid:
+                  exited = True; print(">>> recordVideo exited cleanly", flush=True); break
+          if not exited:
+              print(">>> timeout — SIGKILL", flush=True)
+              try: os.kill(pid, signal.SIGKILL)
+              except ProcessLookupError: pass
+          PY
+          echo "--- recordVideo log (pty stdout above) ---"
 
           echo "--- app liveness ---"
           xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep -i dopamine \
