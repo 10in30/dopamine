@@ -9,8 +9,14 @@
 import SwiftUI
 import Metal
 import simd
+import os
 import DopamineCore
 import DopamineEffectSolarbloom
+
+// Unified-logging channel. `print()` writes to stdout/stderr, which
+// `simctl spawn … log show` does NOT capture; os.Logger lands in the unified
+// log so the CI diagnostic can actually read these lines back.
+private let demoLog = Logger(subsystem: "ai.polyguard.DopamineDemo", category: "overlay")
 
 struct SolarbloomOverlay: UIViewRepresentable {
     var fireToken: Int
@@ -52,18 +58,19 @@ final class OverlayUIView: UIView {
 
     private func setup() {
         guard let device = MTLCreateSystemDefaultDevice() else {
-            print("[DopamineDemo] no Metal device")
+            demoLog.error("[DopamineDemo] no Metal device")
             return
         }
         // The effect's compiled shaders live in the effect package's resource
         // bundle (SwiftPM compiled Shaders/*.metal → default.metallib).
         guard let library = try? device.makeDefaultLibrary(bundle: SolarbloomResources.bundle) else {
-            print("[DopamineDemo] failed to load effect metallib")
+            demoLog.error("[DopamineDemo] failed to load effect metallib")
             return
         }
+        demoLog.log("[DopamineDemo] Metal device=\(device.name, privacy: .public) library loaded")
         host = try? MetalOverlayHost(config: SolarbloomConfig(), device: device, library: library, wantsShadow: true)
         solar = try? Solarbloom()
-        if host == nil { print("[DopamineDemo] failed to build overlay host") }
+        if host == nil { demoLog.error("[DopamineDemo] failed to build overlay host") }
 
         if let shadow = host?.shadowLayer { layer.addSublayer(shadow) }
         if let light = host?.lightLayer { layer.addSublayer(light) }
@@ -89,7 +96,7 @@ final class OverlayUIView: UIView {
         let params = (try? solar.resolve(DopeResolveInput(
             mood: mood, intensity: intensity, whimsy: whimsy, seed: randomSeed()))) ?? [:]
         try? host.play(params: params)
-        print("[DopamineDemo] fired solarbloom mood=\(mood) intensity=\(intensity) whimsy=\(whimsy)")
+        demoLog.log("[DopamineDemo] fired solarbloom mood=\(mood, privacy: .public) intensity=\(intensity) whimsy=\(whimsy)")
     }
 
     @objc private func tick() {

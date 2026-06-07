@@ -78,45 +78,54 @@ public final class MetalOverlayHost<Config: PassConfig> {
         startTime = CACurrentMediaTime()
     }
 
+    /// Build a command buffer + render encoder for one layer's next drawable.
+    /// Returns nil if no drawable is available this frame (can happen
+    /// transiently, especially on a headless simulator) — the caller then
+    /// SKIPS the frame instead of force-unwrapping a nil encoder, which would
+    /// crash the app.
+    private func beginPass(_ layer: CAMetalLayer)
+        -> (cb: MTLCommandBuffer, drawable: CAMetalDrawable, enc: MTLRenderCommandEncoder)? {
+        guard let drawable = layer.nextDrawable(),
+              let cb = queue.makeCommandBuffer() else { return nil }
+        let rpd = MTLRenderPassDescriptor()
+        rpd.colorAttachments[0].texture = drawable.texture
+        rpd.colorAttachments[0].loadAction = .clear
+        rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        rpd.colorAttachments[0].storeAction = .store
+        guard let enc = cb.makeRenderCommandEncoder(descriptor: rpd) else { return nil }
+        return (cb, drawable, enc)
+    }
+
     /// Drive one frame (call from a CADisplayLink / DisplayLink). `dpr` is the
     /// content scale; `anchorPx` the effect origin in points.
     public func tick(now: CFTimeInterval, dpr: Float, anchorPx: SIMD2<Float>) {
         guard let runner else { return }
         let elapsedMs = (now - startTime) * 1000
 
-        func pass(_ layer: CAMetalLayer, makeEncoder: (MTLRenderCommandEncoder?) -> Void) -> (MTLCommandBuffer, CAMetalDrawable)? {
-            guard let drawable = layer.nextDrawable(),
-                  let cb = queue.makeCommandBuffer() else { return nil }
-            let rpd = MTLRenderPassDescriptor()
-            rpd.colorAttachments[0].texture = drawable.texture
-            rpd.colorAttachments[0].loadAction = .clear
-            rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-            rpd.colorAttachments[0].storeAction = .store
-            let enc = cb.makeRenderCommandEncoder(descriptor: rpd)
-            makeEncoder(enc)
-            enc?.endEncoding()
-            return (cb, drawable)
-        }
+        // The LIGHT pass is mandatory. If no drawable is available this frame,
+        // skip the whole tick rather than crash on a nil encoder.
+        guard let light = beginPass(lightLayer) else { return }
 
         let w = Float(lightLayer.drawableSize.width)
         let h = Float(lightLayer.drawableSize.height)
 
-        // Render into separate light/shadow drawables (each its own command
-        // buffer) — keeping the two CSS canvases' separation, see option (1) in
-        // the file header for collapsing them into one composited layer.
-        var lightEnc: MTLRenderCommandEncoder?
-        var shadowEnc: MTLRenderCommandEncoder?
-        let lightCBD = pass(lightLayer) { lightEnc = $0 }
-        var shadowCBD: (MTLCommandBuffer, CAMetalDrawable)?
-        if let sl = shadowLayer { shadowCBD = pass(sl) { shadowEnc = $0 } }
+        // Optional shadow pass into its own drawable / command buffer — keeping
+        // the two CSS canvases' separation (see option (1) in the file header).
+        let shadow = shadowLayer.flatMap { beginPass($0) }
 
+        // Encode the draw calls FIRST, then end encoding. (Encoding into an
+        // already-ended encoder is Metal API misuse and crashes — the draws
+        // must happen while the encoder is still open.)
         runner.render(
             elapsedMs: elapsedMs, width: w, height: h, anchorPx: anchorPx, dpr: dpr,
-            lightEncoder: lightEnc!, shadowEncoder: shadowEnc
+            lightEncoder: light.enc, shadowEncoder: shadow?.enc
         )
 
-        if let (cb, drawable) = shadowCBD { cb.present(drawable); cb.commit() }
-        if let (cb, drawable) = lightCBD { cb.present(drawable); cb.commit() }
+        shadow?.enc.endEncoding()
+        light.enc.endEncoding()
+
+        if let shadow { shadow.cb.present(shadow.drawable); shadow.cb.commit() }
+        light.cb.present(light.drawable); light.cb.commit()
     }
 }
 #endif

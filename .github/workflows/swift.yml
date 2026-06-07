@@ -180,18 +180,33 @@ jobs:
 
           # Launch plain (NO --console-pty: that allocates a PTY the runner blocks on
           # at EOF, wedging the step). simctl launch returns the app PID immediately.
-          xcrun simctl launch "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" || true
+          xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" || true
           sleep 4
           echo "--- app liveness (is DopamineDemo still running?) ---"
-          xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep -i dopamine \
-            || echo ">>> DopamineDemo is NOT running (crashed or never foregrounded)"
-          # The app's print()/os_log output + any crash lands in the unified log; pull
-          # the last 90s for it (bounded, returns — no streaming).
-          echo "--- app log (simctl log show) ---"
-          xcrun simctl spawn "$UDID" log show --last 120s --style compact 2>/dev/null \
-            | grep -iE 'DopamineDemo|Dopamine|Metal|metallib|Solarbloom' | head -80 \
+          if xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep -i dopamine; then
+            echo ">>> DopamineDemo IS running"
+          else
+            echo ">>> DopamineDemo is NOT running (crashed or never foregrounded)"
+          fi
+          # Capture the APP PROCESS's own log lines (os.Logger lands here; plain
+          # print() does NOT). Filtering by process avoids the install-coordination
+          # noise that a bare 'Dopamine' grep picks up.
+          echo "--- app log (process == DopamineDemo) ---"
+          xcrun simctl spawn "$UDID" log show --last 3m --style compact \
+            --predicate 'process == "DopamineDemo"' 2>/dev/null | head -120 \
             > /tmp/app.log || true
           cat /tmp/app.log || true
+          # If it crashed, the simulator writes an .ips crash report on the HOST.
+          # Dump the newest DopamineDemo one so the reason is in the logs + artifact.
+          echo "--- crash reports (if any) ---"
+          CRASH=$(ls -t "$HOME"/Library/Logs/DiagnosticReports/DopamineDemo-*.ips 2>/dev/null | head -1)
+          if [ -n "$CRASH" ]; then
+            echo "found crash report: $CRASH"
+            cp "$CRASH" /tmp/crash.ips || true
+            head -120 "$CRASH" || true
+          else
+            echo "no DopamineDemo crash report found"
+          fi
 
           # Capture stills with one-shot `simctl io screenshot` (NOT recordVideo,
           # whose CoreSimulator daemon wedges the runner). ~70 frames with a small
@@ -214,6 +229,7 @@ jobs:
           mkdir -p /tmp/out
           cp /tmp/solarbloom.mp4 /tmp/out/ 2>/dev/null || true
           cp /tmp/app.log /tmp/out/ 2>/dev/null || true
+          cp /tmp/crash.ips /tmp/out/ 2>/dev/null || true
           cp /tmp/frames/f_01.png /tmp/frames/f_20.png /tmp/frames/f_45.png /tmp/frames/f_70.png /tmp/out/ 2>/dev/null || true
           echo "--- recorded file ---"
           ls -la /tmp/out || echo "no clip produced"
