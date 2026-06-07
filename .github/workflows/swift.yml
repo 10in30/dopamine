@@ -125,7 +125,15 @@ jobs:
           fi
           echo "device UDID=$UDID"
           xcrun simctl boot "$UDID" || true
+          # recordVideo needs the Simulator GUI APP running, not just a headless
+          # `simctl boot`: the app owns the display/encode pipeline that finalizes
+          # the .mov (writes the moov atom). Headless, the recorder logs
+          # "IOServiceMatching failed for AppleM2ScalerCSCDriver", captures raw
+          # frames, but SIGINT never produces a playable file. GitHub runners have
+          # a GUI session, so open Simulator pointed at our device.
+          open -a Simulator --args -CurrentDeviceUDID "$UDID" || open -a Simulator || true
           xcrun simctl bootstatus "$UDID" -b || true
+          sleep 6
 
           # Resolve the CANONICAL product path from xcodebuild itself. The old
           # `find … | head -1` could match an empty intermediate bundle, which
@@ -203,16 +211,15 @@ jobs:
           echo "recordVideo started pid=$REC"
           # ~9s of real time → several full autoplay fires at the real frame rate.
           sleep 9
-          echo "stopping recordVideo (SIGINT to the real simctl recorder) ..."
-          # SIGINT must reach the actual `simctl` recorder child — that is what
-          # finalizes the moov atom. Signalling only the `xcrun` parent ($REC)
-          # does NOT propagate (proven: the recorder ran the full poll, then a
-          # SIGKILL truncated the file to ~46KB). pkill the recorder by name.
-          pkill -INT -f 'simctl.*recordVideo' 2>/dev/null || true
+          echo "stopping recordVideo (SIGINT) ..."
+          # Canonical stop: SIGINT every `simctl` process (the recorder) — this is
+          # what triggers a clean finish that writes the moov atom. Signal both the
+          # backgrounded pid and any simctl by name.
+          pgrep simctl | while read -r p; do kill -s INT "$p" 2>/dev/null || true; done
           kill -INT "$REC" 2>/dev/null || true
           # Bounded wait for finalize + exit (≤20s); then force-kill everything.
           for _ in $(seq 1 40); do kill -0 "$REC" 2>/dev/null || break; sleep 0.5; done
-          pkill -9 -f 'simctl.*recordVideo' 2>/dev/null || true
+          pkill -9 -x simctl 2>/dev/null || true
           kill -9 "$REC" 2>/dev/null || true
           echo "--- recordVideo log ---"; cat /tmp/rec.log || true
 
@@ -239,10 +246,18 @@ jobs:
             echo "no DopamineDemo crash report found"
           fi
 
-          # Decide: did recordVideo produce a real clip? (>50KB ⇒ real frames.)
+          # Decide by PLAYABILITY, not size: a recordVideo file that never got its
+          # moov atom is multi-MB but unreadable, so probe it with ffmpeg (extract
+          # one real frame) and only accept the clip if that succeeds.
           MP4_SZ=$(stat -f%z /tmp/solarbloom.mp4 2>/dev/null || echo 0)
           echo "recorded mp4 size = $MP4_SZ bytes"
-          if [ "$MP4_SZ" -gt 50000 ]; then
+          PLAYABLE=no
+          if [ "$MP4_SZ" -gt 50000 ] && ffmpeg -v error -ss 1 -i /tmp/solarbloom.mp4 \
+               -frames:v 1 /tmp/probe.png >/dev/null 2>&1 && [ -s /tmp/probe.png ]; then
+            PLAYABLE=yes
+          fi
+          echo "recordVideo clip playable = $PLAYABLE"
+          if [ "$PLAYABLE" = yes ]; then
             echo "recordVideo succeeded — extracting sample stills"
             for t in 2 4 6 8; do
               ffmpeg -y -ss "$t" -i /tmp/solarbloom.mp4 -frames:v 1 "/tmp/out/frame_${t}s.png" \
