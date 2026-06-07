@@ -34,9 +34,10 @@ jobs:
   # can only happen here.
   # ===========================================================================
   macos:
-    runs-on: macos-14   # back to Sonoma: macOS 15 pops a "screen recording consent"
-                        # modal over the sim for legacy AVFoundation screen capture
-                        # (obscures the clip); macOS 14 captures without that prompt.
+    runs-on: macos-15-xlarge   # M2 Pro (public preview): real GPU + the AppleM2
+                               # scaler hardware, and a faster display than the M1
+                               # standard runners — so AVFoundation screen capture
+                               # runs at a usable frame rate.
     env:
       BUNDLE_ID: ai.polyguard.DopamineDemo
       SIM_NAME: iPhone 16
@@ -44,6 +45,30 @@ jobs:
       SLOWMO: "0.25"   # play the effect at 1/4 speed so the low-fps screen grab samples it smoothly
     steps:
       - uses: actions/checkout@v4
+
+      # --- Caches so we don't rebuild the whole pipeline every run ---
+      # Exact key = identical sources → cache hit, no rebuild/re-save; otherwise the
+      # restore-key prefix pulls the most recent cache and SwiftPM/Xcode build only
+      # what changed.
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: |
+            dopamine/swift/.build
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-xl-spm-${{ hashFiles('dopamine/swift/**/*.swift', 'dopamine/swift/**/*.metal', 'dopamine/swift/**/Package.*') }}
+          restore-keys: ${{ runner.os }}-xl-spm-
+      - name: Cache Xcode DerivedData
+        uses: actions/cache@v4
+        with:
+          path: dopamine/swift/Demo/build
+          key: ${{ runner.os }}-xl-dd-${{ hashFiles('dopamine/swift/**/*.swift', 'dopamine/swift/**/*.metal', 'dopamine/swift/Demo/project.yml') }}
+          restore-keys: ${{ runner.os }}-xl-dd-
+      - name: Cache Homebrew downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: ${{ runner.os }}-xl-brew-ffmpeg-xcodegen-v1
 
       # The macos-14 image ships several Xcodes; the default select (15.4) is too
       # old to read the project format XcodeGen emits (format 77 → needs Xcode 16+).
@@ -193,6 +218,19 @@ jobs:
           brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
           mkdir -p /tmp/out
 
+          # Grant Screen Recording consent via TCC so AVFoundation capture isn't
+          # blocked (black frames on macОS 14) or prompting (consent modal on 15).
+          # SIP is disabled on Actions runners, so DocSystem/tccutil can write the
+          # TCC.db directly. Grant the shell + ffmpeg + python (the processes TCC
+          # attributes the capture to), then reload tccd.
+          git clone --depth 1 https://github.com/DocSystem/tccutil /tmp/tccutil 2>/dev/null || true
+          FFMPEG_BIN=$(readlink -f "$(command -v ffmpeg)" 2>/dev/null || command -v ffmpeg)
+          for c in /bin/bash /bin/zsh /usr/bin/python3 "$FFMPEG_BIN" "$(command -v ffmpeg)"; do
+            sudo python3 /tmp/tccutil/tccutil.py -e --screen-recording -p "$c" 2>&1 | tail -2 || true
+          done
+          sudo killall tccd 2>/dev/null || true
+          sleep 1
+
           # Launch the app; autoplay loops the effect (spaced to the slow-mo
           # duration so plays don't overlap). Slow-mo makes the low-fps screen grab
           # sample the animation smoothly.
@@ -214,12 +252,11 @@ jobs:
           SCREEN_IDX=$(grep -iE 'Capture screen' /tmp/avf.txt | head -1 | sed -E 's/.*\[([0-9]+)\][[:space:]]*Capture screen.*/\1/')
           [ -z "$SCREEN_IDX" ] && SCREEN_IDX=1
           echo "using AVFoundation screen index = $SCREEN_IDX"
-          # CROP to just the Simulator window region (the 1024x768 desktop has the
-          # device centered ~x[360..660] y[38..708]). ~4x fewer pixels than the full
-          # desktop → the capture/encode pipeline keeps up at a much higher frame
-          # rate, so the bloom animation is actually sampled. (Full-screen grab on
-          # this VM crawled at ~2.5fps.) Falls back to full screen if the crop fails.
-          CROP='crop=300:670:362:38'
+          # CROP to just the Simulator window — centered on the desktop, ~320x700,
+          # computed from the actual screen size (robust to the runner's resolution).
+          # Far fewer pixels than the full desktop → the capture/encode keeps up at a
+          # higher frame rate. Falls back to full screen if the crop fails.
+          CROP='crop=320:700:(iw-320)/2:(ih-700)/2'
           # ~26s window: covers AVFoundation's slow warm-up plus a full slow-mo play
           # (the 1/4-speed bloom lasts ~7s and loops ~every 8.6s).
           ffmpeg -y -hide_banner -f avfoundation -framerate 60 -capture_cursor 0 \
@@ -277,6 +314,12 @@ jobs:
     container: swift:6.0.3
     steps:
       - uses: actions/checkout@v4
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: dopamine/swift/.build
+          key: ${{ runner.os }}-spm-${{ hashFiles('dopamine/swift/**/*.swift', 'dopamine/swift/**/Package.*') }}
+          restore-keys: ${{ runner.os }}-spm-
       - name: Tool versions
         run: swift --version
       - name: swift build (portable core + effect, Metal excluded)
