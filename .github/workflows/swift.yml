@@ -1,89 +1,154 @@
 # Dopamine — Swift / Metal CI.
 #
-# Runs ONLY on macOS runners: Metal / MetalKit / UIKit / the iOS Simulator are
-# macOS-only, so `swift build` + `swift test` of the Metal-backed package and
-# the iOS demo can only be verified here. (The portable core is also verified on
-# Linux locally / could be added as a separate ubuntu job — see the note below.)
+# Two jobs:
+#   • macos-14  — the real validator: swift build + swift test (Metal compiles +
+#                 the Metal-guarded tests run), the gen-uniforms staleness gate,
+#                 then XcodeGen → xcodebuild the iOS-Simulator demo, boot a sim,
+#                 launch it with the autoplay arg, and screen-record a ~5s clip
+#                 uploaded as an artifact. build+test are MUST-PASS; the record
+#                 step is continue-on-error initially.
+#   • linux     — portability guard: build + the parity test in the swift:6.0.3
+#                 container with NO Apple SDK (proves the canImport guards).
 #
-# COST NOTE: macOS runners consume ~10x the minutes of Linux runners. This job
-# only runs on a public repo or one with macOS minutes available; it is gated to
-# changes under dopamine/swift so it doesn't fire on every web-only change.
+# Logs are deliberately verbose (tool versions echoed, recorded file listed) so a
+# failure is diagnosable from the logs alone.
+#
+# COST NOTE: macOS runners burn ~10x Linux minutes; the paths: filter keeps this
+# off web-only changes.
 
 name: swift
 
 on:
   push:
+    branches: ["claude/dopamine-effects-library-vZKj9"]
     paths:
       - "dopamine/swift/**"
+      - "dopamine/scripts/gen-uniforms.mjs"
       - ".github/workflows/swift.yml"
-  pull_request:
-    paths:
-      - "dopamine/swift/**"
-      - ".github/workflows/swift.yml"
+  workflow_dispatch:
 
 jobs:
-  # macOS: the real verification — builds + tests the Metal-backed package, where
-  # the `.metal` shaders compile into a metallib and the Metal tests run.
-  macos-build-test:
+  # ===========================================================================
+  # macOS — the validator. Metal + iOS Simulator are macOS-only, so the metallib
+  # compile, the Metal-guarded tests, the demo .app build, and the screen-record
+  # can only happen here.
+  # ===========================================================================
+  macos:
     runs-on: macos-14   # Apple-silicon runner with a recent Xcode
-    defaults:
-      run:
-        working-directory: dopamine/swift
+    env:
+      BUNDLE_ID: ai.polyguard.DopamineDemo
+      SIM_NAME: iPhone 15
+      AUTOPLAY: solarbloom
     steps:
       - uses: actions/checkout@v4
-      - name: Show toolchain
-        run: swift --version && xcodebuild -version
-      - name: Build (macOS, includes Metal + the MSL shaders)
-        run: swift build -v
-      - name: Test (portable + Metal-guarded suites)
-        run: swift test -v
 
-  # Linux: proves the portability guard — the package must build + the portable
-  # tests must pass with NO Apple SDK (all Metal/UIKit code compiled out).
-  linux-portable:
-    runs-on: ubuntu-latest
-    container: swift:6.0.3
-    defaults:
-      run:
-        working-directory: dopamine/swift
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build (portable core + effect, Metal excluded)
-        run: swift build -v
-      - name: Test (portable + cross-platform byte-parity)
-        run: swift test -v
-
-  # STRETCH (manual): build the iOS demo, boot a simulator, screen-record a few
-  # seconds of Solarbloom, upload the clip as an artifact. Off by default because
-  # it needs an Xcode app project around Sources/DopamineDemoiOS (the SwiftPM
-  # library can't emit an .app) and simctl recording is flaky on CI.
-  ios-sim-record:
-    if: ${{ github.event_name == 'workflow_dispatch' }}
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v4
-      - name: Boot a simulator
+      - name: Tool versions
         run: |
+          set -x
+          sw_vers
+          swift --version
+          xcodebuild -version
+          node --version
+          xcrun simctl --version || true
+
+      # --- MUST-PASS: build + test the Metal-backed package ---
+      - name: swift build (macOS — Metal + the MSL shaders compile)
+        working-directory: dopamine/swift
+        run: swift build -v
+
+      - name: swift test (portable + Metal-guarded suites)
+        working-directory: dopamine/swift
+        run: swift test -v
+
+      # --- MUST-PASS: the generated uniform files must be in sync with the .dope ---
+      - name: gen-uniforms staleness check
+        working-directory: dopamine
+        run: |
+          set -x
+          node scripts/gen-uniforms.mjs --check
+          # belt-and-braces: regenerate and assert nothing changed in git
+          node scripts/gen-uniforms.mjs
+          git diff --exit-code -- swift/Sources swift/Generated
+
+      # --- MUST-PASS: generate + build the iOS demo for the Simulator ---
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        working-directory: dopamine/swift/Demo
+        run: |
+          set -x
+          xcodegen generate
+          ls -la DopamineDemo.xcodeproj
+
+      - name: xcodebuild (iOS Simulator)
+        working-directory: dopamine/swift/Demo
+        run: |
+          set -x
+          xcodebuild \
+            -project DopamineDemo.xcodeproj \
+            -scheme DopamineDemo \
+            -destination "platform=iOS Simulator,name=${SIM_NAME}" \
+            -derivedDataPath build \
+            build | tee xcodebuild.log
+          echo "--- built products ---"
+          find build/Build/Products -name 'DopamineDemo.app' -type d -print
+
+      # --- BEST-EFFORT: boot a sim, autoplay, screen-record, upload the clip ---
+      - name: Boot simulator + install + launch (autoplay) + record
+        id: record
+        continue-on-error: true
+        working-directory: dopamine/swift/Demo
+        run: |
+          set -x
+          # Boot the named device (create if missing).
           xcrun simctl list devices available
-          DEVICE=$(xcrun simctl create dopamine-demo "iPhone 15" || true)
-          xcrun simctl boot "$DEVICE" || true
-      - name: Build the demo app
-        run: |
-          echo "Generate an Xcode app target around dopamine/swift/Sources/DopamineDemoiOS"
-          echo "then: xcodebuild -scheme DopamineDemoiOS -destination 'platform=iOS Simulator,name=iPhone 15' build"
-      - name: Record a few seconds
-        run: |
-          xcrun simctl io booted recordVideo --codec=h264 /tmp/solarbloom.mp4 &
-          REC=$!
+          UDID=$(xcrun simctl list devices available | awk -F '[()]' "/${SIM_NAME} \(/{print \$2; exit}")
+          if [ -z "$UDID" ]; then
+            UDID=$(xcrun simctl create "dopamine-${SIM_NAME}" "${SIM_NAME}")
+          fi
+          echo "device UDID=$UDID"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b || true
+
+          APP=$(find build/Build/Products -name 'DopamineDemo.app' -type d | head -1)
+          echo "app=$APP"
+          xcrun simctl install "$UDID" "$APP"
+
+          # Start recording, then launch with the AUTOPLAY arg so it fires headlessly.
+          xcrun simctl io "$UDID" recordVideo --codec=h264 --force /tmp/solarbloom.mp4 &
+          REC_PID=$!
+          sleep 1
+          xcrun simctl launch "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY"
           sleep 5
-          kill -INT $REC || true
-      - uses: actions/upload-artifact@v4
+          kill -INT "$REC_PID" || true
+          # Give ffmpeg/avfoundation a moment to finalize the container.
+          sleep 2
+          echo "--- recorded file ---"
+          ls -la /tmp/solarbloom.mp4 || echo "no clip produced"
+
+      - name: Upload recorded clip
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: solarbloom-sim-clip
           path: /tmp/solarbloom.mp4
-        if: always()
+          if-no-files-found: warn
 
-# NOTE: the `ios-sim-record` job is intentionally a skeleton. Wiring a real
-# `.app` requires an Xcode project (XcodeGen / Tuist or a checked-in .xcodeproj)
-# around the DopamineDemoiOS sources; the SwiftPM manifest here builds the two
-# libraries + tests, which is what `macos-build-test` and `linux-portable` cover.
+  # ===========================================================================
+  # Linux — portability guard. The package must build + the parity test must pass
+  # with NO Apple SDK (every Metal/UIKit type compiled out behind canImport).
+  # ===========================================================================
+  linux:
+    runs-on: ubuntu-latest
+    container: swift:6.0.3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tool versions
+        run: swift --version
+      - name: swift build (portable core + effect, Metal excluded)
+        working-directory: dopamine/swift
+        run: swift build -v
+      - name: swift test (portable + the 192-case cross-platform parity)
+        working-directory: dopamine/swift
+        run: swift test -v
