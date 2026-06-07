@@ -113,6 +113,38 @@ function pump(toMs: number) {
   for (const cb of q) cb(toMs);
 }
 
+/**
+ * A minimal pass-based fake effect. Core ships no effect, so the conductor's GL
+ * lifecycle is exercised with a tiny full-screen-pass factory built on the same
+ * `createPassInstance` runner the real effects use — it links ONE program per
+ * GL context (so the light + shadow passes link 2 programs), exactly like a real
+ * pass effect, which is what these lifecycle assertions hinge on.
+ */
+async function makeFakeFactory() {
+  const { createPassInstance } = await import("../src/framework/pass-runner.js");
+  const VS = "#version 300 es\nvoid main(){gl_Position=vec4(0.0);}";
+  const FS = "#version 300 es\nprecision highp float;out vec4 o;void main(){o=vec4(0.0);}";
+  const config = {
+    vertex: VS,
+    fragment: FS,
+    uniforms: [] as readonly string[],
+    frame: () => ({ amp: 1 }),
+  };
+  return {
+    name: "fake",
+    resolve: () => ({
+      durationMs: 1200,
+      palette: [
+        { r: 1, g: 0, b: 0 },
+        { r: 0, g: 1, b: 0 },
+        { r: 0, g: 0, b: 1 },
+      ],
+    }),
+    create: (params: Record<string, unknown>, ctx: unknown) =>
+      createPassInstance(config as never, params as never, ctx as never),
+  };
+}
+
 describe("conductor", () => {
   beforeEach(() => {
     linkCount = 0;
@@ -128,7 +160,7 @@ describe("conductor", () => {
   it("uses ONE shared host per target and links each program ONCE across fires", async () => {
     const body = installDom();
     const { play } = await import("../src/framework/conductor.js");
-    const { solarbloom } = await import("../src/effects/solarbloom.js");
+    const solarbloom = await makeFakeFactory();
 
     const feeling = { mood: "celebratory", intensity: 0.8, whimsy: 0.5, seed: 7 };
     const p1 = play({ factory: solarbloom, target: body, anchor: { x: 400, y: 300 }, feeling });
@@ -159,7 +191,7 @@ describe("conductor", () => {
   it("draws into BOTH the light and shadow contexts", async () => {
     const body = installDom();
     const { play } = await import("../src/framework/conductor.js");
-    const { solarbloom } = await import("../src/effects/solarbloom.js");
+    const solarbloom = await makeFakeFactory();
     // solarbloom links one program PER context; if both passes ran, 2 links.
     const p = play({
       factory: solarbloom,
@@ -177,7 +209,7 @@ describe("conductor", () => {
   it("teardown releases the host (frees contexts + removes the overlay)", async () => {
     const body = installDom();
     const mod = await import("../src/framework/conductor.js");
-    const { solarbloom } = await import("../src/effects/solarbloom.js");
+    const solarbloom = await makeFakeFactory();
     const p = mod.play({
       factory: solarbloom, target: body, anchor: { x: 0, y: 0 },
       feeling: { mood: "electric", intensity: 1, whimsy: 1, seed: 2 },
@@ -194,7 +226,7 @@ describe("conductor", () => {
     vi.useFakeTimers();
     const body = installDom();
     const { play } = await import("../src/framework/conductor.js");
-    const { solarbloom } = await import("../src/effects/solarbloom.js");
+    const solarbloom = await makeFakeFactory();
     const rafBefore = rafQueue.length;
     const p = play({
       factory: solarbloom, target: body, anchor: { x: 0, y: 0 },

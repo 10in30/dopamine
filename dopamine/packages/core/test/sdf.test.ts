@@ -12,8 +12,6 @@
 import { describe, expect, it } from "vitest";
 
 import { parseSvgPath, bakeSdf, decodeSdf } from "../src/engine/sdf.js";
-import { parseDope, getOutline } from "../src/framework/loader.js";
-import solarbloomDoc from "../src/effects/solarbloom.dope.json";
 
 describe("svg path parser", () => {
   it("parses an absolute polyline (the checkmark)", () => {
@@ -76,16 +74,5 @@ describe("bake + decode round-trip", () => {
     const a = bakeSdf("M 5 55 L 38 88 L 95 12", viewBox, 48, 16);
     const b = bakeSdf("M 5 55 L 38 88 L 95 12", viewBox, 48, 16);
     expect(a.data).toBe(b.data);
-  });
-});
-
-describe("bundled Solarbloom .dope carries a baked checkmark SDF", () => {
-  it("ships a valid, standalone, decodable SDF for the svgPath icon", () => {
-    const doc = parseDope(solarbloomDoc as object); // standalone guard passes
-    const outline = getOutline(doc, "checkmark");
-    expect(outline?.svgPath).toBeTypeOf("string");
-    expect(outline?.sdf).toBeDefined();
-    const dec = decodeSdf(outline!.sdf!);
-    expect(dec.size * dec.size).toBe(dec.bytes.length);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkProgress, easeOutBack, easeOutCubic, envelope, CHECK_DRAW_MS } from "../src/engine/tempo.js";
+import { easeOutBack, easeOutCubic, envelope } from "../src/engine/tempo.js";
 
 describe("easeOutCubic", () => {
   it("spans 0..1 and is monotonic", () => {
@@ -60,13 +60,5 @@ describe("envelope", () => {
       return p;
     };
     expect(peakAt(1.4)).toBeGreaterThan(peakAt(0.6));
-  });
-});
-
-describe("checkProgress", () => {
-  it("is 0 at start and 1 by the draw window", () => {
-    expect(checkProgress(0)).toBeCloseTo(0);
-    expect(checkProgress(CHECK_DRAW_MS)).toBeCloseTo(1);
-    expect(checkProgress(CHECK_DRAW_MS * 2)).toBeCloseTo(1);
   });
 });
