@@ -259,7 +259,7 @@ jobs:
                           if d: sys.stdout.write(d.decode(errors="replace")); sys.stdout.flush()
                       except OSError:
                           return
-          pump(22)                         # ~2-3 slow-mo plays
+          pump(88)                         # one full 9-effect slow-mo sequence (~72s + margin)
           print(">>> sending Ctrl-C to recordVideo via PTY", flush=True)
           os.write(fd, b"\x03")
           deadline = time.time() + 90
