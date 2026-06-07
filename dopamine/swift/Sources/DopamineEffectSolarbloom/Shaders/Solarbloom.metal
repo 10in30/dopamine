@@ -12,48 +12,17 @@
 // The shared building blocks come from DopamineLook.metal (one canonical copy).
 //
 // UNIFORM STRUCT — the GLSL→MSL binding seam. WebGL sets `u*` one-by-one; Metal
-// reads ONE struct. Field ORDER + types here MUST match `SolarbloomUniforms` in
-// the Swift `Solarbloom.swift` packer (same memory layout). See report (b): this
-// struct is exactly the "datafiable" binding the port surfaces.
+// reads ONE struct. The `SolarbloomUniforms` struct is now GENERATED from the
+// `.dope` by scripts/gen-uniforms.mjs (into SolarbloomUniforms.metal) — the SAME
+// source that emits the Swift packer, so the two layouts cannot drift. See
+// report (b): this struct is exactly the "datafiable" binding the port surfaced.
 
 #include <metal_stdlib>
 #include "DopamineLook.metal"
+#include "SolarbloomUniforms.metal"   // @generated — struct SolarbloomUniforms
 using namespace metal;
 
 #define MAX_MOTES 80
-
-struct SolarbloomUniforms {
-    // --- standard (StandardUniforms, in declared order) ---
-    float2 resolution;
-    float2 origin;
-    float  life;
-    float  timeS;
-    float  style;
-    float  amp;
-    float3 c0;
-    float3 c1;
-    float3 c2;
-    float  shadow;
-    float2 shadowOffset;
-    float  shadowSoft;
-    float  shadowStrength;
-    // --- solarbloom render.params (auto-bound by name) ---
-    float  exposure;
-    float  bloomRadius;
-    float  turbulence;
-    float  moteSpeed;
-    float  moteCount;
-    float  moteSeed;
-    float  iridescence;
-    float  dispersion;
-    // --- frame extras + checkmark plumbing ---
-    float  check;        // checkProgress(animMs)
-    float  checkBox;     // half-size (device px) of glyph box
-    float  checkTexOn;   // 1 = sample the font glyph texture
-    float  sdfOn;        // 1 = sample baked SDF
-    float  sdfRangePx;
-    float  sdfStrokePx;
-};
 
 // Full-screen triangle from vertex_id (no vertex buffers).
 struct VSOut { float4 position [[position]]; };
