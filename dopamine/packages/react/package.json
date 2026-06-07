@@ -20,7 +20,8 @@
     "react": ">=18"
   },
   "dependencies": {
-    "@dopamine/core": "0.1.0"
+    "@dopamine/core": "0.1.0",
+    "@dopamine/effects": "0.1.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

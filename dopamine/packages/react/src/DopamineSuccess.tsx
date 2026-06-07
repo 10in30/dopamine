@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { celebrate, type DopamineMood } from "@dopamine/core";
+import { celebrate, type DopamineMood } from "@dopamine/effects";
 
 export interface DopamineSuccessProps {
   /**
