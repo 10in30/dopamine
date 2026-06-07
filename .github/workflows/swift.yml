@@ -160,15 +160,27 @@ jobs:
 
           xcrun simctl install "$UDID" "$APP"
 
-          # Start recording, then launch with the AUTOPLAY arg so it fires headlessly.
-          xcrun simctl io "$UDID" recordVideo --codec=h264 --force /tmp/solarbloom.mp4 &
+          # Start recording. CRITICAL: redirect the background recorder's stdio to
+          # files and detach stdin — otherwise it inherits this step's output pipe
+          # and the Actions runner blocks on EOF (the step hangs for the whole job
+          # timeout even after the script "finishes").
+          xcrun simctl io "$UDID" recordVideo --codec=h264 --force /tmp/solarbloom.mp4 \
+            >/tmp/rec.log 2>&1 </dev/null &
           REC_PID=$!
           sleep 1
-          xcrun simctl launch "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY"
-          sleep 5
-          kill -INT "$REC_PID" || true
-          # Give ffmpeg/avfoundation a moment to finalize the container.
-          sleep 2
+          # Launch with the AUTOPLAY arg so it fires headlessly. Cap it so a stuck
+          # launch can never wedge the job.
+          timeout 60 xcrun simctl launch "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" || true
+          sleep 6
+          # Stop recording with SIGINT so avfoundation finalizes the mp4 moov atom,
+          # then wait (bounded) for the recorder to actually exit, escalating if it
+          # ignores the signal. The bounded wait reaps the child so it can't hold
+          # any descriptor open.
+          kill -INT "$REC_PID" 2>/dev/null || true
+          for _ in $(seq 1 30); do kill -0 "$REC_PID" 2>/dev/null || break; sleep 1; done
+          kill -9 "$REC_PID" 2>/dev/null || true
+          wait "$REC_PID" 2>/dev/null || true
+          echo "--- recorder log ---"; cat /tmp/rec.log || true
           echo "--- recorded file ---"
           ls -la /tmp/solarbloom.mp4 || echo "no clip produced"
 
