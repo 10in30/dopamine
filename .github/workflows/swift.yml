@@ -1,0 +1,89 @@
+# Dopamine — Swift / Metal CI.
+#
+# Runs ONLY on macOS runners: Metal / MetalKit / UIKit / the iOS Simulator are
+# macOS-only, so `swift build` + `swift test` of the Metal-backed package and
+# the iOS demo can only be verified here. (The portable core is also verified on
+# Linux locally / could be added as a separate ubuntu job — see the note below.)
+#
+# COST NOTE: macOS runners consume ~10x the minutes of Linux runners. This job
+# only runs on a public repo or one with macOS minutes available; it is gated to
+# changes under dopamine/swift so it doesn't fire on every web-only change.
+
+name: swift
+
+on:
+  push:
+    paths:
+      - "dopamine/swift/**"
+      - ".github/workflows/swift.yml"
+  pull_request:
+    paths:
+      - "dopamine/swift/**"
+      - ".github/workflows/swift.yml"
+
+jobs:
+  # macOS: the real verification — builds + tests the Metal-backed package, where
+  # the `.metal` shaders compile into a metallib and the Metal tests run.
+  macos-build-test:
+    runs-on: macos-14   # Apple-silicon runner with a recent Xcode
+    defaults:
+      run:
+        working-directory: dopamine/swift
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: swift --version && xcodebuild -version
+      - name: Build (macOS, includes Metal + the MSL shaders)
+        run: swift build -v
+      - name: Test (portable + Metal-guarded suites)
+        run: swift test -v
+
+  # Linux: proves the portability guard — the package must build + the portable
+  # tests must pass with NO Apple SDK (all Metal/UIKit code compiled out).
+  linux-portable:
+    runs-on: ubuntu-latest
+    container: swift:6.0.3
+    defaults:
+      run:
+        working-directory: dopamine/swift
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (portable core + effect, Metal excluded)
+        run: swift build -v
+      - name: Test (portable + cross-platform byte-parity)
+        run: swift test -v
+
+  # STRETCH (manual): build the iOS demo, boot a simulator, screen-record a few
+  # seconds of Solarbloom, upload the clip as an artifact. Off by default because
+  # it needs an Xcode app project around Sources/DopamineDemoiOS (the SwiftPM
+  # library can't emit an .app) and simctl recording is flaky on CI.
+  ios-sim-record:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Boot a simulator
+        run: |
+          xcrun simctl list devices available
+          DEVICE=$(xcrun simctl create dopamine-demo "iPhone 15" || true)
+          xcrun simctl boot "$DEVICE" || true
+      - name: Build the demo app
+        run: |
+          echo "Generate an Xcode app target around dopamine/swift/Sources/DopamineDemoiOS"
+          echo "then: xcodebuild -scheme DopamineDemoiOS -destination 'platform=iOS Simulator,name=iPhone 15' build"
+      - name: Record a few seconds
+        run: |
+          xcrun simctl io booted recordVideo --codec=h264 /tmp/solarbloom.mp4 &
+          REC=$!
+          sleep 5
+          kill -INT $REC || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: solarbloom-sim-clip
+          path: /tmp/solarbloom.mp4
+        if: always()
+
+# NOTE: the `ios-sim-record` job is intentionally a skeleton. Wiring a real
+# `.app` requires an Xcode project (XcodeGen / Tuist or a checked-in .xcodeproj)
+# around the DopamineDemoiOS sources; the SwiftPM manifest here builds the two
+# libraries + tests, which is what `macos-build-test` and `linux-portable` cover.
