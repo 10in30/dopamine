@@ -314,12 +314,9 @@ jobs:
     container: swift:6.0.3
     steps:
       - uses: actions/checkout@v4
-      - name: Cache SwiftPM build
-        uses: actions/cache@v4
-        with:
-          path: dopamine/swift/.build
-          key: ${{ runner.os }}-spm-${{ hashFiles('dopamine/swift/**/*.swift', 'dopamine/swift/**/Package.*') }}
-          restore-keys: ${{ runner.os }}-spm-
+      # No SwiftPM cache here: this job runs inside a container, where the checkout
+      # is root-owned and `hashFiles` (run on the host) can't read it. The Linux
+      # build+test is ~10s anyway, so caching it isn't worth the breakage.
       - name: Tool versions
         run: swift --version
       - name: swift build (portable core + effect, Metal excluded)
