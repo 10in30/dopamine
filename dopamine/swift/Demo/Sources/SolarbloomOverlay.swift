@@ -87,7 +87,7 @@ final class OverlayUIView: UIView {
     func fire(mood: String, intensity: Double, whimsy: Double) {
         guard let host, let solar else { return }
         let params = (try? solar.resolve(DopeResolveInput(
-            mood: mood, intensity: intensity, whimsy: whimsy, seed: nil))) ?? [:]
+            mood: mood, intensity: intensity, whimsy: whimsy, seed: randomSeed()))) ?? [:]
         try? host.play(params: params)
         print("[DopamineDemo] fired solarbloom mood=\(mood) intensity=\(intensity) whimsy=\(whimsy)")
     }
