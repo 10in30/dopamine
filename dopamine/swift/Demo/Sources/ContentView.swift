@@ -131,9 +131,13 @@ struct ContentView: View {
 
     private func maybeAutoplay() {
         guard Autoplay.requestedEffect != nil else { return }
-        // Fire ONCE, shortly after launch (so the layer is sized + the in-app
-        // capture is wired). A single fire gives the recorder one clean play of the
-        // effect — no overlapping re-fires stacking on top of each other.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { fire() }
+        // For the CI screen recording: fire shortly after launch, then RE-FIRE on a
+        // 3s loop. The celebratory bloom lasts ~1.7s, so a 3s interval leaves a
+        // clean gap (no overlapping fires) while showing the unique-every-time
+        // palette across several real-time plays over the card.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { fire() }
+        Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+            fire()
+        }
     }
 }

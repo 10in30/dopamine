@@ -117,6 +117,18 @@ jobs:
         working-directory: dopamine/swift/Demo
         run: |
           set -x
+          # --- Force the Simulator onto the host GPU for Metal ---
+          # On a virtualized runner the sim otherwise uses a software renderer with
+          # no video-scaler hardware ("IOServiceMatching failed for
+          # AppleM2ScalerCSCDriver"), which both degrades the Metal effect AND keeps
+          # `simctl io recordVideo` from finalizing a playable file. These defaults
+          # + running the Simulator GUI app (this is an Apple-silicon macos-14
+          # runner) attach the real GPU, so the effect renders hardware-accelerated
+          # and the on-screen recording encodes a real, smooth, full-app clip.
+          defaults write com.apple.CoreSimulator.SimulatorCore MetalForcingEnabled -bool true 2>/dev/null || true
+          defaults write com.apple.CoreSimulator.SimulatorCore OpenGLCoreProfileEnabled -bool true 2>/dev/null || true
+          defaults write com.apple.CoreSimulator.SimulatorWindow LastWindowStyle -int 0 2>/dev/null || true
+
           # Boot the named device (create if missing).
           xcrun simctl list devices available
           UDID=$(xcrun simctl list devices available | awk -F '[()]' "/${SIM_NAME} \(/{print \$2; exit}")
@@ -125,7 +137,11 @@ jobs:
           fi
           echo "device UDID=$UDID"
           xcrun simctl boot "$UDID" || true
+          # Run the Simulator GUI app attached to our device so its render server
+          # uses the GPU (headless `simctl boot` alone does not).
+          open -a Simulator --args -CurrentDeviceUDID "$UDID" || open -a Simulator || true
           xcrun simctl bootstatus "$UDID" -b || true
+          sleep 8
 
           # Resolve the CANONICAL product path from xcodebuild itself. The old
           # `find … | head -1` could match an empty intermediate bundle, which
@@ -171,68 +187,65 @@ jobs:
 
           xcrun simctl install "$UDID" "$APP"
 
-          # ffmpeg muxes the captured PNG sequence (and the screenshot fallback).
           brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
-          mkdir -p /tmp/out /tmp/frames
+          mkdir -p /tmp/out
 
-          # Launch the app. With the autoplay arg it fires the effect ONCE and the
-          # app reads back each rendered Metal frame to a PNG sequence in its
-          # Documents/cap (IN-APP capture). recordVideo can't finalize a video on a
-          # virtualized runner (the AppleM2ScalerCSCDriver video-encode hardware is
-          # absent), so we capture frames in-process and mux them here instead. The
-          # app writes a DONE marker when the sequence is complete.
+          # Launch the app; autoplay fires the effect on a 3s loop (clean gaps).
           xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" || true
+          sleep 2
 
-          # Poll the app's data container for the DONE marker (≤90s; off-screen
-          # rendering 110 frames with waitUntilCompleted can be slow on the sim).
-          CAP=""
-          for _ in $(seq 1 180); do
-            DATA=$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data 2>/dev/null) || true
-            CAP="$DATA/Documents/cap"
-            [ -f "$CAP/DONE" ] && break
-            sleep 0.5
-          done
-          echo "capture dir = $CAP"
-          ls -la "$CAP" 2>/dev/null | head -4 || echo "(no capture dir yet)"
+          # --- Record the REAL composited screen (GPU-accelerated) ---
+          # With the GPU attached (defaults + Simulator.app above), recordVideo's
+          # encode pipeline can finalize a playable file — so this captures the
+          # actual full app (card + controls + the live bloom cast over them) at the
+          # simulator's real frame rate. Detach the recorder's stdio so it can't
+          # hold the step's pipe; stop with SIGINT to the simctl process (which
+          # writes the moov atom); bounded wait + SIGKILL fallback.
+          rm -f /tmp/solarbloom.mp4
+          xcrun simctl io "$UDID" recordVideo --codec=h264 --force /tmp/solarbloom.mp4 \
+            </dev/null >/tmp/rec.log 2>&1 &
+          REC=$!
+          echo "recordVideo pid=$REC"
+          sleep 10   # ~3 clean autoplay fires
+          echo "stopping recordVideo (SIGINT to simctl) ..."
+          pgrep simctl | while read -r p; do kill -s INT "$p" 2>/dev/null || true; done
+          kill -INT "$REC" 2>/dev/null || true
+          for _ in $(seq 1 40); do kill -0 "$REC" 2>/dev/null || break; sleep 0.5; done
+          pkill -9 -x simctl 2>/dev/null || true
+          kill -9 "$REC" 2>/dev/null || true
+          echo "--- recordVideo log ---"; cat /tmp/rec.log || true
 
           echo "--- app liveness ---"
           xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep -i dopamine \
             && echo ">>> DopamineDemo IS running" || echo ">>> DopamineDemo NOT running"
-          # os.Logger lines (Metal device / fired / capture complete) land here.
           xcrun simctl spawn "$UDID" log show --last 3m --style compact \
             --predicate 'process == "DopamineDemo"' 2>/dev/null \
-            | grep -iE 'DopamineDemo\]|Metal|metallib|Solarbloom|capture|fired' | head -60 \
+            | grep -iE 'DopamineDemo\]|Metal|metallib|Solarbloom|fired' | head -40 \
             > /tmp/app.log || true
           cat /tmp/app.log || true
           CRASH=$(ls -t "$HOME"/Library/Logs/DiagnosticReports/DopamineDemo-*.ips 2>/dev/null | head -1)
           if [ -n "$CRASH" ]; then cp "$CRASH" /tmp/crash.ips || true; echo "crash report copied"; else echo "no crash report"; fi
 
-          # Pull the captured frames out of the container.
-          cp "$CAP"/frame_*.png /tmp/frames/ 2>/dev/null || true
-          NCAP=$(ls -1 /tmp/frames/frame_*.png 2>/dev/null | wc -l | tr -d ' ')
-          echo "captured frames pulled = $NCAP"
-
-          if [ "$NCAP" -ge 20 ]; then
-            echo "in-app capture succeeded — muxing $NCAP frames @ 30fps"
-            ffmpeg -y -framerate 30 -pattern_type glob -i '/tmp/frames/frame_*.png' \
-              -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p' \
-              /tmp/solarbloom.mp4 2>&1 | tail -8 || true
-            cp "$(ls /tmp/frames/frame_*.png | sed -n '1p')"  /tmp/out/first.png 2>/dev/null || true
-            cp "$(ls /tmp/frames/frame_*.png | sed -n "$(((NCAP/2)+1))p")" /tmp/out/mid.png 2>/dev/null || true
-            cp "$(ls /tmp/frames/frame_*.png | tail -1)"      /tmp/out/last.png  2>/dev/null || true
+          # Accept the clip only if it's actually PLAYABLE (probe one frame);
+          # otherwise fall back to the screenshot loop so we always upload something.
+          MP4_SZ=$(stat -f%z /tmp/solarbloom.mp4 2>/dev/null || echo 0)
+          echo "recorded mp4 size = $MP4_SZ bytes"
+          if [ "$MP4_SZ" -gt 50000 ] && ffmpeg -v error -ss 1 -i /tmp/solarbloom.mp4 \
+               -frames:v 1 /tmp/out/frame.png >/dev/null 2>&1 && [ -s /tmp/out/frame.png ]; then
+            echo "recordVideo produced a PLAYABLE real-screen clip"
           else
-            echo "in-app capture unavailable — FALLING BACK to screenshot loop"
+            echo "recordVideo not playable — FALLING BACK to screenshot loop"
+            mkdir -p /tmp/frames
             for i in $(seq -w 1 70); do
               xcrun simctl io "$UDID" screenshot "/tmp/frames/f_$i.png" >/dev/null 2>&1 || true
               sleep 0.15
             done
             ffmpeg -y -framerate 12 -pattern_type glob -i '/tmp/frames/f_*.png' \
               -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p' \
-              /tmp/solarbloom.mp4 2>&1 | tail -8 || true
-            cp /tmp/frames/f_01.png /tmp/frames/f_45.png /tmp/out/ 2>/dev/null || true
+              /tmp/solarbloom.mp4 2>&1 | tail -6 || true
+            cp /tmp/frames/f_30.png /tmp/out/frame.png 2>/dev/null || true
           fi
 
-          # Bundle clip + stills + console into the artifact dir.
           cp /tmp/solarbloom.mp4 /tmp/out/ 2>/dev/null || true
           cp /tmp/app.log /tmp/out/ 2>/dev/null || true
           cp /tmp/crash.ips /tmp/out/ 2>/dev/null || true
