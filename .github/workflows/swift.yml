@@ -42,6 +42,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The macos-14 image ships several Xcodes; the default select (15.4) is too
+      # old to read the project format XcodeGen emits (format 77 → needs Xcode 16+).
+      # Select the newest installed Xcode so xcodebuild can open the generated project.
+      - name: Select newest Xcode
+        run: |
+          set -x
+          latest=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Selecting $latest"
+          sudo xcode-select -s "$latest/Contents/Developer"
+          xcodebuild -version
+
       - name: Tool versions
         run: |
           set -x
