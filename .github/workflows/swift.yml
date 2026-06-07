@@ -228,29 +228,22 @@ jobs:
           CRASH=$(ls -t "$HOME"/Library/Logs/DiagnosticReports/DopamineDemo-*.ips 2>/dev/null | head -1)
           if [ -n "$CRASH" ]; then cp "$CRASH" /tmp/crash.ips || true; echo "crash report copied"; else echo "no crash report"; fi
 
-          # Accept the clip only if it's actually PLAYABLE (probe one frame);
-          # otherwise fall back to the screenshot loop so we always upload something.
+          # NO screenshot fallback — we're solving recordVideo, period. Report
+          # whether the file is playable (probe one frame) for diagnosis, then
+          # upload whatever recordVideo produced (+ rec.log) regardless.
           MP4_SZ=$(stat -f%z /tmp/solarbloom.mp4 2>/dev/null || echo 0)
           echo "recorded mp4 size = $MP4_SZ bytes"
           if [ "$MP4_SZ" -gt 50000 ] && ffmpeg -v error -ss 1 -i /tmp/solarbloom.mp4 \
                -frames:v 1 /tmp/out/frame.png >/dev/null 2>&1 && [ -s /tmp/out/frame.png ]; then
-            echo "recordVideo produced a PLAYABLE real-screen clip"
+            echo ">>> recordVideo PLAYABLE — real-screen clip captured"
           else
-            echo "recordVideo not playable — FALLING BACK to screenshot loop"
-            mkdir -p /tmp/frames
-            for i in $(seq -w 1 70); do
-              xcrun simctl io "$UDID" screenshot "/tmp/frames/f_$i.png" >/dev/null 2>&1 || true
-              sleep 0.15
-            done
-            ffmpeg -y -framerate 12 -pattern_type glob -i '/tmp/frames/f_*.png' \
-              -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p' \
-              /tmp/solarbloom.mp4 2>&1 | tail -6 || true
-            cp /tmp/frames/f_30.png /tmp/out/frame.png 2>/dev/null || true
+            echo ">>> recordVideo NOT playable (no moov / encode failed)"
           fi
 
           cp /tmp/solarbloom.mp4 /tmp/out/ 2>/dev/null || true
-          cp /tmp/app.log /tmp/out/ 2>/dev/null || true
-          cp /tmp/crash.ips /tmp/out/ 2>/dev/null || true
+          cp /tmp/rec.log     /tmp/out/ 2>/dev/null || true
+          cp /tmp/app.log     /tmp/out/ 2>/dev/null || true
+          cp /tmp/crash.ips   /tmp/out/ 2>/dev/null || true
           echo "--- recorded files ---"
           ls -la /tmp/out || echo "no clip produced"
 
