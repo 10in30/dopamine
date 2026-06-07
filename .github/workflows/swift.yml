@@ -193,9 +193,12 @@ jobs:
           done
           COUNT=$(ls -1 /tmp/frames/*.png 2>/dev/null | wc -l | tr -d ' ')
           echo "--- captured frames: $COUNT ---"
-          # 12 fps playback of the stills → a ~6s clip. yuv420p for QuickTime.
+          # 12 fps playback of the stills → a ~6s clip. The scale filter forces
+          # EVEN width/height — the iPhone 16 still is 1179x2556 and libx264 rejects
+          # odd dimensions ("width not divisible by 2"). yuv420p for QuickTime.
           ffmpeg -y -framerate 12 -pattern_type glob -i '/tmp/frames/*.png' \
-            -pix_fmt yuv420p /tmp/solarbloom.mp4 2>&1 | tee /tmp/ffmpeg.log | tail -20 || true
+            -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p' \
+            /tmp/solarbloom.mp4 2>&1 | tee /tmp/ffmpeg.log | tail -20 || true
           echo "--- recorded file ---"
           ls -la /tmp/solarbloom.mp4 || echo "no clip produced"
 
