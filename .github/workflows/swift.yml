@@ -218,54 +218,81 @@ jobs:
           brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
           mkdir -p /tmp/out
 
-          # Grant Screen Recording consent via TCC so AVFoundation capture isn't
-          # blocked (black frames on macОS 14) or prompting (consent modal on 15).
-          # SIP is disabled on Actions runners, so DocSystem/tccutil can write the
-          # TCC.db directly. Grant the shell + ffmpeg + python (the processes TCC
-          # attributes the capture to), then reload tccd.
+          # Pre-grant Screen Recording in TCC (SIP is disabled on Actions runners, so
+          # the TCC.db is writable). DocSystem/tccutil needs a bundle id — use the
+          # demo app's, which we control. recordVideo (below) captures the device
+          # directly and needs no TCC, but this also covers the AVFoundation desktop
+          # fallback and suppresses the macOS-15 consent modal.
           git clone --depth 1 https://github.com/DocSystem/tccutil /tmp/tccutil 2>/dev/null || true
-          FFMPEG_BIN=$(readlink -f "$(command -v ffmpeg)" 2>/dev/null || command -v ffmpeg)
-          for c in /bin/bash /bin/zsh /usr/bin/python3 "$FFMPEG_BIN" "$(command -v ffmpeg)"; do
-            sudo python3 /tmp/tccutil/tccutil.py -e --screen-recording -p "$c" 2>&1 | tail -2 || true
-          done
+          sudo python3 /tmp/tccutil/tccutil.py -e --screen-recording -id "$BUNDLE_ID" 2>&1 | tail -3 || true
           sudo killall tccd 2>/dev/null || true
-          sleep 1
 
           # Launch the app; autoplay loops the effect (spaced to the slow-mo
-          # duration so plays don't overlap). Slow-mo makes the low-fps screen grab
-          # sample the animation smoothly.
+          # duration so plays don't overlap). Slow-mo keeps each play long enough
+          # that the capture samples the whole animation.
           xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" -slowmo "$SLOWMO" || true
           sleep 2
 
-          # --- Record the REAL screen with ffmpeg AVFoundation ---
-          # `simctl io recordVideo` cannot finalize on this VM — the AppleM2Scaler*
-          # encode hardware is absent (proven across kill -INT / pgrep / PTY ^C /
-          # GPU defaults / macos-14 & 15 / long waits: always mdat, never a moov).
-          # Capture the desktop instead (the Simulator window is shown via
-          # `open -a Simulator`) using ffmpeg's OWN x264 encoder, which works here.
-          # `-t` bounds the capture and ffmpeg writes a clean moov on its own — no
-          # signal dance needed. The autoplay 3s loop fires throughout the window.
+          # --- Record the DEVICE screen with simctl recordVideo ---
+          # This M2 runner HAS the AppleM2 scaler hardware the M1 runners lacked —
+          # the reason recordVideo never finalized before — so it can now write a
+          # real moov. recordVideo captures the device only (no desktop chrome, no
+          # screen-recording TCC, no consent modal). It only finalizes on an
+          # interactive Ctrl-C (a bare `kill -INT` is ignored), so drive it under a
+          # PTY and send a real ^C, then wait for it to flush the moov.
           rm -f /tmp/solarbloom.mp4
-          echo "--- AVFoundation capture devices ---"
-          ffmpeg -hide_banner -f avfoundation -list_devices true -i "" 2>/tmp/avf.txt || true
-          cat /tmp/avf.txt
-          SCREEN_IDX=$(grep -iE 'Capture screen' /tmp/avf.txt | head -1 | sed -E 's/.*\[([0-9]+)\][[:space:]]*Capture screen.*/\1/')
-          [ -z "$SCREEN_IDX" ] && SCREEN_IDX=1
-          echo "using AVFoundation screen index = $SCREEN_IDX"
-          # CROP to just the Simulator window — centered on the desktop, ~320x700,
-          # computed from the actual screen size (robust to the runner's resolution).
-          # Far fewer pixels than the full desktop → the capture/encode keeps up at a
-          # higher frame rate. Falls back to full screen if the crop fails.
-          CROP='crop=320:700:(iw-320)/2:(ih-700)/2'
-          # ~26s window: covers AVFoundation's slow warm-up plus a full slow-mo play
-          # (the 1/4-speed bloom lasts ~7s and loops ~every 8.6s).
-          ffmpeg -y -hide_banner -f avfoundation -framerate 60 -capture_cursor 0 \
-            -i "${SCREEN_IDX}:none" -an -t 26 -vcodec libx264 -pix_fmt yuv420p \
-            -vf "$CROP" /tmp/solarbloom.mp4 2>&1 | tail -25 \
-            || ffmpeg -y -hide_banner -f avfoundation -framerate 60 \
-                 -i "${SCREEN_IDX}:none" -an -t 26 -vcodec libx264 -pix_fmt yuv420p \
-                 -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2' /tmp/solarbloom.mp4 2>&1 | tail -25 || true
-          echo "--- ffmpeg screen-capture done ---"
+          UDID="$UDID" python3 <<'PY'
+          import os, pty, time, select, signal, sys
+          udid = os.environ["UDID"]
+          pid, fd = pty.fork()
+          if pid == 0:
+              os.execvp("xcrun", ["xcrun", "simctl", "io", udid, "recordVideo",
+                                  "--codec=h264", "--force", "/tmp/solarbloom.mp4"])
+              os._exit(127)
+          def pump(seconds):
+              end = time.time() + seconds
+              while time.time() < end:
+                  r, _, _ = select.select([fd], [], [], 0.3)
+                  if r:
+                      try:
+                          d = os.read(fd, 4096)
+                          if d: sys.stdout.write(d.decode(errors="replace")); sys.stdout.flush()
+                      except OSError:
+                          return
+          pump(22)                         # ~2-3 slow-mo plays
+          print(">>> sending Ctrl-C to recordVideo via PTY", flush=True)
+          os.write(fd, b"\x03")
+          deadline = time.time() + 90
+          exited = False
+          while time.time() < deadline:
+              r, _, _ = select.select([fd], [], [], 0.5)
+              if r:
+                  try:
+                      d = os.read(fd, 4096)
+                      if d: sys.stdout.write(d.decode(errors="replace")); sys.stdout.flush()
+                  except OSError:
+                      pass
+              wpid, _ = os.waitpid(pid, os.WNOHANG)
+              if wpid == pid:
+                  exited = True; print(">>> recordVideo exited cleanly", flush=True); break
+          if not exited:
+              print(">>> timeout — SIGKILL", flush=True)
+              try: os.kill(pid, signal.SIGKILL)
+              except ProcessLookupError: pass
+          PY
+          echo "--- recordVideo done ---"
+
+          # Fallback: if recordVideo still didn't finalize a playable file, grab the
+          # desktop with ffmpeg AVFoundation (the Simulator window, cropped center).
+          # The TCC grant above should keep this from prompting.
+          if ! { [ -s /tmp/solarbloom.mp4 ] && ffmpeg -v error -ss 1 -i /tmp/solarbloom.mp4 -frames:v 1 /tmp/probe.png >/dev/null 2>&1 && [ -s /tmp/probe.png ]; }; then
+            echo ">>> recordVideo not playable — AVFoundation desktop fallback"
+            SCREEN_IDX=$(ffmpeg -hide_banner -f avfoundation -list_devices true -i "" 2>&1 | grep -iE 'Capture screen' | head -1 | sed -E 's/.*\[([0-9]+)\].*/\1/')
+            [ -z "$SCREEN_IDX" ] && SCREEN_IDX=0
+            ffmpeg -y -hide_banner -f avfoundation -framerate 60 -capture_cursor 0 \
+              -i "${SCREEN_IDX}:none" -an -t 26 -vcodec libx264 -pix_fmt yuv420p \
+              -vf 'crop=320:700:(iw-320)/2:(ih-700)/2' /tmp/solarbloom.mp4 2>&1 | tail -20 || true
+          fi
 
           echo "--- app liveness ---"
           xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep -i dopamine \
