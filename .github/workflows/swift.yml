@@ -122,15 +122,21 @@ jobs:
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b || true
 
-          APP=$(find build/Build/Products -name 'DopamineDemo.app' -type d | head -1)
-          echo "app=$APP"
+          # Resolve the CANONICAL product path from xcodebuild itself. The old
+          # `find … | head -1` could match an empty intermediate bundle, which
+          # looked like a build that produced no Info.plist / no executable.
+          APP=$(xcodebuild -project DopamineDemo.xcodeproj -scheme DopamineDemo \
+            -destination "platform=iOS Simulator,name=${SIM_NAME}" -derivedDataPath build \
+            -showBuildSettings 2>/dev/null \
+            | awk -F' = ' '/[[:space:]]TARGET_BUILD_DIR =/{d=$2} /[[:space:]]FULL_PRODUCT_NAME =/{n=$2} END{print d"/"n}')
+          echo "resolved APP=$APP"
+          echo "--- product contents (ground truth) ---"
+          ls -lR "$APP" || echo "product dir missing"
+          echo "--- every DopamineDemo.app under build/ ---"
+          find build -name 'DopamineDemo.app' -type d -exec sh -c 'echo "$1:"; ls -l "$1"' _ {} \; || true
 
-          # xcodebuild ships this bundle with NO Info.plist (verified: plutil
-          # reports "no such file"), which is why simctl keeps rejecting the
-          # install for a missing CFBundleVersion — neither GENERATE_INFOPLIST_FILE,
-          # a bare INFOPLIST_FILE, nor XcodeGen's info: block landed a plist in the
-          # product. Write a complete, valid (string-typed) Info.plist straight
-          # into the built .app so install is deterministic. CFBundleExecutable
+          # Belt-and-braces: ensure a valid, string-typed Info.plist is present
+          # (harmless if the real build already wrote one). CFBundleExecutable
           # matches the product name.
           cat > "$APP/Info.plist" <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
