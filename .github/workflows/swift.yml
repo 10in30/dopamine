@@ -34,7 +34,9 @@ jobs:
   # can only happen here.
   # ===========================================================================
   macos:
-    runs-on: macos-14   # Apple-silicon runner with a recent Xcode
+    runs-on: macos-15   # newer Apple-silicon image — testing whether it ships the
+                        # AppleM2ScalerCSCDriver video-scaler that macos-14 (M1)
+                        # lacks, which is what blocks simctl recordVideo finalizing.
     env:
       BUNDLE_ID: ai.polyguard.DopamineDemo
       SIM_NAME: iPhone 16
