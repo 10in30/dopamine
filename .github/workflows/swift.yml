@@ -196,54 +196,28 @@ jobs:
           xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" || true
           sleep 2
 
-          # --- Record the REAL composited screen via a PTY ---
-          # `simctl io recordVideo` only finalizes (writes the moov atom) on an
-          # interactive Ctrl-C; a bare `kill -INT` to a backgrounded process is
-          # ignored (proven: it kept recording through a 180s wait, 23MB, no moov).
-          # So drive it under a pseudo-terminal and send a real ^C (0x03), which the
-          # tty line discipline turns into SIGINT for the recorder's process group —
-          # exactly like pressing Ctrl-C in Terminal. Then wait for it to flush.
+          # --- Record the REAL screen with ffmpeg AVFoundation ---
+          # `simctl io recordVideo` cannot finalize on this VM — the AppleM2Scaler*
+          # encode hardware is absent (proven across kill -INT / pgrep / PTY ^C /
+          # GPU defaults / macos-14 & 15 / long waits: always mdat, never a moov).
+          # Capture the desktop instead (the Simulator window is shown via
+          # `open -a Simulator`) using ffmpeg's OWN x264 encoder, which works here.
+          # `-t` bounds the capture and ffmpeg writes a clean moov on its own — no
+          # signal dance needed. The autoplay 3s loop fires throughout the window.
           rm -f /tmp/solarbloom.mp4
-          UDID="$UDID" python3 <<'PY'
-          import os, pty, time, select, signal, sys
-          udid = os.environ["UDID"]
-          pid, fd = pty.fork()
-          if pid == 0:
-              os.execvp("xcrun", ["xcrun", "simctl", "io", udid, "recordVideo",
-                                  "--codec=h264", "--force", "/tmp/solarbloom.mp4"])
-              os._exit(127)
-          def pump(seconds):
-              end = time.time() + seconds
-              while time.time() < end:
-                  r, _, _ = select.select([fd], [], [], 0.3)
-                  if r:
-                      try:
-                          d = os.read(fd, 4096)
-                          if d: sys.stdout.write(d.decode(errors="replace")); sys.stdout.flush()
-                      except OSError:
-                          return
-          pump(10)                         # record ~3 clean autoplay fires
-          print(">>> sending Ctrl-C to recordVideo via PTY", flush=True)
-          os.write(fd, b"\x03")            # ^C → SIGINT to the recorder's pgroup
-          deadline = time.time() + 90
-          exited = False
-          while time.time() < deadline:
-              r, _, _ = select.select([fd], [], [], 0.5)
-              if r:
-                  try:
-                      d = os.read(fd, 4096)
-                      if d: sys.stdout.write(d.decode(errors="replace")); sys.stdout.flush()
-                  except OSError:
-                      pass
-              wpid, _ = os.waitpid(pid, os.WNOHANG)
-              if wpid == pid:
-                  exited = True; print(">>> recordVideo exited cleanly", flush=True); break
-          if not exited:
-              print(">>> timeout — SIGKILL", flush=True)
-              try: os.kill(pid, signal.SIGKILL)
-              except ProcessLookupError: pass
-          PY
-          echo "--- recordVideo log (pty stdout above) ---"
+          echo "--- AVFoundation capture devices ---"
+          ffmpeg -hide_banner -f avfoundation -list_devices true -i "" 2>/tmp/avf.txt || true
+          cat /tmp/avf.txt
+          SCREEN_IDX=$(grep -iE 'Capture screen' /tmp/avf.txt | head -1 | sed -E 's/.*\[([0-9]+)\][[:space:]]*Capture screen.*/\1/')
+          [ -z "$SCREEN_IDX" ] && SCREEN_IDX=1
+          echo "using AVFoundation screen index = $SCREEN_IDX"
+          ffmpeg -y -hide_banner -f avfoundation -framerate 30 -capture_cursor 0 \
+            -i "${SCREEN_IDX}:none" -an -t 12 -vcodec libx264 -pix_fmt yuv420p \
+            -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2' /tmp/solarbloom.mp4 2>&1 | tail -25 \
+            || ffmpeg -y -hide_banner -f avfoundation -framerate 30 -i "${SCREEN_IDX}" -an -t 12 \
+                 -vcodec libx264 -pix_fmt yuv420p \
+                 -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2' /tmp/solarbloom.mp4 2>&1 | tail -25 || true
+          echo "--- ffmpeg screen-capture done ---"
 
           echo "--- app liveness ---"
           xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep -i dopamine \
