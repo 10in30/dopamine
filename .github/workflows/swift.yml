@@ -176,7 +176,7 @@ jobs:
           # CoreSimulator helper the runner blocks on. Foreground + a SIGINT from
           # timeout makes avfoundation finalize the mp4 moov atom and exit cleanly,
           # with a hard ceiling so the step can never hang.
-          timeout --signal=INT 12 \
+          timeout --signal=INT --kill-after=8 12 \
             xcrun simctl io "$UDID" recordVideo --codec=h264 --force /tmp/solarbloom.mp4 \
             >/tmp/rec.log 2>&1 || true
           echo "--- recorder log ---"; cat /tmp/rec.log || true
