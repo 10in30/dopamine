@@ -34,16 +34,27 @@ targets:
     platform: iOS
     sources:
       - path: Sources
+    # Let XcodeGen own the Info.plist. A bare `INFOPLIST_FILE` in settings.base
+    # was silently dropped (the built .app shipped with NO Info.plist, so simctl
+    # reported a missing CFBundleVersion). The `info:` block both WIRES
+    # INFOPLIST_FILE / GENERATE_INFOPLIST_FILE=NO and writes a complete plist;
+    # XcodeGen merges the standard keys (CFBundleExecutable / Identifier / Name /
+    # PackageType, etc.). Versions are QUOTED so they serialize as <string>, which
+    # simctl install requires (an integer CFBundleVersion is rejected).
+    info:
+      path: Info.plist
+      properties:
+        CFBundleVersion: "1"
+        CFBundleShortVersionString: "1.0"
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiredDeviceCapabilities:
+          - metal
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.polyguard.DopamineDemo
-        # Use the checked-in Info.plist verbatim. It declares CFBundleVersion as
-        # an explicit <string>1</string> — simctl install rejects a missing OR
-        # non-string CFBundleVersion, and synthesizing the plist (or letting
-        # XcodeGen emit an integer-typed value) failed that check. A literal,
-        # string-typed plist is deterministic.
-        GENERATE_INFOPLIST_FILE: NO
-        INFOPLIST_FILE: Info.plist
         # Simulator builds in CI are unsigned.
         CODE_SIGNING_REQUIRED: NO
         CODE_SIGN_IDENTITY: ""
