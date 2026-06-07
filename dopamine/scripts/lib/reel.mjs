@@ -42,12 +42,11 @@ export const REEL = [
   { name: "inkstroke", mood: "celebratory", intensity: 0.85, whimsy: 0.45 },
   { name: "comic", mood: "celebratory", intensity: 0.85, whimsy: 0.5 },
   { name: "fail", mood: "electric", intensity: 0.9, whimsy: 0.4 },
-  // --- new effects (uncomment as each is integrated + wired into the demo) ---
-  // { name: "aurora",     mood: "serene",      intensity: 0.85, whimsy: 0.4 },
-  // { name: "ripple",     mood: "celebratory", intensity: 0.85, whimsy: 0.4 },
-  // { name: "confetti",   mood: "celebratory", intensity: 0.9,  whimsy: 0.4 },
-  // { name: "heartburst", mood: "celebratory", intensity: 0.85, whimsy: 0.4 },
-  // { name: "lightning",  mood: "electric",    intensity: 0.95, whimsy: 0.4 },
+  { name: "aurora", mood: "serene", intensity: 0.85, whimsy: 0.4 },
+  { name: "ripple", mood: "celebratory", intensity: 0.85, whimsy: 0.4 },
+  { name: "confetti", mood: "celebratory", intensity: 0.9, whimsy: 0.4 },
+  { name: "heartburst", mood: "celebratory", intensity: 0.85, whimsy: 0.4 },
+  { name: "lightning", mood: "electric", intensity: 0.95, whimsy: 0.4 },
 ];
 
 export function ffmpeg(args) {

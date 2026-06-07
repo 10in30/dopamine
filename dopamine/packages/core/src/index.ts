@@ -30,12 +30,22 @@ import { solarbloom } from "./effects/solarbloom.js";
 import { inkstroke } from "./effects/inkstroke.js";
 import { comic } from "./effects/comic.js";
 import { fail as failEffect } from "./effects/fail.js";
+import { aurora } from "./effects/aurora.js";
+import { ripple } from "./effects/ripple.js";
+import { confetti } from "./effects/confetti.js";
+import { heartburst } from "./effects/heartburst.js";
+import { lightning } from "./effects/lightning.js";
 
 /** Force-retain the registrations against tree-shaking; also the built-in set. */
-const BUILTINS = [solarbloom, inkstroke, comic, failEffect] as const;
+const BUILTINS = [
+  solarbloom, inkstroke, comic, failEffect,
+  aurora, ripple, confetti, heartburst, lightning,
+] as const;
 
 /** Built-in effect names usable with the convenience API + the demo/scripts. */
-export type EffectName = "solarbloom" | "inkstroke" | "comic" | "fail";
+export type EffectName =
+  | "solarbloom" | "inkstroke" | "comic" | "fail"
+  | "aurora" | "ripple" | "confetti" | "heartburst" | "lightning";
 
 /** The names of the four effects registered by `@dopamine/core` on import. */
 export const builtinEffectNames: readonly EffectName[] = BUILTINS.map(

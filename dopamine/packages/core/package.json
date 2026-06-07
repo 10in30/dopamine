@@ -30,7 +30,12 @@
     "./effects/fail": {
       "types": "./dist/effects/fail.d.ts",
       "default": "./dist/effects/fail.js"
-    }
+    },
+    "./effects/aurora": { "types": "./dist/effects/aurora.d.ts", "default": "./dist/effects/aurora.js" },
+    "./effects/ripple": { "types": "./dist/effects/ripple.d.ts", "default": "./dist/effects/ripple.js" },
+    "./effects/confetti": { "types": "./dist/effects/confetti.d.ts", "default": "./dist/effects/confetti.js" },
+    "./effects/heartburst": { "types": "./dist/effects/heartburst.d.ts", "default": "./dist/effects/heartburst.js" },
+    "./effects/lightning": { "types": "./dist/effects/lightning.d.ts", "default": "./dist/effects/lightning.js" }
   },
   "files": ["dist", "src", "assets"],
   "sideEffects": [

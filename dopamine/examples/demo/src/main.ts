@@ -17,7 +17,9 @@ const $ = <T extends HTMLElement>(sel: string): T => {
   return el;
 };
 
-type EffectName = "solarbloom" | "inkstroke" | "comic" | "fail";
+type EffectName =
+  | "solarbloom" | "inkstroke" | "comic" | "fail"
+  | "aurora" | "ripple" | "confetti" | "heartburst" | "lightning";
 
 // Lazy per-effect chunks. Each module self-registers its effect on import; we
 // await them so the generic `play("name", …)` can find the registered factory.
@@ -26,6 +28,11 @@ const EFFECT_LOADERS: Record<EffectName, () => Promise<unknown>> = {
   inkstroke: () => import("@dopamine/core/effects/inkstroke"),
   comic: () => import("@dopamine/core/effects/comic"),
   fail: () => import("@dopamine/core/effects/fail"),
+  aurora: () => import("@dopamine/core/effects/aurora"),
+  ripple: () => import("@dopamine/core/effects/ripple"),
+  confetti: () => import("@dopamine/core/effects/confetti"),
+  heartburst: () => import("@dopamine/core/effects/heartburst"),
+  lightning: () => import("@dopamine/core/effects/lightning"),
 };
 
 // The fail effect speaks failure moods; map the shared success-mood toggle onto

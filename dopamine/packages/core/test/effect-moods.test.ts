@@ -28,12 +28,22 @@ import solarbloomDoc from "../src/effects/solarbloom.dope.json";
 import inkstrokeDoc from "../src/effects/inkstroke.dope.json";
 import comicDoc from "../src/effects/comic.dope.json";
 import failDoc from "../src/effects/fail.dope.json";
+import auroraDoc from "../src/effects/aurora.dope.json";
+import rippleDoc from "../src/effects/ripple.dope.json";
+import confettiDoc from "../src/effects/confetti.dope.json";
+import heartburstDoc from "../src/effects/heartburst.dope.json";
+import lightningDoc from "../src/effects/lightning.dope.json";
 
 const DOCS: Record<string, { controls?: { mood?: { options?: string[] } } }> = {
   solarbloom: solarbloomDoc as never,
   inkstroke: inkstrokeDoc as never,
   comic: comicDoc as never,
   fail: failDoc as never,
+  aurora: auroraDoc as never,
+  ripple: rippleDoc as never,
+  confetti: confettiDoc as never,
+  heartburst: heartburstDoc as never,
+  lightning: lightningDoc as never,
 };
 
 const SUCCESS_MOODS = ["serene", "celebratory", "electric"];

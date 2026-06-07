@@ -1,0 +1,223 @@
+/**
+ * GLSL ES 3.00 source for **Heartburst** — Dopamine's love / like / favorite
+ * moment: a heart swells with a double-beat (lub-dub) then BURSTS into a flurry
+ * of small hearts that fly outward, arc, and fade.
+ *
+ * This is a HYBRID (Canvas2D-panel) effect. The crisp vector hearts — the big
+ * hero heart and the little burst hearts — are drawn with a parametric heart
+ * curve into an OFFSCREEN Canvas2D each frame (heartburst-renderer.ts) and
+ * handed to this shader as a single "panel" texture. The shader then does
+ * everything that wants to be procedural / screen-space:
+ *   - a soft warm BLOOM behind the heart (the love glow),
+ *   - a tight GLOSS / specular highlight on the hero heart at the photoreal end,
+ *   - the NOIR ↔ POP styling: a moody near-monochrome heart with one warm spot
+ *     color (noir) → a flat saturated cel "sticker" heart with a hard rim and
+ *     halftone blush (pop), keyed off uStyle/uSaturation,
+ *   - a hot beat FLASH that throws warm light onto the page (the cast).
+ *
+ * Everything is summed as light (canvas is black, composited via
+ * `mix-blend-mode: screen`, so black == no change, bright == cast light).
+ *
+ * Panel texture channel encoding (see heartburst-renderer.ts):
+ *   R = hero heart FILL mask  (the big swelling heart's interior)
+ *   G = INK / contour mask    (heart outline + the gloss seed highlight)
+ *   B = burst hearts FILL     (all the little flying hearts)
+ *   A = unused
+ *
+ * Pure function of uniforms → frame-perfect & cheap under SwiftShader.
+ */
+
+import {
+  GLSL_CONSTANTS,
+  GLSL_DITHER,
+  GLSL_HALFTONE,
+  GLSL_HASH,
+  GLSL_ROT2,
+  GLSL_TONEMAP_ACES,
+} from "./look/glsl.js";
+
+export const HEARTBURST_VERTEX_SRC = /* glsl */ `#version 300 es
+out vec2 vUv;
+void main() {
+  vec2 pos = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  vUv = pos;
+  gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+export const HEARTBURST_FRAGMENT_SRC = /* glsl */ `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform sampler2D uPanel;     // R=heartFill G=ink B=burstFill
+uniform vec2  uResolution;    // device pixels
+uniform vec2  uCenter;        // heart centre, device px
+uniform float uLife;          // whole-effect progress 0..1
+uniform float uTimeS;         // elapsed seconds
+uniform float uPresence;      // panel opacity / presence 0..1
+uniform float uBeat;          // 0..1 current beat amplitude (lub-dub thump)
+uniform float uBurst;         // 0..1 burst progress (little hearts flying out)
+uniform float uFlash;         // 0..1 warm beat/burst flash amount
+uniform float uExposure;      // cast-light gain
+uniform float uGlow;          // 0..1 soft bloom radius/strength behind the heart
+uniform float uGloss;         // 0..1 specular gloss on the hero heart (photoreal)
+uniform float uHalftone;      // 0..1 Ben-Day blush dot strength (pop)
+uniform float uDotSize;       // halftone cell size in device px
+uniform float uSaturation;    // 0..1 panel color saturation (noir->pop)
+uniform float uSeed;          // per-fire hash
+uniform float uStyle;         // 0..1 photoreal/noir -> flat cel sticker (whimsy)
+uniform float uShadow;        // 0 = light pass (screen), 1 = shadow pass (multiply)
+uniform vec2  uShadowOffset;  // device-px offset of the cast silhouette
+uniform float uShadowSoft;    // penumbra softness in device px
+uniform float uShadowStrength;// 0..1 max darkening of the multiply layer
+uniform vec3  uC0;            // hero heart core color (warm red)
+uniform vec3  uC1;            // heart shade / burst color (pink/coral)
+uniform vec3  uC2;            // accent / glow / blush color
+
+${GLSL_CONSTANTS}
+${GLSL_HASH}
+${GLSL_ROT2}
+${GLSL_HALFTONE}
+${GLSL_TONEMAP_ACES}
+${GLSL_DITHER}
+
+void main(){
+  vec2 frag = vUv * uResolution;
+  vec2 res = uResolution;
+  float minDim = min(res.x, res.y);
+
+  // ---- SHADOW PASS (multiply layer) ---------------------------------------
+  // Cheap occlusion: the panel's solid forms (hero + burst fills) sampled at an
+  // offset toward the implied key light, with a small ring blur for a penumbra.
+  // White = no shadow (multiply identity); darker = cast shadow. Presence fades
+  // it with the effect.
+  if (uShadow > 0.5) {
+    vec2 px = 1.0 / res;
+    vec2 souv = vUv - uShadowOffset * px;
+    float occ = 0.0;
+    for (int i = 0; i < 8; i++) {
+      float a = float(i) / 8.0 * TAU;
+      vec2 o = vec2(cos(a), sin(a)) * uShadowSoft * px;
+      vec2 tuv = souv + o;
+      vec2 inb = step(vec2(0.0), tuv) * step(tuv, vec2(1.0));
+      float mask = inb.x * inb.y;
+      vec4 s = texture(uPanel, tuv);
+      occ += clamp(s.r + s.b, 0.0, 1.0) * mask;
+    }
+    occ /= 8.0;
+    float dark = clamp(occ * uShadowStrength, 0.0, 1.0);
+    fragColor = vec4(vec3(1.0 - dark), 1.0);
+    return;
+  }
+
+  vec2 fromC = frag - uCenter;
+  float rad = length(fromC);
+
+  vec4 panel = texture(uPanel, vUv);
+  float heartFill = panel.r;
+  float ink = panel.g;
+  float burstFill = panel.b;
+
+  vec3 col = vec3(0.0);
+
+  // ---- SOFT BLOOM behind the heart (the love glow) ------------------------
+  // A warm radial glow centred on the heart, pulsing with the beat + flaring on
+  // the burst. Sampled as a smooth falloff so it reads as light blooming behind
+  // the form, not a hard disc. Warmer (toward uC2) as it goes pop.
+  float glowR = minDim * (0.18 + 0.30 * uGlow) * (1.0 + 0.25 * uBeat);
+  float bloom = exp(-rad / glowR);
+  float bloomAmp = (0.35 + 0.65 * uBeat) * (0.6 + 0.8 * uBurst * (1.0 - uBurst) * 3.0);
+  vec3 glowCol = mix(uC0, uC2, 0.45 + 0.3 * uSaturation);
+  col += glowCol * bloom * bloomAmp * uPresence * uGlow * uExposure * 0.9;
+
+  // ---- HERO HEART ---------------------------------------------------------
+  // The big swelling heart. A rich warm body with a vertical light->shade
+  // gradient (top catches the key light). Photoreal end: smooth gradient + a
+  // tight gloss highlight. Pop end: flatter, more saturated, with a halftone
+  // blush and a crisp rim.
+  // Vertical shading term: 1 at the top of the panel, 0 at the bottom.
+  float vshade = clamp(1.0 - vUv.y, 0.0, 1.0);
+  vec3 bodyLit  = mix(uC1, uC0, 0.35 + 0.65 * uSaturation);          // mid body
+  vec3 bodyHi   = clamp(bodyLit * 1.5 + 0.18, 0.0, 1.6);             // lit top
+  vec3 bodyLow  = bodyLit * 0.55;                                     // shaded base
+  // Photoreal: smooth top->bottom gradient. Cel: snap to two flat zones.
+  float g = smoothstep(0.15, 0.95, vshade);
+  float gCel = step(0.5, vshade);
+  float grad = mix(g, gCel, uStyle);
+  vec3 heartCol = mix(bodyLow, bodyHi, grad);
+
+  // Soft inner-rim self-shadow toward the silhouette so the form reads round
+  // (photoreal); fades out toward the flat cel sticker.
+  // (We approximate the rim from how isolated the fill is via a small blur.)
+  float edge = 0.0;
+  {
+    vec2 px = 1.0 / res;
+    for (int i = 0; i < 6; i++){
+      float a = float(i) / 6.0 * TAU;
+      edge += texture(uPanel, vUv + vec2(cos(a), sin(a)) * px * 3.0).r;
+    }
+    edge /= 6.0;
+  }
+  float rimDark = clamp((heartFill - edge), 0.0, 1.0); // bright near the outline
+  heartCol *= 1.0 - rimDark * 0.5 * (1.0 - uStyle);
+
+  // Halftone blush on the heart toward the pop end (printed sticker shading).
+  float blush = benday(frag, uDotSize, mix(0.35, 0.6, uHalftone), radians(20.0) + uSeed);
+  heartCol += (uC2 - heartCol) * blush * uHalftone * uStyle * 0.28;
+
+  col += heartCol * heartFill * uPresence * uExposure * 1.6;
+
+  // GLOSS: a tight specular highlight near the upper-left of the heart at the
+  // photoreal end (a glassy gel-heart). Seeded by the ink-channel highlight blob
+  // the renderer paints, modulated up by the beat (the heart "shines" as it
+  // thumps). Vanishes toward the flat cel end.
+  float gloss = ink * heartFill;          // ink highlight that sits ON the fill
+  float glossAmt = uGloss * (1.0 - uStyle) * (0.6 + 0.6 * uBeat);
+  col += vec3(1.0) * gloss * glossAmt * uPresence * 1.4;
+
+  // ---- BURST: the flurry of little hearts ---------------------------------
+  // Drawn fully in the panel (positions/arc/scale computed in JS for crisp
+  // vector hearts). Here we just light them — saturated warm fills with a soft
+  // self-glow, fading as they fly out (uBurst late => dimmer).
+  float burstFade = 1.0 - smoothstep(0.55, 1.0, uBurst);
+  vec3 littleCol = mix(uC1, uC2, 0.3 + 0.4 * uSaturation);
+  littleCol = clamp(littleCol * 1.25 + 0.1, 0.0, 1.5);
+  col += littleCol * burstFill * uPresence * burstFade * uExposure * 1.5;
+  // a soft sparkle bloom around the little hearts so they twinkle as they go.
+  col += littleCol * burstFill * 0.4 * burstFade * (0.5 + 0.5 * sin(uTimeS * 30.0 + uSeed));
+
+  // ---- INK / CONTOUR ------------------------------------------------------
+  // Bold outline. On a screen-blend canvas ink is the ABSENCE of light, so the
+  // contour CARVES the lit shapes (reads as a dark outline) — strongest toward
+  // the flat cel sticker (a clean black keyline), softer at the photoreal end.
+  // The gloss seed (ink ON the fill) is NOT carved (handled above as highlight).
+  float contour = ink * (1.0 - heartFill);  // outline pixels only
+  float carve = contour * uPresence * mix(0.45, 0.95, uStyle);
+  col *= (1.0 - carve);
+
+  // ---- BEAT / BURST FLASH -------------------------------------------------
+  // A warm flash that throws colored light onto the page on each thump and at
+  // the burst. Fast spike (driven by uFlash), warm core.
+  float flashFall = exp(-rad / (minDim * 0.40));
+  vec3 flashCol = mix(uC0, vec3(1.0, 0.85, 0.8), 0.4 + 0.25 * uStyle);
+  col += flashCol * flashFall * uFlash * uExposure * 1.2;
+  // tiny white-hot core at the very centre on the strongest beats.
+  float core = exp(-rad / (minDim * 0.08));
+  col += vec3(1.0, 0.92, 0.9) * core * uFlash * uBeat * 1.3;
+
+  // ---- TONE + FINISH ------------------------------------------------------
+  col = tonemapACES(col * 0.9);
+
+  // Cel posterize toward the pop/sticker end (flat printed color); leaves the
+  // dark page untouched so we don't shatter it.
+  if (uStyle > 0.001) {
+    float lit = smoothstep(0.02, 0.2, max(max(col.r, col.g), col.b));
+    vec3 q = floor(col * 4.0 + 0.5) / 4.0;
+    col = mix(col, mix(col, q, lit), uStyle * 0.7);
+  }
+
+  // Ordered dither to kill banding the screen blend reveals (faded toward cel).
+  col = ditherAdd(col, frag, uTimeS, 1.0 - uStyle * 0.7);
+
+  fragColor = vec4(max(col, 0.0), 1.0);
+}`;

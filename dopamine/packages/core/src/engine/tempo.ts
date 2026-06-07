@@ -171,6 +171,81 @@ export function failEnvelope(life: number): number {
   return Math.pow(fade, 1.7); // quick collapse
 }
 
+// ---------------------------------------------------------------------------
+// HEARTBURST envelope — a love / like / favorite moment.
+//
+// The shape of time is a "lub-dub" double-pulse: the heart swells on a first
+// (loud) beat, relaxes, swells again on a second (softer) beat, then on the
+// release it BURSTS into a flurry of little hearts that fly outward and fade.
+// All pure functions of normalized life so a frame is reproducible.
+//
+//   life 0.00 .. 0.30  : LUB-DUB — two beats; the second tucked behind the first
+//   life 0.30 .. 1.00  : BURST + AFTERGLOW — little hearts fly out, big heart fades
+// ---------------------------------------------------------------------------
+
+/** Fraction of life occupied by the lub-dub beat phase before the burst. */
+export const HEARTBEAT_PHASE = 0.3;
+
+/**
+ * A single soft beat pulse centred at `center` (in life units) with half-width
+ * `width`: rises fast, eases back down. Returns 0..1 (peak 1 at `center`).
+ */
+function beatPulse(t: number, center: number, width: number): number {
+  const x = (t - center) / width;
+  if (x <= -1 || x >= 1) return 0;
+  // smooth bell: cos lobe, sharper attack than decay for a muscular "thump".
+  const lobe = 0.5 + 0.5 * Math.cos(x * Math.PI);
+  return x < 0 ? Math.pow(lobe, 0.7) : Math.pow(lobe, 1.4);
+}
+
+/**
+ * Heart SCALE multiplier over normalized life. A resting 1.0 with two beats
+ * superimposed (lub = strong, dub = ~62% as strong, slightly later), then it
+ * settles to rest through the burst and gently shrinks as it fades out.
+ *
+ * `strength` scales how hard the beats swell (driven by intensity).
+ * `doubleBeat` 0..1 blends from a SINGLE gentle pulse (serene) to a full
+ * lub-dub (celebratory/electric) — the dub fades in with it.
+ */
+export function heartbeatScale(life: number, strength = 1, doubleBeat = 1): number {
+  const t = clamp01(life);
+  const lub = beatPulse(t, 0.1, 0.1);
+  const dub = beatPulse(t, 0.21, 0.075) * 0.62 * clamp01(doubleBeat);
+  const beat = Math.max(lub, dub);
+  // After the burst release the heart relaxes to rest, then sags slightly as it
+  // dissolves so it reads as "spent".
+  const sag = t > HEARTBEAT_PHASE ? 0.06 * easeOutCubic((t - HEARTBEAT_PHASE) / (1 - HEARTBEAT_PHASE)) : 0;
+  return 1 + beat * 0.42 * strength - sag;
+}
+
+/**
+ * The amplitude/energy envelope (→ uAmp + shadow strength). Tracks the beats
+ * during the lub-dub then a bright flare at the burst, decaying through the
+ * afterglow. `envelope(0) ~ 0`, peaks on the beats + burst, → 0 by life 1.
+ */
+export function heartburstEnvelope(life: number, strength = 1, doubleBeat = 1): number {
+  const t = clamp01(life);
+  if (t <= 0 || t >= 1) return 0;
+  const lub = beatPulse(t, 0.1, 0.1);
+  const dub = beatPulse(t, 0.21, 0.075) * 0.62 * clamp01(doubleBeat);
+  const beats = Math.max(lub, dub) * 0.9 * strength;
+  // Burst flare: a quick spike at release, then a long gentle decay.
+  const b = burstProgress(life);
+  const flare = b * Math.pow(1 - b, 1.1) * 2.4;
+  return clamp01(Math.max(beats, flare * (0.7 + 0.3 * strength)));
+}
+
+/**
+ * Burst progress 0..1 over the post-beat phase: 0 until the dub finishes, then
+ * eases out to 1 as the little hearts fly out and fade. Drives the particle
+ * fan-out distance + fade in both the renderer and the shader.
+ */
+export function burstProgress(life: number): number {
+  const t = clamp01(life);
+  if (t <= HEARTBEAT_PHASE) return 0;
+  return easeOutCubic((t - HEARTBEAT_PHASE) / (1 - HEARTBEAT_PHASE));
+}
+
 /**
  * Damped recoil SHAKE offset over elapsed ms — a horizontal "no" head-shake that
  * decays fast. Returns a signed multiplier (~-1..1) the renderer scales into px.
@@ -183,4 +258,41 @@ export function shakeOffset(elapsedMs: number, amount = 1): number {
   // ~3.5 oscillations over the shake window.
   const osc = Math.sin((elapsedMs / FAIL_SHAKE_MS) * Math.PI * 7.0);
   return osc * decay * amount;
+}
+
+// ---------------------------------------------------------------------------
+// LIGHTNING — a high-energy "power-up / boost" STRIKE. The bolt cracks in almost
+// instantly with a hard FLASH on contact, then a brief FLICKER AFTERGLOW strobes
+// and decays. The shapes below are pure functions of time (frame-deterministic).
+// ---------------------------------------------------------------------------
+
+/** Window (ms) over which the bolt cracks in to the strike point. Hard + fast. */
+export const STRIKE_MS = 130;
+
+/**
+ * Bolt strike progress (0..1) over elapsed ms — the jagged arc racing from the
+ * source to the action point. Ease-out quint: a near-instant crack-in that
+ * settles abruptly, so the bolt reads as a strike, not a slow draw.
+ */
+export function strikeProgress(elapsedMs: number): number {
+  const x = clamp01(elapsedMs / STRIKE_MS);
+  return 1 - Math.pow(1 - x, 5);
+}
+
+/**
+ * FLASH / STROBE amplitude (0..1+) over normalized life — the signature electric
+ * hit. An instantaneous near-white flash on the strike instant that decays fast,
+ * then a few discrete FLICKER re-pulses (the afterglow strobe) whose peaks decay
+ * across the tail. `flicker` (driven by intensity) scales how many/how strong the
+ * re-pulses are. `envelope(0)≈peak`, → 0 by life 1.
+ */
+export function flashStrobe(life: number, flicker = 1): number {
+  const t = clamp01(life);
+  const primary = Math.exp(-t / 0.035);
+  const beats = 6;
+  const phase = t * beats * Math.PI * 2;
+  const spike = Math.max(0, Math.sin(phase));
+  const sharp = Math.pow(spike, 8);
+  const tail = Math.pow(1 - t, 2.2) * 0.28 * flicker;
+  return primary + sharp * tail;
 }
