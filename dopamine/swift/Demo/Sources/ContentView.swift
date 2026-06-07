@@ -21,7 +21,7 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            Color(white: 0.06).ignoresSafeArea()
+            Color(white: 0.11).ignoresSafeArea()
 
             VStack(spacing: 28) {
                 Spacer()
@@ -67,7 +67,12 @@ struct ContentView: View {
         .padding(.vertical, 36)
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color(white: 0.12))
+                .fill(Color(white: 0.22))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.5), radius: 24, y: 12)
         )
         // Track the card's center in the global coordinate space so the overlay
         // anchors the bloom on the checkmark.
@@ -131,7 +136,7 @@ struct ContentView: View {
         // repeating fire guarantees the effect is on-screen for the whole capture
         // (and shows the unique-every-time palette across fires).
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { fire() }
-        Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+        Timer.scheduledTimer(withTimeInterval: 2.2, repeats: true) { _ in
             fire()
         }
     }

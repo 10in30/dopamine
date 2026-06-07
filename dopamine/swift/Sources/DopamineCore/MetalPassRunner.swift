@@ -32,6 +32,15 @@ public struct FrameInfo {
     public var animMs: Double
     /// Normalized life 0..1.
     public var life: Double
+    /// The REAL (un-stepped) elapsed ms. Use this for timing that must stay
+    /// smooth even when the bloom is stylized "on twos" — e.g. the functional
+    /// checkmark confirmation, whose draw should never visibly step.
+    public var elapsedMs: Double
+    public init(animMs: Double, life: Double, elapsedMs: Double? = nil) {
+        self.animMs = animMs
+        self.life = life
+        self.elapsedMs = elapsedMs ?? animMs
+    }
 }
 
 /// The standard uniforms every pure-shader pass receives, laid out so a generated
@@ -208,7 +217,7 @@ public final class MetalPassRunner<Config: PassConfig> {
         let stepped = (elapsedMs / NPR_TIME_STEP_MS).rounded(.down) * NPR_TIME_STEP_MS
         let animMs = elapsedMs + (stepped - elapsedMs) * style
         let life = Swift.min(max(animMs, 0) / max(durationMs, 1), 1)
-        let info = FrameInfo(animMs: animMs, life: life)
+        let info = FrameInfo(animMs: animMs, life: life, elapsedMs: elapsedMs)
         let (amp, extras) = config.frame(info, params)
 
         if let se = shadowEncoder, let sp = shadowPipeline {

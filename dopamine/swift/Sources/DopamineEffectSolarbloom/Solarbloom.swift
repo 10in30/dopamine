@@ -96,8 +96,11 @@ public struct SolarbloomConfig: PassConfig {
         var overshoot = 1.0
         if case let .number(v)? = params["overshoot"] { overshoot = v }
         let amp = envelope(info.life, overshoot: overshoot)
-        // The check draws on its OWN ~240ms clock (bespoke tempo).
-        return (amp, ["check": checkProgress(info.animMs)])
+        // The check draws on its OWN ~240ms clock (bespoke tempo), using the REAL
+        // elapsed time — NOT the "animate on twos" stepped clock. The checkmark is
+        // the functional "it worked" confirmation and must draw smoothly even at
+        // high whimsy (where the bloom/motes intentionally step on twos).
+        return (amp, ["check": checkProgress(info.elapsedMs)])
     }
 
     /// Pack the resolved bag → the struct via the GENERATED packer

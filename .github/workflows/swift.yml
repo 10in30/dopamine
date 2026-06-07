@@ -171,17 +171,45 @@ jobs:
 
           xcrun simctl install "$UDID" "$APP"
 
-          # NOTE: stock macOS has NO `timeout` and NO `ffmpeg` (both are GNU/Homebrew
-          # tools). Earlier `timeout …` calls silently no-op'd via `|| true`, so the
-          # app never actually launched and only the un-wrapped probe screenshot
-          # worked. Install ffmpeg, and call simctl directly (no `timeout`): launch
-          # returns immediately and each screenshot is a one-shot — neither hangs.
+          # ffmpeg: used to pull sample stills out of the recorded clip (and as the
+          # muxer for the screenshot fallback). Stock macOS has no ffmpeg.
           brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
+          mkdir -p /tmp/out
 
-          # Launch plain (NO --console-pty: that allocates a PTY the runner blocks on
-          # at EOF, wedging the step). simctl launch returns the app PID immediately.
+          # Launch the app (autoplay fires the effect ~0.4s in, then re-fires on a
+          # loop). NO --console-pty: that PTY blocks the step at EOF.
           xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" || true
-          sleep 4
+          # Give the window a beat to come up before recording.
+          sleep 1.5
+
+          # ---- REAL-TIME capture via `simctl io recordVideo` ----
+          # recordVideo records the live framebuffer at the simulator's own frame
+          # rate → a smooth clip (the screenshot loop only managed ~1 fps, which
+          # made the 240ms checkmark draw look like it stuttered).
+          #
+          # The earlier abandonment of recordVideo was a red herring: it "wedged"
+          # the step only because the backgrounded recorder INHERITED the step's
+          # stdout pipe, and the step can't finish until that pipe is closed. The
+          # fix is to fully detach its stdio (`</dev/null >log 2>&1`) so it never
+          # holds the step open, then stop it with SIGINT (which makes simctl
+          # finalize the moov atom) and fall back to SIGKILL. No `timeout` needed
+          # (and stock macOS has none) — we drive the clock with sleep + a bounded
+          # poll on the PID.
+          rm -f /tmp/solarbloom.mp4
+          xcrun simctl io "$UDID" recordVideo --codec=h264 --force /tmp/solarbloom.mp4 \
+            </dev/null >/tmp/rec.log 2>&1 &
+          REC=$!
+          disown "$REC" 2>/dev/null || true
+          echo "recordVideo started pid=$REC"
+          # ~9s of real time → several full autoplay fires at the real frame rate.
+          sleep 9
+          echo "stopping recordVideo (SIGINT) ..."
+          kill -INT "$REC" 2>/dev/null || true
+          # Bounded wait for the recorder to finalize + exit (≤15s); then force-kill.
+          for _ in $(seq 1 30); do kill -0 "$REC" 2>/dev/null || break; sleep 0.5; done
+          kill -9 "$REC" 2>/dev/null || true
+          echo "--- recordVideo log ---"; cat /tmp/rec.log || true
+
           echo "--- app liveness (is DopamineDemo still running?) ---"
           if xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep -i dopamine; then
             echo ">>> DopamineDemo IS running"
@@ -189,49 +217,49 @@ jobs:
             echo ">>> DopamineDemo is NOT running (crashed or never foregrounded)"
           fi
           # Capture the APP PROCESS's own log lines (os.Logger lands here; plain
-          # print() does NOT). Filtering by process avoids the install-coordination
-          # noise that a bare 'Dopamine' grep picks up.
+          # print() does NOT). Filtering by process avoids install-coordination noise.
           echo "--- app log (process == DopamineDemo) ---"
           xcrun simctl spawn "$UDID" log show --last 3m --style compact \
-            --predicate 'process == "DopamineDemo"' 2>/dev/null | head -120 \
+            --predicate 'process == "DopamineDemo"' 2>/dev/null \
+            | grep -iE 'DopamineDemo\]|Metal|metallib|Solarbloom|fired' | head -60 \
             > /tmp/app.log || true
           cat /tmp/app.log || true
           # If it crashed, the simulator writes an .ips crash report on the HOST.
-          # Dump the newest DopamineDemo one so the reason is in the logs + artifact.
           echo "--- crash reports (if any) ---"
           CRASH=$(ls -t "$HOME"/Library/Logs/DiagnosticReports/DopamineDemo-*.ips 2>/dev/null | head -1)
           if [ -n "$CRASH" ]; then
-            echo "found crash report: $CRASH"
-            cp "$CRASH" /tmp/crash.ips || true
-            head -120 "$CRASH" || true
+            echo "found crash report: $CRASH"; cp "$CRASH" /tmp/crash.ips || true; head -120 "$CRASH" || true
           else
             echo "no DopamineDemo crash report found"
           fi
 
-          # Capture stills with one-shot `simctl io screenshot` (NOT recordVideo,
-          # whose CoreSimulator daemon wedges the runner). ~70 frames with a small
-          # gap span several autoplay fires.
-          mkdir -p /tmp/frames
-          for i in $(seq -w 1 70); do
-            xcrun simctl io "$UDID" screenshot "/tmp/frames/f_$i.png" >/dev/null 2>&1 || true
-            sleep 0.15
-          done
-          COUNT=$(ls -1 /tmp/frames/*.png 2>/dev/null | wc -l | tr -d ' ')
-          echo "--- captured frames: $COUNT ---"
-          # 12 fps playback of the stills → a ~6s clip. The scale filter forces
-          # EVEN width/height — the iPhone 16 still is 1179x2556 and libx264 rejects
-          # odd dimensions ("width not divisible by 2"). yuv420p for QuickTime.
-          ffmpeg -y -framerate 12 -pattern_type glob -i '/tmp/frames/*.png' \
-            -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p' \
-            /tmp/solarbloom.mp4 2>&1 | tee /tmp/ffmpeg.log | tail -20 || true
-          # Bundle the clip + a few sample stills + the app console into one dir so the
-          # artifact lets us SEE what was actually on screen and why.
-          mkdir -p /tmp/out
+          # Decide: did recordVideo produce a real clip? (>50KB ⇒ real frames.)
+          MP4_SZ=$(stat -f%z /tmp/solarbloom.mp4 2>/dev/null || echo 0)
+          echo "recorded mp4 size = $MP4_SZ bytes"
+          if [ "$MP4_SZ" -gt 50000 ]; then
+            echo "recordVideo succeeded — extracting sample stills"
+            for t in 2 4 6 8; do
+              ffmpeg -y -ss "$t" -i /tmp/solarbloom.mp4 -frames:v 1 "/tmp/out/frame_${t}s.png" \
+                >/dev/null 2>&1 || true
+            done
+          else
+            echo "recordVideo produced no usable clip — FALLING BACK to screenshot loop"
+            mkdir -p /tmp/frames
+            for i in $(seq -w 1 70); do
+              xcrun simctl io "$UDID" screenshot "/tmp/frames/f_$i.png" >/dev/null 2>&1 || true
+              sleep 0.15
+            done
+            ffmpeg -y -framerate 12 -pattern_type glob -i '/tmp/frames/*.png' \
+              -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p' \
+              /tmp/solarbloom.mp4 2>&1 | tail -10 || true
+            cp /tmp/frames/f_01.png /tmp/frames/f_20.png /tmp/frames/f_45.png /tmp/frames/f_70.png /tmp/out/ 2>/dev/null || true
+          fi
+
+          # Bundle clip + stills + console into the artifact dir.
           cp /tmp/solarbloom.mp4 /tmp/out/ 2>/dev/null || true
           cp /tmp/app.log /tmp/out/ 2>/dev/null || true
           cp /tmp/crash.ips /tmp/out/ 2>/dev/null || true
-          cp /tmp/frames/f_01.png /tmp/frames/f_20.png /tmp/frames/f_45.png /tmp/frames/f_70.png /tmp/out/ 2>/dev/null || true
-          echo "--- recorded file ---"
+          echo "--- recorded files ---"
           ls -la /tmp/out || echo "no clip produced"
 
       - name: Upload recorded clip

@@ -166,7 +166,11 @@ fragment float4 solarbloom_fragment(
     texture2d<float> sdfTex [[texture(1)]],
     sampler texSampler [[sampler(0)]]
 ) {
-    float2 frag = in.position.xy;
+    // Metal's [[position]] is TOP-left origin (y down); the ported GLSL math and
+    // u.origin are bottom-left (y up). Flip y once here so the whole shader works
+    // in the y-up space it was written for (otherwise the checkmark + buoyant
+    // motes render upside down).
+    float2 frag = float2(in.position.x, u.resolution.y - in.position.y);
     float minDim = min(u.resolution.x, u.resolution.y);
     float r = u.bloomRadius * minDim;
     float3 col = float3(0.0);
