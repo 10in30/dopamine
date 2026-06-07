@@ -124,6 +124,22 @@ jobs:
 
           APP=$(find build/Build/Products -name 'DopamineDemo.app' -type d | head -1)
           echo "app=$APP"
+
+          # The built bundle's Info.plist has repeatedly failed simctl's
+          # CFBundleVersion check (synthesized plist / XcodeGen INFOPLIST_FILE
+          # both came up empty or non-string). Dump what's actually there, then
+          # force valid, string-typed version keys straight into the bundle with
+          # PlistBuddy so install is deterministic regardless of how Xcode built
+          # the plist.
+          echo "--- built Info.plist (before patch) ---"
+          plutil -p "$APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 1" "$APP/Info.plist" \
+            || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string 1" "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0" "$APP/Info.plist" \
+            || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 1.0" "$APP/Info.plist"
+          echo "--- built Info.plist (after patch) ---"
+          plutil -p "$APP/Info.plist" || true
+
           xcrun simctl install "$UDID" "$APP"
 
           # Start recording, then launch with the AUTOPLAY arg so it fires headlessly.
