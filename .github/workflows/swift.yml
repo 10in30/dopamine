@@ -166,26 +166,19 @@ jobs:
 
           xcrun simctl install "$UDID" "$APP"
 
-          # Start recording. CRITICAL: redirect the background recorder's stdio to
-          # files and detach stdin — otherwise it inherits this step's output pipe
-          # and the Actions runner blocks on EOF (the step hangs for the whole job
-          # timeout even after the script "finishes").
-          xcrun simctl io "$UDID" recordVideo --codec=h264 --force /tmp/solarbloom.mp4 \
-            >/tmp/rec.log 2>&1 </dev/null &
-          REC_PID=$!
-          sleep 1
-          # Launch with the AUTOPLAY arg so it fires headlessly. Cap it so a stuck
-          # launch can never wedge the job.
+          # Launch FIRST; the app autoplays + re-fires Solarbloom on a 3s loop, so
+          # the effect is on-screen for the whole capture window.
           timeout 60 xcrun simctl launch "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" || true
-          sleep 6
-          # Stop recording with SIGINT so avfoundation finalizes the mp4 moov atom,
-          # then wait (bounded) for the recorder to actually exit, escalating if it
-          # ignores the signal. The bounded wait reaps the child so it can't hold
-          # any descriptor open.
-          kill -INT "$REC_PID" 2>/dev/null || true
-          for _ in $(seq 1 30); do kill -0 "$REC_PID" 2>/dev/null || break; sleep 1; done
-          kill -9 "$REC_PID" 2>/dev/null || true
-          wait "$REC_PID" 2>/dev/null || true
+          sleep 1
+
+          # Record in the FOREGROUND under `timeout --signal=INT`. This is the key
+          # to not wedging the job: a backgrounded `simctl io recordVideo` leaves a
+          # CoreSimulator helper the runner blocks on. Foreground + a SIGINT from
+          # timeout makes avfoundation finalize the mp4 moov atom and exit cleanly,
+          # with a hard ceiling so the step can never hang.
+          timeout --signal=INT 12 \
+            xcrun simctl io "$UDID" recordVideo --codec=h264 --force /tmp/solarbloom.mp4 \
+            >/tmp/rec.log 2>&1 || true
           echo "--- recorder log ---"; cat /tmp/rec.log || true
           echo "--- recorded file ---"
           ls -la /tmp/solarbloom.mp4 || echo "no clip produced"
