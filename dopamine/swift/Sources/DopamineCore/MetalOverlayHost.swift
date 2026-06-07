@@ -183,7 +183,10 @@ public final class MetalOverlayHost<Config: PassConfig> {
         return captureTex
     }
 
-    /// Read a `.shared` bgra8 texture back into an sRGB CGImage.
+    /// Read a `.shared` bgra8 texture back into an sRGB CGImage. We swap B↔R into
+    /// straight RGBA bytes and build the image as premultipliedLast — explicit and
+    /// platform-independent (the byteOrder32Little/premultipliedFirst combo read
+    /// the channels swapped on the simulator, turning the warm bloom cyan).
     private static func makeCGImage(from tex: MTLTexture) -> CGImage? {
         let w = tex.width, h = tex.height, bpr = w * 4
         var buf = [UInt8](repeating: 0, count: bpr * h)
@@ -191,10 +194,11 @@ public final class MetalOverlayHost<Config: PassConfig> {
             tex.getBytes($0.baseAddress!, bytesPerRow: bpr,
                          from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
         }
+        // BGRA → RGBA.
+        var i = 0
+        while i < buf.count { buf.swapAt(i, i + 2); i += 4 }
         let cs = CGColorSpaceCreateDeviceRGB()
-        // bgra8 in memory → byteOrder32Little + premultipliedFirst reads as BGRA.
-        let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue
-                                | CGBitmapInfo.byteOrder32Little.rawValue)
+        let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
         guard let ctx = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8,
                                   bytesPerRow: bpr, space: cs, bitmapInfo: info.rawValue) else { return nil }
         return ctx.makeImage()
