@@ -124,8 +124,37 @@ jobs:
 
           APP=$(find build/Build/Products -name 'DopamineDemo.app' -type d | head -1)
           echo "app=$APP"
-          # Dump the bundle's Info.plist for diagnosis (XcodeGen's info: block
-          # writes a complete, string-versioned plist into the .app).
+
+          # xcodebuild ships this bundle with NO Info.plist (verified: plutil
+          # reports "no such file"), which is why simctl keeps rejecting the
+          # install for a missing CFBundleVersion — neither GENERATE_INFOPLIST_FILE,
+          # a bare INFOPLIST_FILE, nor XcodeGen's info: block landed a plist in the
+          # product. Write a complete, valid (string-typed) Info.plist straight
+          # into the built .app so install is deterministic. CFBundleExecutable
+          # matches the product name.
+          cat > "$APP/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key><string>en</string>
+            <key>CFBundleExecutable</key><string>DopamineDemo</string>
+            <key>CFBundleIdentifier</key><string>ai.polyguard.DopamineDemo</string>
+            <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+            <key>CFBundleName</key><string>DopamineDemo</string>
+            <key>CFBundleDisplayName</key><string>Dopamine</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>1.0</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>LSRequiresIPhoneOS</key><true/>
+            <key>MinimumOSVersion</key><string>15.0</string>
+            <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
+            <key>UILaunchScreen</key><dict/>
+            <key>UISupportedInterfaceOrientations</key>
+            <array><string>UIInterfaceOrientationPortrait</string></array>
+          </dict>
+          </plist>
+          PLIST
           echo "--- built Info.plist ---"
           plutil -p "$APP/Info.plist" || true
 
