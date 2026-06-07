@@ -688,8 +688,14 @@ to the zip root (or http(s) for remote, with same-origin/allowlist rules).
 ## 11. Migration plan (off hardcoded `resolve*Params`) — IMPLEMENTED
 
 The format is designed so today's engine is the *reference implementation*. The
-plan below is now built (`framework/loader.ts` + bundled
-`packages/core/src/effects/*.dope.json`):
+plan below is now built (`@dopamine/core`'s `framework/loader.ts` + each effect's
+bundled `packages/effect-<name>/src/<name>.dope.json`):
+
+> **Authoring note (package-per-effect).** Effects ship as separate
+> `@dopamine/effect-<name>` packages on top of the slim `@dopamine/core` runtime;
+> the byte-parity oracle for the original three lives in each package's
+> `<name>-oracle.ts` + `test/parity.test.ts`. See
+> [`authoring-effects.md`](./authoring-effects.md) for the scaffold flow.
 
 **Phase 0 — encode. DONE.** `solarbloom.dope.json`, `inkstroke.dope.json` and
 `comic.dope.json` reproduce `BASELINES`/`INK_BASELINES`/`COMIC_BASELINES` + the

@@ -9,7 +9,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@dopamine/core": "0.1.0"
+    "@dopamine/core": "0.1.0",
+    "@dopamine/effects": "0.1.0",
+    "@dopamine/effect-solarbloom": "0.1.0",
+    "@dopamine/effect-inkstroke": "0.1.0",
+    "@dopamine/effect-comic": "0.1.0",
+    "@dopamine/effect-fail": "0.1.0",
+    "@dopamine/effect-aurora": "0.1.0",
+    "@dopamine/effect-ripple": "0.1.0",
+    "@dopamine/effect-confetti": "0.1.0",
+    "@dopamine/effect-heartburst": "0.1.0",
+    "@dopamine/effect-lightning": "0.1.0"
   },
   "devDependencies": {
     "vite": "^5.4.10"

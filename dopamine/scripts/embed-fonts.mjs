@@ -1,6 +1,6 @@
 /**
- * Regenerate packages/core/src/engine/comic-fonts.ts from the bundled woff2
- * faces in packages/core/assets/fonts. The Comic Impact effect ships its own
+ * Regenerate packages/effect-comic/src/comic-fonts.ts from the bundled woff2
+ * faces in packages/effect-comic/assets/fonts. The Comic Impact effect ships its own
  * SIL OFL display faces as base64 so it never depends on a host-installed font.
  *
  * Usage: node scripts/embed-fonts.mjs
@@ -10,8 +10,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const fontDir = join(root, "packages", "core", "assets", "fonts");
-const outFile = join(root, "packages", "core", "src", "engine", "comic-fonts.ts");
+const fontDir = join(root, "packages", "effect-comic", "assets", "fonts");
+const outFile = join(root, "packages", "effect-comic", "src", "comic-fonts.ts");
 
 const FACES = [
   { family: "Bangers", file: "Bangers-Regular.woff2" },

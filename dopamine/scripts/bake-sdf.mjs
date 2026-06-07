@@ -54,10 +54,13 @@ async function main() {
     process.exit(1);
   }
   if (arg === "--all") {
-    const eff = join(root, "packages/core/src/effects");
-    for (const f of ["solarbloom.dope.json", "fail.dope.json"]) {
+    // Each effect ships its own .dope in its package's src dir.
+    for (const [pkg, f] of [
+      ["effect-solarbloom", "solarbloom.dope.json"],
+      ["effect-fail", "fail.dope.json"],
+    ]) {
       try {
-        await bakeFile(join(eff, f), size, range);
+        await bakeFile(join(root, "packages", pkg, "src", f), size, range);
       } catch (e) {
         if (e.code !== "ENOENT") throw e;
       }

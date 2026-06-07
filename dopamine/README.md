@@ -53,12 +53,22 @@ The design is grounded in published research:
 
 ## Usage
 
-Framework-agnostic core:
+Batteries-included (the umbrella registers every effect + the conveniences):
 
 ```ts
-import { celebrate } from "@dopamine/core";
+import { celebrate } from "@dopamine/effects";
 
 await celebrate({ mood: "celebratory", intensity: 0.8, whimsy: 0.6 });
+```
+
+Or pay only for what you use — the slim `@dopamine/core` runtime + just the
+effect packages you import (each self-registers on import):
+
+```ts
+import "@dopamine/effect-solarbloom";   // self-registers
+import { play } from "@dopamine/core";
+
+await play("solarbloom", { mood: "celebratory", intensity: 0.8 });
 ```
 
 Or declaratively, anywhere:
@@ -66,7 +76,7 @@ Or declaratively, anywhere:
 ```html
 <dopamine-success mood="electric" intensity="0.9"></dopamine-success>
 <script type="module">
-  import "@dopamine/core";
+  import "@dopamine/effects";
   document.querySelector("dopamine-success").play();
 </script>
 ```
@@ -116,26 +126,32 @@ Two ways to honor this:
 
 ```bash
 npm install
-npm test       # unit tests for the color / tempo / mood engine
+npm test       # unit tests across every package (core + each effect + umbrella)
 npm run dev     # interactive demo (mood/intensity/whimsy controls)
-npm run build   # build core, react, demo
+npm run build   # build core → effect-* → effects → react → demo (topo order)
 npm run record  # headless: record solarbloom.webm + .mp4 across all three moods
 ```
 
 ## How it works
 
-- **`@dopamine/core`** — vanilla TS + WebGL2. A single full-screen fragment
-  shader (`engine/shader.ts`) renders the bloom, the drifting light motes, and
-  the checkmark, all summed as light. The overlay canvas uses
-  `mix-blend-mode: screen`, so bright pixels lighten the page → real cast light.
-- **Color** (`engine/color.ts`): OKLCH golden-angle palettes → linear sRGB.
-- **Tempo** (`engine/tempo.ts`): two-layer timing (fast confirm + lingering,
-  non-blocking afterglow), plus an impact/recoil envelope for the comic slam.
-- **Mood** (`engine/mood.ts`): maps the three knobs onto shader uniforms.
+- **`@dopamine/core`** — vanilla TS + WebGL2: the slim runtime ONLY (conductor +
+  registries + `.dope` loader + generic pass/panel runners) plus the shared engine
+  bits. The overlay canvas uses `mix-blend-mode: screen`, so bright pixels lighten
+  the page → real cast light. It imports + registers **no** effect.
+- **`@dopamine/effect-<name>`** — one package per effect. Each carries its own
+  shader + `.dope` + bespoke tempo + factory (and embedded fonts/SDF where
+  needed), depends on `@dopamine/core`, and **self-registers on import**.
+- **`@dopamine/effects`** — the batteries-included umbrella: depends on all nine,
+  re-exports them, and hosts `celebrate*` + `builtinEffectNames` + the
+  `<dopamine-success>` element. `import "@dopamine/effects"` registers everything.
+- **Color** (`core/engine/color.ts`): OKLCH golden-angle palettes → linear sRGB.
+- **Tempo**: generic primitives (`envelope`, `easeOut*`) live in `@dopamine/core`;
+  each effect's bespoke envelope lives in its package's `<name>-tempo.ts`.
 
-### Architecture: a thin runtime + pluggable effects
+### Architecture: a thin runtime + pluggable effect packages
 
-`@dopamine/core` is a small **backbone** with the three effects plugged into it:
+`@dopamine/core` is a small **backbone**; the nine effects plug into it from their
+own packages:
 
 - **Conductor** (`framework/conductor.ts`) — owns ONE persistent overlay
   (light `screen` + shadow `multiply` canvas) and ONE program-cached WebGL2
@@ -147,21 +163,27 @@ npm run record  # headless: record solarbloom.webm + .mp4 across all three moods
 - **Effect registry** (`framework/registry.ts`) + **mood registry**
   (`framework/mood-registry.ts`) — effects and moods register by name; moods are
   effect-agnostic, so a new mood lights up every effect.
-- **Effects** (`effects/*.ts`) — each is an `EffectFactory` that `resolve`s a
-  feeling → params and `create`s a per-frame `renderAt`. `celebrate*` are thin
-  wrappers over the generic `play(effect, opts)` / `prepare(effect, opts)`.
+- **Effects** (`packages/effect-<name>/src/index.ts`) — each is an
+  `EffectFactory` that `resolve`s a feeling → params and `create`s a per-frame
+  `renderAt`. `celebrate*` (in `@dopamine/effects`) are thin wrappers over the
+  core generic `play(effect, opts)` / `prepare(effect, opts)`.
 
-**Add a mood** (lights up all three effects, no per-effect code):
+**Add a mood** (lights up every effect, no per-effect code):
 
 ```ts
-import { registerMood, celebrate } from "@dopamine/core";
+import { registerMood } from "@dopamine/core";
+import { celebrate } from "@dopamine/effects";
 registerMood("triumphant", { hueCenter: 280, hueRange: 160,
                              lightness: 0.8, chroma: 0.22, energy: 0.9 });
 await celebrate({ mood: "triumphant" });
 ```
 
-**Add an effect** — implement `EffectFactory` and `registerEffect(...)`; then
-`play("my-effect", { mood, intensity, whimsy })`. See `effects/solarbloom.ts`.
+**Add an effect** — scaffold a new `packages/effect-<name>` package (its own
+shader + tempo + `.dope` + factory + test, depending on `@dopamine/core`, that
+self-registers on import) — no core edits, no shared-file edits. Then
+`play("my-effect", { mood, intensity, whimsy })`. See
+[`docs/authoring-effects.md`](./docs/authoring-effects.md) and
+`packages/effect-aurora/src/index.ts` (simplest template).
 
 ### Data-driven effects — the `.dope` format
 

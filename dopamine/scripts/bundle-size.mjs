@@ -16,21 +16,23 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync, readdirSync } from "n
 import { tmpdir } from "node:os";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const srcDir = join(root, "packages", "core", "src");
+const coreEntry = join(root, "packages", "core", "src", "index.ts");
+const umbrellaEntry = join(root, "packages", "effects", "src", "index.ts");
+const effectEntry = (name) => join(root, "packages", `effect-${name}`, "src", "index.ts");
 
 const SCENARIOS = {
-  "core only (runtime/api, no effects)": `import * as core from ${JSON.stringify(join(srcDir, "core.ts"))};\nconsole.log(core.play, core.prepare, core.loadEffect, core.registerMood);`,
+  "core only (runtime/api, no effects)": `import * as core from ${JSON.stringify(coreEntry)};\nconsole.log(core.play, core.prepare, core.loadEffect, core.registerMood);`,
   "core + fail": entryWith("fail"),
   "core + inkstroke (Verdict)": entryWith("inkstroke"),
   "core + solarbloom": entryWith("solarbloom"),
   "core + comic": entryWith("comic"),
-  "all four effects (everything / barrel)": `import * as all from ${JSON.stringify(join(srcDir, "index.ts"))};\nconsole.log(all.celebrate, all.fail, all.celebrateInk, all.celebrateComic);`,
+  "all nine effects (umbrella @dopamine/effects)": `import * as all from ${JSON.stringify(umbrellaEntry)};\nconsole.log(all.celebrate, all.fail, all.celebrateInk, all.celebrateComic, all.builtinEffectNames);`,
 };
 
 function entryWith(name) {
   return (
-    `import { play, prepare } from ${JSON.stringify(join(srcDir, "core.ts"))};\n` +
-    `import { ${name} } from ${JSON.stringify(join(srcDir, "effects", name + ".ts"))};\n` +
+    `import { play, prepare } from ${JSON.stringify(coreEntry)};\n` +
+    `import { ${name} } from ${JSON.stringify(effectEntry(name))};\n` +
     `console.log(play, prepare, ${name});`
   );
 }
