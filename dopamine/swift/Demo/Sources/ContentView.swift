@@ -131,13 +131,9 @@ struct ContentView: View {
 
     private func maybeAutoplay() {
         guard Autoplay.requestedEffect != nil else { return }
-        // Fire shortly after launch so the layer is sized + the recording is rolling,
-        // then RE-FIRE on a loop. CI records in a fixed window after launch, so a
-        // repeating fire guarantees the effect is on-screen for the whole capture
-        // (and shows the unique-every-time palette across fires).
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { fire() }
-        Timer.scheduledTimer(withTimeInterval: 2.2, repeats: true) { _ in
-            fire()
-        }
+        // Fire ONCE, shortly after launch (so the layer is sized + the in-app
+        // capture is wired). A single fire gives the recorder one clean play of the
+        // effect — no overlapping re-fires stacking on top of each other.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { fire() }
     }
 }

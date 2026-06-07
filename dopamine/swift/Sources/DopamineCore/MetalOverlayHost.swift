@@ -26,6 +26,7 @@
 #if canImport(Metal) && canImport(QuartzCore)
 import Metal
 import QuartzCore
+import CoreGraphics
 import simd
 
 /// A minimal overlay host: owns a CAMetalLayer for the light pass and (optionally)
@@ -41,19 +42,33 @@ public final class MetalOverlayHost<Config: PassConfig> {
     private let library: MTLLibrary
     private let wantsShadow: Bool
 
+    // --- Frame capture (off by default) ---
+    // On a virtualized CI runner `simctl io recordVideo` cannot finalize a video
+    // (the AppleM2ScalerCSCDriver hardware is absent), so the demo captures frames
+    // IN-APP: each rendered light frame is read back to a CGImage and handed to
+    // this sink (the demo writes PNGs the CI then muxes). Reading the drawable
+    // requires `framebufferOnly = false`, so this is gated on `wantsCapture`.
+    private let wantsCapture: Bool
+    public var onLightFrame: ((CGImage) -> Void)?
+    private var captureTex: MTLTexture?
+
     /// `library` is the effect's compiled `default.metallib` (built on macOS).
-    public init(config: Config, device: MTLDevice, library: MTLLibrary, wantsShadow: Bool) throws {
+    /// `wantsCapture` enables per-frame read-back (a small perf cost) for the
+    /// in-app recorder; leave false in production overlays.
+    public init(config: Config, device: MTLDevice, library: MTLLibrary, wantsShadow: Bool, wantsCapture: Bool = false) throws {
         guard let q = device.makeCommandQueue() else { throw MetalPassError.pipelineFailed("no command queue") }
         self.device = device
         self.queue = q
         self.config = config
         self.library = library
         self.wantsShadow = wantsShadow
+        self.wantsCapture = wantsCapture
 
         lightLayer = CAMetalLayer()
         lightLayer.device = device
         lightLayer.pixelFormat = .bgra8Unorm
-        lightLayer.framebufferOnly = true
+        // Capture needs the drawable texture readable as a blit source.
+        lightLayer.framebufferOnly = !wantsCapture
         lightLayer.isOpaque = false
 
         if wantsShadow {
@@ -124,8 +139,50 @@ public final class MetalOverlayHost<Config: PassConfig> {
         shadow?.enc.endEncoding()
         light.enc.endEncoding()
 
+        // Capture: copy the rendered light texture into a CPU-readable texture
+        // (within the same command buffer, before present), then read it back to
+        // a CGImage in the completion handler and hand it to the sink.
+        if wantsCapture, let sink = onLightFrame {
+            let tex = captureTexture(width: light.drawable.texture.width, height: light.drawable.texture.height)
+            if let tex, let blit = light.cb.makeBlitCommandEncoder() {
+                blit.copy(from: light.drawable.texture, to: tex)
+                blit.endEncoding()
+                light.cb.addCompletedHandler { _ in
+                    if let img = Self.makeCGImage(from: tex) { sink(img) }
+                }
+            }
+        }
+
         if let shadow { shadow.cb.present(shadow.drawable); shadow.cb.commit() }
         light.cb.present(light.drawable); light.cb.commit()
+    }
+
+    /// Lazily (re)allocate the shared-storage capture texture for `width`×`height`.
+    private func captureTexture(width: Int, height: Int) -> MTLTexture? {
+        if let t = captureTex, t.width == width, t.height == height { return t }
+        let d = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+        d.storageMode = .shared
+        d.usage = [.shaderRead]
+        captureTex = device.makeTexture(descriptor: d)
+        return captureTex
+    }
+
+    /// Read a `.shared` bgra8 texture back into an sRGB CGImage.
+    private static func makeCGImage(from tex: MTLTexture) -> CGImage? {
+        let w = tex.width, h = tex.height, bpr = w * 4
+        var buf = [UInt8](repeating: 0, count: bpr * h)
+        buf.withUnsafeMutableBytes {
+            tex.getBytes($0.baseAddress!, bytesPerRow: bpr,
+                         from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
+        }
+        let cs = CGColorSpaceCreateDeviceRGB()
+        // bgra8 in memory → byteOrder32Little + premultipliedFirst reads as BGRA.
+        let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue
+                                | CGBitmapInfo.byteOrder32Little.rawValue)
+        guard let ctx = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8,
+                                  bytesPerRow: bpr, space: cs, bitmapInfo: info.rawValue) else { return nil }
+        return ctx.makeImage()
     }
 }
 #endif
