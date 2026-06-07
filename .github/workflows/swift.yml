@@ -169,17 +169,25 @@ jobs:
           # Launch FIRST; the app autoplays + re-fires Solarbloom on a 3s loop, so
           # the effect is on-screen for the whole capture window.
           timeout 60 xcrun simctl launch "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" || true
-          sleep 1
+          sleep 2
 
-          # Record in the FOREGROUND under `timeout --signal=INT`. This is the key
-          # to not wedging the job: a backgrounded `simctl io recordVideo` leaves a
-          # CoreSimulator helper the runner blocks on. Foreground + a SIGINT from
-          # timeout makes avfoundation finalize the mp4 moov atom and exit cleanly,
-          # with a hard ceiling so the step can never hang.
-          timeout --signal=INT --kill-after=8 12 \
-            xcrun simctl io "$UDID" recordVideo --codec=h264 --force /tmp/solarbloom.mp4 \
-            >/tmp/rec.log 2>&1 || true
-          echo "--- recorder log ---"; cat /tmp/rec.log || true
+          # Capture frames with `simctl io screenshot` instead of `recordVideo`.
+          # recordVideo spawns a CoreSimulator recording daemon that does NOT die on
+          # SIGINT/SIGKILL to simctl, so it wedges the runner indefinitely. Each
+          # screenshot is a one-shot command that exits immediately — no daemon, no
+          # orphan, nothing for the runner to block on. We grab ~80 frames and mux
+          # them to mp4 with the runner's preinstalled ffmpeg. The 3s autoplay loop
+          # guarantees an active bloom across the window.
+          mkdir -p /tmp/frames
+          for i in $(seq -w 1 80); do
+            timeout 5 xcrun simctl io "$UDID" screenshot --type=png "/tmp/frames/f_$i.png" \
+              >/dev/null 2>&1 || true
+          done
+          echo "--- captured frames ---"; ls -1 /tmp/frames | wc -l
+          # 12 fps playback of the ~80 stills → a ~6–7s clip. yuv420p for QuickTime.
+          ffmpeg -y -framerate 12 -pattern_type glob -i '/tmp/frames/*.png' \
+            -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p' \
+            /tmp/solarbloom.mp4 >/tmp/ffmpeg.log 2>&1 || { echo "ffmpeg failed"; tail -40 /tmp/ffmpeg.log; }
           echo "--- recorded file ---"
           ls -la /tmp/solarbloom.mp4 || echo "no clip produced"
 
