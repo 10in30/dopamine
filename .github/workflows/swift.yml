@@ -178,18 +178,20 @@ jobs:
           # returns immediately and each screenshot is a one-shot — neither hangs.
           brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
 
-          # Launch with the app's stdout/stderr streamed to a file (FD-detached so it
-          # can't wedge the step). --console-pty attaches the app's output; if the app
-          # crashes on launch (e.g. no Metal device in the headless runner) the
-          # backtrace lands here. The app also print()s when it fires.
-          xcrun simctl launch --console-pty "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" \
-            >/tmp/app.log 2>&1 </dev/null &
-          APP_PID=$!
+          # Launch plain (NO --console-pty: that allocates a PTY the runner blocks on
+          # at EOF, wedging the step). simctl launch returns the app PID immediately.
+          xcrun simctl launch "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" || true
           sleep 4
           echo "--- app liveness (is DopamineDemo still running?) ---"
           xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep -i dopamine \
             || echo ">>> DopamineDemo is NOT running (crashed or never foregrounded)"
-          echo "--- app console (first 60 lines) ---"; head -60 /tmp/app.log || true
+          # The app's print()/os_log output + any crash lands in the unified log; pull
+          # the last 90s for it (bounded, returns — no streaming).
+          echo "--- app log (simctl log show) ---"
+          xcrun simctl spawn "$UDID" log show --last 120s --style compact 2>/dev/null \
+            | grep -iE 'DopamineDemo|Dopamine|Metal|metallib|Solarbloom' | head -80 \
+            > /tmp/app.log || true
+          cat /tmp/app.log || true
 
           # Capture stills with one-shot `simctl io screenshot` (NOT recordVideo,
           # whose CoreSimulator daemon wedges the runner). ~70 frames with a small
@@ -199,7 +201,6 @@ jobs:
             xcrun simctl io "$UDID" screenshot "/tmp/frames/f_$i.png" >/dev/null 2>&1 || true
             sleep 0.15
           done
-          kill -9 "$APP_PID" 2>/dev/null || true
           COUNT=$(ls -1 /tmp/frames/*.png 2>/dev/null | wc -l | tr -d ' ')
           echo "--- captured frames: $COUNT ---"
           # 12 fps playback of the stills → a ~6s clip. The scale filter forces
