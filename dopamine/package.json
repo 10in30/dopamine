@@ -15,6 +15,9 @@
     "dev": "npm run dev -w @dopamine/demo",
     "record": "node scripts/record.mjs",
     "render": "node scripts/render-offline.mjs",
+    "clips": "node scripts/render-clips.mjs",
+    "stitch": "node scripts/stitch.mjs",
+    "reel": "node scripts/render-clips.mjs && node scripts/stitch.mjs",
     "bake-sdf": "node scripts/bake-sdf.mjs",
     "pack-dope": "node scripts/pack-dope.mjs"
   },
