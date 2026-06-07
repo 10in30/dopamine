@@ -294,6 +294,18 @@ jobs:
               -vf 'crop=320:700:(iw-320)/2:(ih-700)/2' /tmp/solarbloom.mp4 2>&1 | tail -20 || true
           fi
 
+          # Restore real-time playback: the effect was captured at SLOWMO (e.g. 1/4)
+          # speed so the sim's low-fps presentation could sample the bloom. setpts
+          # *SLOWMO compresses the timestamps by exactly that factor — removing the
+          # slow-mo while KEEPING every captured frame, so it plays at true speed and
+          # stays smooth. (No-op when SLOWMO=1.)
+          if [ -s /tmp/solarbloom.mp4 ] && ffmpeg -v error -ss 1 -i /tmp/solarbloom.mp4 -frames:v 1 /tmp/probe.png >/dev/null 2>&1; then
+            echo "--- speeding clip back to real time (setpts*${SLOWMO}) ---"
+            ffmpeg -y -hide_banner -i /tmp/solarbloom.mp4 -filter:v "setpts=${SLOWMO}*PTS" \
+              -an -c:v libx264 -pix_fmt yuv420p /tmp/realtime.mp4 2>&1 | tail -5 \
+              && mv /tmp/realtime.mp4 /tmp/solarbloom.mp4 || true
+          fi
+
           echo "--- app liveness ---"
           xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep -i dopamine \
             && echo ">>> DopamineDemo IS running" || echo ">>> DopamineDemo NOT running"
