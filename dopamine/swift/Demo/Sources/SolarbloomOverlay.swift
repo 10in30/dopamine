@@ -76,6 +76,7 @@ final class OverlayUIView: UIView {
         // light bloom cast over the card; the shadow cast is deferred until the
         // two passes are composited into one target.
         host = try? MetalOverlayHost(config: SolarbloomConfig(), device: device, library: library, wantsShadow: false)
+        host?.timeScale = Autoplay.slowmoScale   // 1.0 normally; <1 = slow motion
         solar = try? Solarbloom()
         if host == nil { demoLog.error("[DopamineDemo] failed to build overlay host") }
 

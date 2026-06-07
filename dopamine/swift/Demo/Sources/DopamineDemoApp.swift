@@ -37,4 +37,17 @@ enum Autoplay {
         }
         return nil
     }
+
+    /// Slow-motion time scale for the effect (1.0 = real time). `-slowmo 0.25`
+    /// (argv) or `DOPAMINE_SLOWMO=0.25` (env) plays everything at quarter speed,
+    /// etc. Used so a low-fps screen recording still samples the animation
+    /// smoothly: at 1/4 speed a ~2.5fps grab sees ~10 effective fps of motion.
+    static var slowmoScale: Double {
+        let args = ProcessInfo.processInfo.arguments
+        var raw: String?
+        if let i = args.firstIndex(of: "-slowmo"), i + 1 < args.count { raw = args[i + 1] }
+        else if let env = ProcessInfo.processInfo.environment["DOPAMINE_SLOWMO"], !env.isEmpty { raw = env }
+        guard let raw, let v = Double(raw), v > 0, v <= 1 else { return 1.0 }
+        return v
+    }
 }

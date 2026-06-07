@@ -41,6 +41,7 @@ jobs:
       BUNDLE_ID: ai.polyguard.DopamineDemo
       SIM_NAME: iPhone 16
       AUTOPLAY: solarbloom
+      SLOWMO: "0.25"   # play the effect at 1/4 speed so the low-fps screen grab samples it smoothly
     steps:
       - uses: actions/checkout@v4
 
@@ -192,8 +193,10 @@ jobs:
           brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
           mkdir -p /tmp/out
 
-          # Launch the app; autoplay fires the effect on a 3s loop (clean gaps).
-          xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" || true
+          # Launch the app; autoplay loops the effect (spaced to the slow-mo
+          # duration so plays don't overlap). Slow-mo makes the low-fps screen grab
+          # sample the animation smoothly.
+          xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" -slowmo "$SLOWMO" || true
           sleep 2
 
           # --- Record the REAL screen with ffmpeg AVFoundation ---
@@ -211,11 +214,19 @@ jobs:
           SCREEN_IDX=$(grep -iE 'Capture screen' /tmp/avf.txt | head -1 | sed -E 's/.*\[([0-9]+)\][[:space:]]*Capture screen.*/\1/')
           [ -z "$SCREEN_IDX" ] && SCREEN_IDX=1
           echo "using AVFoundation screen index = $SCREEN_IDX"
-          ffmpeg -y -hide_banner -f avfoundation -framerate 30 -capture_cursor 0 \
-            -i "${SCREEN_IDX}:none" -an -t 12 -vcodec libx264 -pix_fmt yuv420p \
-            -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2' /tmp/solarbloom.mp4 2>&1 | tail -25 \
-            || ffmpeg -y -hide_banner -f avfoundation -framerate 30 -i "${SCREEN_IDX}" -an -t 12 \
-                 -vcodec libx264 -pix_fmt yuv420p \
+          # CROP to just the Simulator window region (the 1024x768 desktop has the
+          # device centered ~x[360..660] y[38..708]). ~4x fewer pixels than the full
+          # desktop → the capture/encode pipeline keeps up at a much higher frame
+          # rate, so the bloom animation is actually sampled. (Full-screen grab on
+          # this VM crawled at ~2.5fps.) Falls back to full screen if the crop fails.
+          CROP='crop=300:670:362:38'
+          # ~26s window: covers AVFoundation's slow warm-up plus a full slow-mo play
+          # (the 1/4-speed bloom lasts ~7s and loops ~every 8.6s).
+          ffmpeg -y -hide_banner -f avfoundation -framerate 60 -capture_cursor 0 \
+            -i "${SCREEN_IDX}:none" -an -t 26 -vcodec libx264 -pix_fmt yuv420p \
+            -vf "$CROP" /tmp/solarbloom.mp4 2>&1 | tail -25 \
+            || ffmpeg -y -hide_banner -f avfoundation -framerate 60 \
+                 -i "${SCREEN_IDX}:none" -an -t 26 -vcodec libx264 -pix_fmt yuv420p \
                  -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2' /tmp/solarbloom.mp4 2>&1 | tail -25 || true
           echo "--- ffmpeg screen-capture done ---"
 

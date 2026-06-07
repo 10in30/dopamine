@@ -42,6 +42,11 @@ public final class MetalOverlayHost<Config: PassConfig> {
     private let library: MTLLibrary
     private let wantsShadow: Bool
 
+    /// Slow-motion time scale (1.0 = real time). The per-frame tick advances the
+    /// effect clock by `realElapsed * timeScale`, so 0.25 plays it at quarter
+    /// speed — used so a low-fps screen recording can sample the motion smoothly.
+    public var timeScale: Double = 1.0
+
     /// `library` is the effect's compiled `default.metallib` (built on macOS).
     public init(config: Config, device: MTLDevice, library: MTLLibrary, wantsShadow: Bool) throws {
         guard let q = device.makeCommandQueue() else { throw MetalPassError.pipelineFailed("no command queue") }
@@ -101,7 +106,7 @@ public final class MetalOverlayHost<Config: PassConfig> {
     /// scale; `anchorPx` the effect origin in points.
     public func tick(now: CFTimeInterval, dpr: Float, anchorPx: SIMD2<Float>) {
         guard let runner else { return }
-        let elapsedMs = (now - startTime) * 1000
+        let elapsedMs = (now - startTime) * 1000 * timeScale
 
         // The LIGHT pass is mandatory. If no drawable is available this frame,
         // skip the whole tick rather than crash on a nil encoder.

@@ -132,11 +132,14 @@ struct ContentView: View {
     private func maybeAutoplay() {
         guard Autoplay.requestedEffect != nil else { return }
         // For the CI screen recording: fire shortly after launch, then RE-FIRE on a
-        // 3s loop. The celebratory bloom lasts ~1.7s, so a 3s interval leaves a
-        // clean gap (no overlapping fires) while showing the unique-every-time
-        // palette across several real-time plays over the card.
+        // loop spaced to the (possibly slowed) effect duration so plays never
+        // overlap. The celebratory bloom is ~1.8s real; at slow-mo scale s it lasts
+        // ~1.8/s, so loop a touch longer than that. Looping (vs a single fire) means
+        // the recorder always catches a full play even after its capture warm-up.
+        let scale = Autoplay.slowmoScale
+        let interval = max(3.0, 1.8 / scale + 1.4)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { fire() }
-        Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+        Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
             fire()
         }
     }
