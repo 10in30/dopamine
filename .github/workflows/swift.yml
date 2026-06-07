@@ -171,33 +171,31 @@ jobs:
 
           xcrun simctl install "$UDID" "$APP"
 
-          # Launch FIRST; the app autoplays + re-fires Solarbloom on a 3s loop, so
-          # the effect is on-screen for the whole capture window.
-          timeout 60 xcrun simctl launch "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" || true
-          sleep 2
+          # NOTE: stock macOS has NO `timeout` and NO `ffmpeg` (both are GNU/Homebrew
+          # tools). Earlier `timeout …` calls silently no-op'd via `|| true`, so the
+          # app never actually launched and only the un-wrapped probe screenshot
+          # worked. Install ffmpeg, and call simctl directly (no `timeout`): launch
+          # returns immediately and each screenshot is a one-shot — neither hangs.
+          brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
 
-          # Capture frames with `simctl io screenshot` instead of `recordVideo`.
-          # recordVideo spawns a CoreSimulator recording daemon that does NOT die on
-          # SIGINT/SIGKILL to simctl, so it wedges the runner indefinitely. Each
-          # screenshot is a one-shot command that exits immediately — no daemon, no
-          # orphan, nothing for the runner to block on. We grab ~80 frames and mux
-          # them to mp4 with the runner's preinstalled ffmpeg. The 3s autoplay loop
-          # guarantees an active bloom across the window.
+          # Launch FIRST; the app autoplays + re-fires Solarbloom on a 3s loop, so an
+          # active bloom is on-screen across the whole capture window.
+          xcrun simctl launch "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" || true
+          sleep 1
+
+          # Capture stills with one-shot `simctl io screenshot` (NOT recordVideo,
+          # whose CoreSimulator daemon wedges the runner). ~70 frames with a small
+          # gap span several autoplay fires.
           mkdir -p /tmp/frames
-          # First screenshot runs VISIBLY so any simctl error surfaces (no masking).
-          echo "--- probe screenshot ---"
-          xcrun simctl io "$UDID" screenshot "/tmp/frames/f_000.png" || echo "PROBE SCREENSHOT FAILED"
-          ls -la /tmp/frames/f_000.png || true
-          for i in $(seq -w 1 80); do
-            timeout 10 xcrun simctl io "$UDID" screenshot "/tmp/frames/f_$i.png" >/dev/null 2>&1 || true
+          for i in $(seq -w 1 70); do
+            xcrun simctl io "$UDID" screenshot "/tmp/frames/f_$i.png" >/dev/null 2>&1 || true
+            sleep 0.15
           done
           COUNT=$(ls -1 /tmp/frames/*.png 2>/dev/null | wc -l | tr -d ' ')
           echo "--- captured frames: $COUNT ---"
-          # 12 fps playback of the stills → a few-second clip. yuv420p for QuickTime.
-          # No -vf scale: simulator stills are already even-dimensioned; keep it simple
-          # and let the log surface any real error.
+          # 12 fps playback of the stills → a ~6s clip. yuv420p for QuickTime.
           ffmpeg -y -framerate 12 -pattern_type glob -i '/tmp/frames/*.png' \
-            -pix_fmt yuv420p /tmp/solarbloom.mp4 2>&1 | tee /tmp/ffmpeg.log | tail -25 || true
+            -pix_fmt yuv420p /tmp/solarbloom.mp4 2>&1 | tee /tmp/ffmpeg.log | tail -20 || true
           echo "--- recorded file ---"
           ls -la /tmp/solarbloom.mp4 || echo "no clip produced"
 
