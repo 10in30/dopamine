@@ -104,6 +104,17 @@ public final class MetalPassRunner<Config: PassConfig> {
     private let params: [String: DopeValue]
     public let durationMs: Double
 
+    // Texture plumbing for HYBRID effects. Pure-shader effects (Solarbloom et al.)
+    // draw everything analytically and bind nothing; but comic/heartburst draw
+    // their word / hearts into an offscreen "panel" (the web's Canvas2D layer) and
+    // the shader SAMPLES it. The host hands that panel in via `render(panel:)`; we
+    // bind it at fragment texture(0). A 1×1 clear placeholder is bound at the
+    // texture slots a shader may declare so an effect that declares a `texture2d`
+    // arg is always well-defined even when no panel is supplied (the empty case),
+    // and a single linear/clamp sampler is bound for both slots.
+    private let sampler: MTLSamplerState
+    private let placeholderTex: MTLTexture
+
     /// Build pipelines from a metallib `library`. `pixelFormat` is the layer's.
     public init(
         config: Config,
@@ -163,6 +174,27 @@ public final class MetalPassRunner<Config: PassConfig> {
         } else {
             shadowPipeline = nil
         }
+
+        // Shared sampler (linear, clamp) for any panel/SDF/glyph texture.
+        let sd = MTLSamplerDescriptor()
+        sd.minFilter = .linear; sd.magFilter = .linear
+        sd.sAddressMode = .clampToEdge; sd.tAddressMode = .clampToEdge
+        guard let smp = device.makeSamplerState(descriptor: sd) else {
+            throw MetalPassError.pipelineFailed("sampler")
+        }
+        sampler = smp
+
+        // 1×1 transparent placeholder so texture-declaring shaders are defined
+        // even with no panel bound.
+        let td = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm, width: 1, height: 1, mipmapped: false)
+        td.usage = [.shaderRead]
+        guard let ph = device.makeTexture(descriptor: td) else {
+            throw MetalPassError.pipelineFailed("placeholder texture")
+        }
+        var clear: [UInt8] = [0, 0, 0, 0]
+        ph.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: &clear, bytesPerRow: 4)
+        placeholderTex = ph
     }
 
     /// Build the StandardUniforms for one pass.
@@ -197,10 +229,17 @@ public final class MetalPassRunner<Config: PassConfig> {
     }
 
     /// Encode one full-screen-triangle pass into `encoder`.
-    private func encodePass(_ encoder: MTLRenderCommandEncoder, pipeline: MTLRenderPipelineState, uniforms: Config.Uniforms) {
+    private func encodePass(_ encoder: MTLRenderCommandEncoder, pipeline: MTLRenderPipelineState, uniforms: Config.Uniforms, panel: MTLTexture?) {
         encoder.setRenderPipelineState(pipeline)
         var u = uniforms
         encoder.setFragmentBytes(&u, length: MemoryLayout<Config.Uniforms>.stride, index: 0)
+        // Panel at texture(0); placeholder at the other slot a shader might declare
+        // (e.g. an SDF at texture(1)). Over-binding is harmless for shaders that
+        // declare fewer textures.
+        encoder.setFragmentTexture(panel ?? placeholderTex, index: 0)
+        encoder.setFragmentTexture(placeholderTex, index: 1)
+        encoder.setFragmentSamplerState(sampler, index: 0)
+        encoder.setFragmentSamplerState(sampler, index: 1)
         // Single full-screen triangle from vertex_id — no vertex buffers needed.
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
     }
@@ -210,7 +249,8 @@ public final class MetalPassRunner<Config: PassConfig> {
         elapsedMs: Double,
         width: Float, height: Float, anchorPx: SIMD2<Float>, dpr: Float,
         lightEncoder: MTLRenderCommandEncoder,
-        shadowEncoder: MTLRenderCommandEncoder?
+        shadowEncoder: MTLRenderCommandEncoder?,
+        panel: MTLTexture? = nil
     ) {
         // "Animate on twos": snap the clock toward a coarse grid as style rises.
         let style = Double(standardStyle())
@@ -222,10 +262,10 @@ public final class MetalPassRunner<Config: PassConfig> {
 
         if let se = shadowEncoder, let sp = shadowPipeline {
             let s = standard(info, amp: amp, width: width, height: height, anchorPx: anchorPx, dpr: dpr, isShadow: true)
-            encodePass(se, pipeline: sp, uniforms: config.packUniforms(standard: s, params: params, extras: extras))
+            encodePass(se, pipeline: sp, uniforms: config.packUniforms(standard: s, params: params, extras: extras), panel: panel)
         }
         let s = standard(info, amp: amp, width: width, height: height, anchorPx: anchorPx, dpr: dpr, isShadow: false)
-        encodePass(lightEncoder, pipeline: lightPipeline, uniforms: config.packUniforms(standard: s, params: params, extras: extras))
+        encodePass(lightEncoder, pipeline: lightPipeline, uniforms: config.packUniforms(standard: s, params: params, extras: extras), panel: panel)
     }
 
     private func standardStyle() -> Float {

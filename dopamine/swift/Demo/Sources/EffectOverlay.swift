@@ -127,13 +127,28 @@ final class OverlayUIView: UIView {
         return ms / 1000.0 / max(0.05, slowmo) + gap
     }
 
-    /// Play the current effect once (also the manual Fire path).
-    func fireCurrent() {
-        guard let host, let resolveFn else { return }
-        let name = effects.isEmpty ? "?" : effects[idx % effects.count].name
-        try? host.play(params: resolveFn(feeling()))
-        demoLog.log("[DopamineDemo] fired \(name, privacy: .public) slowmo=\(self.slowmo)")
+    /// Resolve the current feeling, draw+upload the effect's panel (if any) for
+    /// that same feeling, play, and return the resolved params (for dwell timing).
+    @discardableResult
+    private func playCurrent() -> [String: DopeValue] {
+        guard let host, let resolveFn, !effects.isEmpty else { return [:] }
+        let e = effects[idx % effects.count]
+        let f = feeling()
+        let params = resolveFn(f)
+        if let drawPanel = e.panel {
+            let scale = window?.screen.scale ?? UIScreen.main.scale
+            let px = CGSize(width: bounds.width * scale, height: bounds.height * scale)
+            host.setPanel(drawPanel(f, px))
+        } else {
+            host.setPanel(nil)
+        }
+        try? host.play(params: params)
+        demoLog.log("[DopamineDemo] fired \(e.name, privacy: .public) slowmo=\(self.slowmo)")
+        return params
     }
+
+    /// Manual Fire (and external trigger): replay the current effect.
+    func fireCurrent() { _ = playCurrent() }
 
     // MARK: - Autoplay
 
@@ -144,9 +159,7 @@ final class OverlayUIView: UIView {
 
     /// One effect, re-fired on a loop spaced to its slowed duration.
     private func singleLoop() {
-        guard let resolveFn else { return }
-        let params = resolveFn(feeling())
-        try? host?.play(params: params)
+        let params = playCurrent()
         DispatchQueue.main.asyncAfter(deadline: .now() + dwellSeconds(params, gap: 1.0)) { [weak self] in
             self?.singleLoop()
         }
@@ -155,9 +168,7 @@ final class OverlayUIView: UIView {
     /// Cycle through every registered effect in order, each playing its full
     /// (slow-mo) duration, then loop back to the first.
     private func sequenceStep() {
-        guard let resolveFn else { return }
-        let params = resolveFn(feeling())
-        try? host?.play(params: params)
+        let params = playCurrent()
         DispatchQueue.main.asyncAfter(deadline: .now() + dwellSeconds(params, gap: 1.2)) { [weak self] in
             guard let self else { return }
             self.idx += 1

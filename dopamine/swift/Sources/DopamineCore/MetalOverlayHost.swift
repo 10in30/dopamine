@@ -47,6 +47,12 @@ public final class MetalOverlayHost<Config: PassConfig> {
     /// speed — used so a low-fps screen recording can sample the motion smoothly.
     public var timeScale: Double = 1.0
 
+    /// Optional offscreen "panel" texture for HYBRID effects (comic word,
+    /// heartburst hearts) — the analog of the web's Canvas2D panel the shader
+    /// samples. Set it once per fire with `setPanel(_:)`; it's bound at fragment
+    /// texture(0) every frame until cleared. nil for pure-shader effects.
+    private var panelTex: MTLTexture?
+
     /// `library` is the effect's compiled `default.metallib` (built on macOS).
     public init(config: Config, device: MTLDevice, library: MTLLibrary, wantsShadow: Bool) throws {
         guard let q = device.makeCommandQueue() else { throw MetalPassError.pipelineFailed("no command queue") }
@@ -82,6 +88,31 @@ public final class MetalOverlayHost<Config: PassConfig> {
             pixelFormat: lightLayer.pixelFormat, wantsShadow: wantsShadow
         )
         startTime = CACurrentMediaTime()
+    }
+
+    /// Set (or clear with nil) the offscreen panel image hybrid effects sample.
+    /// Drawn host-side via Core Graphics (the web's Canvas2D panel) and uploaded
+    /// to an `rgba8Unorm` texture bound at fragment texture(0).
+    public func setPanel(_ image: CGImage?) {
+        guard let image else { panelTex = nil; return }
+        let w = image.width, h = image.height, bpr = w * 4
+        guard w > 0, h > 0 else { panelTex = nil; return }
+        let d = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm, width: w, height: h, mipmapped: false)
+        d.usage = [.shaderRead]
+        d.storageMode = .shared
+        guard let tex = device.makeTexture(descriptor: d) else { panelTex = nil; return }
+        var data = [UInt8](repeating: 0, count: bpr * h)
+        let cs = CGColorSpaceCreateDeviceRGB()
+        let info = CGImageAlphaInfo.premultipliedLast.rawValue
+        guard let ctx = CGContext(data: &data, width: w, height: h, bitsPerComponent: 8,
+                                  bytesPerRow: bpr, space: cs, bitmapInfo: info) else { panelTex = nil; return }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        data.withUnsafeMutableBytes {
+            tex.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0,
+                        withBytes: $0.baseAddress!, bytesPerRow: bpr)
+        }
+        panelTex = tex
     }
 
     /// Build a command buffer + render encoder for one layer's next drawable.
@@ -122,7 +153,7 @@ public final class MetalOverlayHost<Config: PassConfig> {
         // already-ended encoder is Metal API misuse and crashes.)
         runner.render(
             elapsedMs: elapsedMs, width: w, height: h, anchorPx: anchorPx, dpr: dpr,
-            lightEncoder: light.enc, shadowEncoder: shadow?.enc
+            lightEncoder: light.enc, shadowEncoder: shadow?.enc, panel: panelTex
         )
 
         shadow?.enc.endEncoding()
