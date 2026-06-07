@@ -95,15 +95,20 @@ jobs:
       - name: xcodebuild (iOS Simulator)
         working-directory: dopamine/swift/Demo
         run: |
-          set -x
+          set -xo pipefail
+          # NOTE: `set -o pipefail` is essential — piping `xcodebuild … | tee`
+          # otherwise masks a FAILED build with tee's exit 0, leaving an empty
+          # .app that only blows up later at install. Fail loudly here instead.
           xcodebuild \
             -project DopamineDemo.xcodeproj \
             -scheme DopamineDemo \
             -destination "platform=iOS Simulator,name=${SIM_NAME}" \
             -derivedDataPath build \
-            build | tee xcodebuild.log
+            build CODE_SIGNING_ALLOWED=NO | tee xcodebuild.log
           echo "--- built products ---"
           find build/Build/Products -name 'DopamineDemo.app' -type d -print
+          echo "--- .app contents ---"
+          find build/Build/Products -name 'DopamineDemo.app' -type d -exec ls -lR {} \;
 
       # --- BEST-EFFORT: boot a sim, autoplay, screen-record, upload the clip ---
       - name: Boot simulator + install + launch (autoplay) + record
