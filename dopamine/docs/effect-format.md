@@ -5,6 +5,11 @@ Scope: a **declarative file format** that lets Dopamine effects be embedded and
 customized in host projects **without code**, and that survives the move from the
 web (WebGL2) to iOS (Metal) and other backends.
 
+> **Looking to ADD an effect?** This doc is the format *spec + rationale*. For the
+> practical, copy-pasteable how-to (write a `.dope`, a shader / `draw()`, register,
+> code-split), read **[`authoring-effects.md`](./authoring-effects.md)** — it is
+> the build instructions; this is the reference.
+
 > A note on the brief: the owner wrote "Loggy." There is no animation format by
 > that name. In context — "an extension of, or inspired by, the Bodymovin/Airbnb
 > JSON animation format" — this is unambiguously **Lottie**. The rest of this doc
@@ -316,14 +321,18 @@ Why offer both: `svgPath` is what a designer copies out of Figma/Illustrator in
 two seconds; the `lottie` form is what Bodymovin emits and is lossless for
 tangents. The loader normalizes either into a list of cubic-bezier segments.
 
-How the **current engine** uses this: today the checkmark is *three hardcoded
-points* in `shader.ts` (`A`, `B`, `C` at `(-0.9,0.15)`, `(-0.25,-0.55)`,
-`(1.0,0.78)` in `cr`-units), and the Verdict stroke is a *hardcoded quadratic*
-`P0/P1/P2`. In the format these become outline entries with `role:
-"confirm-glyph"` (Solarbloom) and `role: "signature-stroke"` (Verdict). A host
-can **swap the icon path** (checkmark → star → custom logo) by overriding
-`geometry.outlines.checkmark.svgPath` — no shader edits — as long as the backend
-consumes the outline (see §8.3 on how SDF backends ingest a path).
+How the **current engine** uses this (IMPLEMENTED — the geometry seam is live):
+Solarbloom's checkmark icon is an outline entry (`role: "confirm-glyph"`) whose
+`svgPath` is **baked at build time into an inline SDF** (`scripts/bake-sdf.mjs` /
+`scripts/pack-dope.mjs` → `engine/sdf.ts`) and stored under
+`geometry.outlines.checkmark.sdf`. At runtime the effect `decodeSdf`s it once and
+the shader only SAMPLES it (`uSdfTex` in `engine/shader.ts`). A host can **swap
+the icon path** (checkmark → star → custom logo) by overriding
+`geometry.outlines.checkmark.svgPath` and re-baking — no shader edits. If the
+baked `sdf` is absent the effect falls back to a bundled font glyph, then to an
+analytic in-shader SDF, so the confirm always renders. The Fail effect uses the
+same seam for its ✗ cross. (The Verdict stroke remains analytic in
+`engine/inkstroke-shader.ts` — it has no swappable outline yet.)
 
 We also ship the explicitly-requested comic shapes as outline entries:
 `starburst`, `onomatopoeia.pow`, `onomatopoeia.zap` (see the example file).
@@ -388,8 +397,9 @@ the held-breath envelope, AND the "animate on twos" step function.
 ```
 
 **Step-function semantics (the load-bearing detail).** The engine does NOT
-hard-snap; it *blends* toward the staircase by `style` (== whimsy). From
-`renderer.ts`:
+hard-snap; it *blends* toward the staircase by `style` (== whimsy). From the
+generic pass runner (`framework/pass-runner.ts`, using `NPR_TIME_STEP_MS` from
+`engine/tempo.ts`):
 
 ```
 stepped = floor(elapsedMs / NPR_TIME_STEP_MS) * NPR_TIME_STEP_MS
@@ -497,9 +507,15 @@ interface. Backends differ only in *how* they consume it.
 
 ### 8.2 Uniform mapping (the shader binding)
 
-`render.backends[*].uniforms` maps param names → backend uniform names, mirroring
-the `UNIFORMS` arrays + `gl.uniform*` calls in `renderer.ts` /
-`inkstroke-renderer.ts`:
+`render.backends[*].uniforms` maps param names → backend uniform names. In the
+current runtime this mapping is **implicit by convention**: the generic runners
+(`framework/pass-runner.ts` / `framework/panel-runner.ts`, sharing
+`framework/pass-common.ts`) auto-bind each numeric param `x` to the uniform `uX`,
+with a per-effect `bindings` map for the exceptions — so a built-in's `.dope`
+references its shader by a bundled `program` KEY
+(`render.backends.webgl2.shader = { "program": "solarbloom" }`) rather than an
+explicit uniform table. An explicit `uniforms` table (below) is still the portable
+form for a non-bundled or cross-backend doc:
 
 ```jsonc
 "render": {
@@ -693,10 +709,16 @@ Solarbloom + Verdict are fully data-driven; Comic is numeric+palette data-driven
 with its typography + per-fire word composed in code (genuinely code-shaped).
 The legacy `resolve*Params` remain in `mood.ts` as the parity reference.
 
-**Phase 3 — open it up.** (Future) A public `loadEffect(url|doc)` that returns a
-registered effect from an arbitrary `.dope`, host overrides (§9), and Bodymovin
-import for `outlines`. The internal loader + registry already support this; only
-the public fetch/override seam remains.
+**Phase 3 — open it up. DONE (web).** The public `loadEffect(doc | JSON | .dope
+zip, { overrides })` (`framework/load-effect.ts`) returns a registered, playable
+effect from an arbitrary `.dope`: it parses + (optionally) patches the doc
+(clamp control ranges, pin a brand `palette`/`seed`, swap an outline `svgPath` —
+re-baked to an SDF), re-validates the merged doc (magic/version + the standalone
+guard), and binds it to the bundled render program its
+`render.backends.webgl2.shader.program` key names (`framework/programs.ts`). The
+content/typography tables (Comic's words + lettering, Solarbloom's glyph bands)
+are also data-driven (`framework/content.ts`). Bodymovin import for `outlines`
+remains the only deferred piece.
 
 ### 11.1 Concrete mapping — Solarbloom (`resolveParams`)
 
