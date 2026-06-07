@@ -22,7 +22,10 @@ import DopamineEffectSolarbloom
 public protocol AnyEffectHost: AnyObject {
     var lightLayer: CAMetalLayer { get }
     var timeScale: Double { get set }
-    func play(params: [String: DopeValue]) throws
+    /// Heavy, ahead-of-time: compile pipelines + build/upload the panel texture.
+    func prepare(params: [String: DopeValue]) throws
+    /// Cheap: start the prepared effect's clock.
+    func play()
     func tick(now: CFTimeInterval, dpr: Float, anchorPx: SIMD2<Float>)
 }
 extension MetalOverlayHost: AnyEffectHost {}

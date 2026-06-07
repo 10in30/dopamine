@@ -43,12 +43,23 @@ struct EffectOverlay: UIViewRepresentable {
 }
 
 /// Hosts the current effect's Metal layer + drives the per-frame tick and the
-/// autoplay sequence.
+/// autoplay sequence. Builds + prepares each effect (pipeline + panel texture)
+/// AHEAD of time — the next effect is prepared during the current one's dwell, so
+/// switching is just `play()` (start the clock), with no hitch.
 final class OverlayUIView: UIView {
+    /// A fully built + prepared effect, ready to `play()` instantly.
+    private struct Prepared {
+        let name: String
+        let host: any AnyEffectHost
+        let resolve: (DopeResolveInput) -> [String: DopeValue]
+        let params: [String: DopeValue]
+    }
+
     private var device: MTLDevice?
-    private var host: (any AnyEffectHost)?
-    private var resolveFn: ((DopeResolveInput) -> [String: DopeValue])?
     private var displayLink: CADisplayLink?
+    private var current: Prepared?    // attached + (once started) playing
+    private var pending: Prepared?    // prebuilt next, layer not yet attached
+    private var pendingIdx = 0
 
     var anchorPoint2D: CGPoint = .zero
     var lastFiredToken: Int = 0
@@ -75,7 +86,11 @@ final class OverlayUIView: UIView {
             demoLog.error("[DopamineDemo] no Metal device"); return
         }
         device = dev
-        loadEffect(0)
+        // Build + prepare the first effect now (so the very first play is instant)
+        // and attach its layer. Don't start its clock until autoplay/Fire.
+        idx = 0
+        current = buildAndPrepare(0)
+        if let current { attach(current) }
         let link = CADisplayLink(target: self, selector: #selector(tick))
         link.add(to: .main, forMode: .common)
         displayLink = link
@@ -85,89 +100,108 @@ final class OverlayUIView: UIView {
         }
     }
 
-    /// Swap in effect `i` (modulo the list): tear down the old layer, build the
-    /// new effect's host from its own metallib/bundle, add its layer.
-    private func loadEffect(_ i: Int) {
-        guard let device, !effects.isEmpty else { return }
-        host?.lightLayer.removeFromSuperlayer()
-        let e = effects[i % effects.count]
-        guard let built = e.build(device) else {
-            demoLog.error("[DopamineDemo] failed to build effect=\(e.name, privacy: .public)")
-            host = nil; resolveFn = nil; return
-        }
-        host = built.host
-        resolveFn = built.resolve
-        host?.timeScale = slowmo
-        if let l = host?.lightLayer {
-            l.isOpaque = false
-            layer.addSublayer(l)
-            sizeCurrentLayer()
-        }
-        demoLog.log("[DopamineDemo] loaded effect=\(e.name, privacy: .public)")
-    }
-
-    private func sizeCurrentLayer() {
+    private func canvasPx() -> CGSize {
         let scale = window?.screen.scale ?? UIScreen.main.scale
-        if let l = host?.lightLayer {
-            l.frame = bounds
-            l.contentsScale = scale
-            l.drawableSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
-        }
+        var w = bounds.width, h = bounds.height
+        if w < 1 || h < 1 { let s = UIScreen.main.bounds.size; w = s.width; h = s.height }
+        return CGSize(width: w * scale, height: h * scale)
     }
-    override func layoutSubviews() { super.layoutSubviews(); sizeCurrentLayer() }
 
     private func feeling() -> DopeResolveInput {
         DopeResolveInput(mood: mood, intensity: intensity, whimsy: whimsy, seed: randomSeed())
     }
 
-    /// Real-time seconds the current play occupies = (duration / slow-mo) + gap.
+    /// Build effect `i`'s host from its own metallib/bundle, size its layer, then
+    /// do the heavy `prepare` (pipeline compile + panel texture). The layer is NOT
+    /// attached and the clock is NOT started — that's `attach` + `play()`.
+    private func buildAndPrepare(_ i: Int) -> Prepared? {
+        guard let device, !effects.isEmpty else { return nil }
+        let e = effects[i % effects.count]
+        guard let built = e.build(device) else {
+            demoLog.error("[DopamineDemo] failed to build effect=\(e.name, privacy: .public)"); return nil
+        }
+        built.host.timeScale = slowmo
+        let scale = window?.screen.scale ?? UIScreen.main.scale
+        let px = canvasPx()
+        built.host.lightLayer.isOpaque = false
+        built.host.lightLayer.contentsScale = scale
+        built.host.lightLayer.drawableSize = px           // panel is sized from this
+        let params = built.resolve(feeling())
+        try? built.host.prepare(params: params)           // heavy: pipeline + panel upload
+        return Prepared(name: e.name, host: built.host, resolve: built.resolve, params: params)
+    }
+
+    /// Attach a prepared effect's layer (sized to the view).
+    private func attach(_ p: Prepared) {
+        let l = p.host.lightLayer
+        l.frame = bounds
+        l.contentsScale = window?.screen.scale ?? UIScreen.main.scale
+        l.drawableSize = canvasPx()
+        layer.addSublayer(l)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let scale = window?.screen.scale ?? UIScreen.main.scale
+        if let l = current?.host.lightLayer {
+            l.frame = bounds; l.contentsScale = scale
+            l.drawableSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
+        }
+    }
+
+    /// Real-time seconds a play occupies = (duration / slow-mo) + gap.
     private func dwellSeconds(_ params: [String: DopeValue], gap: Double) -> Double {
         var ms = 1800.0
         if case let .number(v)? = params["durationMs"] { ms = v }
         return ms / 1000.0 / max(0.05, slowmo) + gap
     }
 
-    /// Resolve the current feeling, play it, and return the resolved params (for
-    /// dwell timing). Any offscreen panel is built by the backbone inside `play`
-    /// from the effect's `PanelDrawing` conformance — no panel code here.
-    @discardableResult
-    private func playCurrent() -> [String: DopeValue] {
-        guard let host, let resolveFn, !effects.isEmpty else { return [:] }
-        let e = effects[idx % effects.count]
-        let params = resolveFn(feeling())
-        try? host.play(params: params)
-        demoLog.log("[DopamineDemo] fired \(e.name, privacy: .public) slowmo=\(self.slowmo)")
-        return params
+    /// Manual Fire: re-prepare the current effect with a fresh feeling, then play.
+    func fireCurrent() {
+        guard let cur = current else { return }
+        let params = cur.resolve(feeling())
+        try? cur.host.prepare(params: params)
+        current = Prepared(name: cur.name, host: cur.host, resolve: cur.resolve, params: params)
+        cur.host.play()
+        demoLog.log("[DopamineDemo] fired \(cur.name, privacy: .public) slowmo=\(self.slowmo)")
     }
 
-    /// Manual Fire (and external trigger): replay the current effect.
-    func fireCurrent() { _ = playCurrent() }
-
-    // MARK: - Autoplay
+    // MARK: - Autoplay (prepare-ahead)
 
     private func startAutoplay() {
-        guard !effects.isEmpty else { return }
-        if sequenceMode { sequenceStep() } else { singleLoop() }
+        guard let cur = current else { return }
+        cur.host.play()
+        demoLog.log("[DopamineDemo] fired \(cur.name, privacy: .public) slowmo=\(self.slowmo)")
+        prefetchNext()
+        scheduleAdvance()
     }
 
-    /// One effect, re-fired on a loop spaced to its slowed duration.
-    private func singleLoop() {
-        let params = playCurrent()
-        DispatchQueue.main.asyncAfter(deadline: .now() + dwellSeconds(params, gap: 1.0)) { [weak self] in
-            self?.singleLoop()
+    /// Build + prepare the NEXT effect now, during the current one's dwell.
+    private func prefetchNext() {
+        pendingIdx = sequenceMode ? (idx + 1) % max(effects.count, 1) : idx
+        pending = buildAndPrepare(pendingIdx)
+    }
+
+    private func scheduleAdvance() {
+        guard let cur = current else { return }
+        let gap = sequenceMode ? 1.2 : 1.0
+        DispatchQueue.main.asyncAfter(deadline: .now() + dwellSeconds(cur.params, gap: gap)) { [weak self] in
+            self?.advance()
         }
     }
 
-    /// Cycle through every registered effect in order, each playing its full
-    /// (slow-mo) duration, then loop back to the first.
-    private func sequenceStep() {
-        let params = playCurrent()
-        DispatchQueue.main.asyncAfter(deadline: .now() + dwellSeconds(params, gap: 1.2)) { [weak self] in
-            guard let self else { return }
-            self.idx += 1
-            self.loadEffect(self.idx)
-            self.sequenceStep()
-        }
+    /// Swap to the prepared next effect (instant: just attach + start clock).
+    private func advance() {
+        guard let next = pending ?? buildAndPrepare(sequenceMode ? (idx + 1) % max(effects.count, 1) : idx) else { return }
+        current?.host.lightLayer.removeFromSuperlayer()
+        idx = pendingIdx
+        current = next
+        pending = nil
+        attach(next)
+        next.host.play()
+        demoLog.log("[DopamineDemo] fired \(next.name, privacy: .public) slowmo=\(self.slowmo)")
+        prefetchNext()
+        scheduleAdvance()
     }
 
     @objc private func tick() {
@@ -175,6 +209,6 @@ final class OverlayUIView: UIView {
         let pt = anchorPoint2D == .zero
             ? SIMD2<Float>(Float(bounds.midX), Float(bounds.midY))
             : SIMD2<Float>(Float(anchorPoint2D.x), Float(anchorPoint2D.y))
-        host?.tick(now: CACurrentMediaTime(), dpr: scale, anchorPx: pt)
+        current?.host.tick(now: CACurrentMediaTime(), dpr: scale, anchorPx: pt)
     }
 }

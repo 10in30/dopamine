@@ -99,17 +99,19 @@ public final class MetalOverlayHost<Config: PassConfig> {
         }
     }
 
-    /// Begin a fire: resolve params → build the runner. `params` is the loader's
-    /// flat bag for one feeling.
-    public func play(params: [String: DopeValue]) throws {
+    /// Do ALL the expensive per-fire work AHEAD of `play()`: compile the pass
+    /// pipelines (build the runner) and, for a hybrid effect, draw + upload the
+    /// offscreen panel texture. After this returns, `play()` is just "start the
+    /// clock", so a prepared effect begins instantly (the demo prepares the next
+    /// effect during the current one's dwell). The layer's `drawableSize` must be
+    /// set before calling this (the panel is sized from it).
+    public func prepare(params: [String: DopeValue]) throws {
         runner = try MetalPassRunner(
             config: config, params: params, device: device, library: library,
             pixelFormat: lightLayer.pixelFormat, wantsShadow: wantsShadow
         )
-        startTime = CACurrentMediaTime()
-
-        // If this effect supplies panel content, the BACKBONE builds + uploads it
-        // here (once per fire). The effect only painted into the CGContext.
+        // The backbone builds + uploads the panel texture (the effect only painted
+        // into the CGContext); pure-shader effects clear it.
         if let pd = config as? PanelDrawing {
             let canvas = CGSize(width: lightLayer.drawableSize.width,
                                 height: lightLayer.drawableSize.height)
@@ -118,6 +120,12 @@ public final class MetalOverlayHost<Config: PassConfig> {
         } else {
             setPanel(nil)
         }
+    }
+
+    /// Start the (already-prepared) effect's animation clock. Cheap — no pipeline
+    /// build, no texture upload.
+    public func play() {
+        startTime = CACurrentMediaTime()
     }
 
     /// Allocate an RGBA panel CGContext (top-left origin, matching Canvas2D), run
