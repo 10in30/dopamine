@@ -1,0 +1,65 @@
+# XcodeGen spec for the Solarbloom iOS demo.
+#
+# SwiftPM cannot emit an `.app`, so this generates `DopamineDemo.xcodeproj`
+# around the SwiftUI sources in `Sources/`, depending on the local SwiftPM
+# packages by PATH (the package at `..`, i.e. dopamine/swift). The macOS CI runs:
+#
+#   brew install xcodegen
+#   cd dopamine/swift/Demo && xcodegen generate
+#   xcodebuild -project DopamineDemo.xcodeproj -scheme DopamineDemo \
+#     -destination 'platform=iOS Simulator,name=iPhone 15' build
+#
+# Then boot a simulator, install, and launch with the autoplay arg:
+#   xcrun simctl launch booted ai.polyguard.DopamineDemo -autoplay solarbloom
+#
+# UNVERIFIED ON LINUX: XcodeGen + xcodebuild + the iOS SDK exist only on macOS.
+
+name: DopamineDemo
+
+options:
+  bundleIdPrefix: ai.polyguard
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+
+# The local SwiftPM packages (DopamineCore + DopamineEffectSolarbloom) live one
+# directory up. `path` is relative to this project.yml.
+packages:
+  Dopamine:
+    path: ".."
+
+targets:
+  DopamineDemo:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    info:
+      path: Info.plist
+      properties:
+        UILaunchScreen: {}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.polyguard.DopamineDemo
+        GENERATE_INFOPLIST_FILE: NO
+        # Simulator builds in CI are unsigned.
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_ALLOWED: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.9"
+    dependencies:
+      - package: Dopamine
+        product: DopamineCore
+      - package: Dopamine
+        product: DopamineEffectSolarbloom
+
+schemes:
+  DopamineDemo:
+    build:
+      targets:
+        DopamineDemo: all
+    run:
+      # Convenience: running from Xcode autoplay-fires the effect.
+      commandLineArguments:
+        "-autoplay solarbloom": false
