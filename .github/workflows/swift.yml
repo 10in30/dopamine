@@ -212,9 +212,20 @@ jobs:
           echo "stopping recordVideo (SIGINT to simctl) ..."
           pgrep simctl | while read -r p; do kill -s INT "$p" 2>/dev/null || true; done
           kill -INT "$REC" 2>/dev/null || true
-          for _ in $(seq 1 40); do kill -0 "$REC" 2>/dev/null || break; sleep 0.5; done
-          pkill -9 -x simctl 2>/dev/null || true
-          kill -9 "$REC" 2>/dev/null || true
+          # Finalizing the .mp4 (writing the moov atom) is a SOFTWARE encode here —
+          # it can take much longer than the recording itself. Earlier runs killed
+          # simctl after only 20s, which may have aborted the flush before the moov
+          # was written. Wait up to ~180s for a clean exit; watch the file size to
+          # see finalize progress; only force-kill as a last resort.
+          for _ in $(seq 1 360); do
+            kill -0 "$REC" 2>/dev/null || { echo "recordVideo exited cleanly"; break; }
+            sleep 0.5
+          done
+          if kill -0 "$REC" 2>/dev/null; then
+            echo "recordVideo still alive after 180s — force-killing"
+            pkill -9 -x simctl 2>/dev/null || true
+            kill -9 "$REC" 2>/dev/null || true
+          fi
           echo "--- recordVideo log ---"; cat /tmp/rec.log || true
 
           echo "--- app liveness ---"
