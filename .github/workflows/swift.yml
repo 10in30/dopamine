@@ -41,8 +41,8 @@ jobs:
     env:
       BUNDLE_ID: ai.polyguard.DopamineDemo
       SIM_NAME: iPhone 16
-      AUTOPLAY: solarbloom
-      SLOWMO: "0.25"   # play the effect at 1/4 speed so the low-fps screen grab samples it smoothly
+      AUTOPLAY: all    # cycle EVERY registered effect in sequence (one clip of the whole set)
+      SLOWMO: "0.25"   # play each effect at 1/4 speed so the low-fps screen grab samples it smoothly
     steps:
       - uses: actions/checkout@v4
 

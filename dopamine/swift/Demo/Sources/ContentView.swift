@@ -32,8 +32,10 @@ struct ContentView: View {
             }
             .padding(24)
 
-            // The Metal overlay sits ON TOP, pointer-transparent, full-screen.
-            SolarbloomOverlay(
+            // The Metal overlay sits ON TOP, pointer-transparent, full-screen. It
+            // self-drives autoplay (single effect or the full sequence) from the
+            // launch args; the Fire button still replays the current effect.
+            EffectOverlay(
                 fireToken: fireToken,
                 mood: mood, intensity: intensity, whimsy: whimsy,
                 anchor: anchor
@@ -41,7 +43,6 @@ struct ContentView: View {
             .allowsHitTesting(false)
             .ignoresSafeArea()
         }
-        .onAppear(perform: maybeAutoplay)
     }
 
     // MARK: - Pieces
@@ -127,20 +128,5 @@ struct ContentView: View {
 
     private func fire() {
         fireToken += 1
-    }
-
-    private func maybeAutoplay() {
-        guard Autoplay.requestedEffect != nil else { return }
-        // For the CI screen recording: fire shortly after launch, then RE-FIRE on a
-        // loop spaced to the (possibly slowed) effect duration so plays never
-        // overlap. The celebratory bloom is ~1.8s real; at slow-mo scale s it lasts
-        // ~1.8/s, so loop a touch longer than that. Looping (vs a single fire) means
-        // the recorder always catches a full play even after its capture warm-up.
-        let scale = Autoplay.slowmoScale
-        let interval = max(3.0, 1.8 / scale + 1.4)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { fire() }
-        Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
-            fire()
-        }
     }
 }
