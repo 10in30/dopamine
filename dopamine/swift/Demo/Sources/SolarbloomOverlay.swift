@@ -50,16 +50,16 @@ final class OverlayUIView: UIView {
     var anchorPoint2D: CGPoint = .zero
     var lastFiredToken: Int = 0
 
-    // --- In-app frame capture (CI only) ---
+    // --- Off-screen frame capture (CI only) ---
     // recordVideo can't finalize a video on a virtualized runner, so when launched
-    // for autoplay we read each rendered frame back (host.onLightFrame) and write a
-    // PNG sequence into Documents/cap. CI pulls it with `simctl get_app_container`
-    // and muxes a smooth clip — bypassing the missing video-encode hardware.
+    // for autoplay we render the effect OFF-SCREEN frame-by-frame at synthetic
+    // times and write a PNG sequence into Documents/cap. CI pulls it with
+    // `simctl get_app_container` and muxes a smooth clip — bypassing both the
+    // missing video-encode hardware and the headless layer's blocking nextDrawable.
     private let captureEnabled = Autoplay.requestedEffect != nil
     private let captureQueue = DispatchQueue(label: "ai.polyguard.DopamineDemo.capture")
-    private var captureIndex = 0
-    // ~1.8s of effect at the host's synthetic 60fps capture clock (the celebratory
-    // bloom runs ~1.7s); a touch of afterglow tail, no long empty run.
+    // 110 frames at a synthetic 60fps == ~1.83s, covering the celebratory bloom
+    // (~1.7s) plus a little afterglow tail.
     private let maxCaptureFrames = 110
     private let captureMaxWidth = 640
     private lazy var captureDir: URL = {
@@ -97,21 +97,22 @@ final class OverlayUIView: UIView {
         // light bloom cast over the card; the shadow cast is deferred until the
         // two passes are composited into one target.
         host = try? MetalOverlayHost(config: SolarbloomConfig(), device: device, library: library,
-                                     wantsShadow: false, wantsCapture: captureEnabled)
+                                     wantsShadow: false)
         solar = try? Solarbloom()
         if host == nil { demoLog.error("[DopamineDemo] failed to build overlay host") }
-
-        if captureEnabled {
-            demoLog.log("[DopamineDemo] in-app capture ON → \(self.captureDir.path, privacy: .public)")
-            host?.onLightFrame = { [weak self] img in self?.handleCapturedFrame(img) }
-        }
 
         if let shadow = host?.shadowLayer { layer.addSublayer(shadow) }
         if let light = host?.lightLayer { layer.addSublayer(light) }
 
-        let link = CADisplayLink(target: self, selector: #selector(tick))
-        link.add(to: .main, forMode: .common)
-        displayLink = link
+        if captureEnabled {
+            // CI capture renders OFF-SCREEN on a background queue after fire(); no
+            // CADisplayLink (the headless layer's nextDrawable blocks ~1s/frame).
+            demoLog.log("[DopamineDemo] off-screen capture ON → \(self.captureDir.path, privacy: .public)")
+        } else {
+            let link = CADisplayLink(target: self, selector: #selector(tick))
+            link.add(to: .main, forMode: .common)
+            displayLink = link
+        }
     }
 
     override func layoutSubviews() {
@@ -131,6 +132,7 @@ final class OverlayUIView: UIView {
             mood: mood, intensity: intensity, whimsy: whimsy, seed: randomSeed()))) ?? [:]
         try? host.play(params: params)
         demoLog.log("[DopamineDemo] fired solarbloom mood=\(mood, privacy: .public) intensity=\(intensity) whimsy=\(whimsy)")
+        if captureEnabled { startCaptureLoop() }
     }
 
     @objc private func tick() {
@@ -143,23 +145,34 @@ final class OverlayUIView: UIView {
 
     // MARK: - Capture
 
-    /// Called (off the main thread) once per rendered light frame. Bounded to
-    /// `maxCaptureFrames`; downscales + writes a PNG, then drops a DONE marker so
-    /// CI knows the sequence is complete.
-    private func handleCapturedFrame(_ img: CGImage) {
+    /// Render the effect OFF-SCREEN, frame-by-frame at a synthetic 60fps clock, on
+    /// a background queue, writing a PNG sequence + a DONE marker. Sizes/anchor are
+    /// read on the main thread (here) and passed by value into the loop.
+    private func startCaptureLoop() {
+        let scale = window?.screen.scale ?? UIScreen.main.scale
+        var w = Int((bounds.width * scale).rounded())
+        var h = Int((bounds.height * scale).rounded())
+        if w <= 0 || h <= 0 {
+            let s = UIScreen.main.bounds.size
+            w = Int((s.width * scale).rounded()); h = Int((s.height * scale).rounded())
+        }
+        let dpr = Float(scale)
+        let pt = anchorPoint2D == .zero
+            ? SIMD2<Float>(Float(bounds.midX), Float(bounds.midY))
+            : SIMD2<Float>(Float(anchorPoint2D.x), Float(anchorPoint2D.y))
+        let n = maxCaptureFrames, maxW = captureMaxWidth, dir = captureDir
         captureQueue.async { [weak self] in
-            guard let self, self.captureIndex < self.maxCaptureFrames else { return }
-            let i = self.captureIndex
-            self.captureIndex += 1
-            let out = Self.downscale(img, maxWidth: self.captureMaxWidth) ?? img
-            let url = self.captureDir.appendingPathComponent(String(format: "frame_%04d.png", i))
-            Self.writePNG(out, to: url)
-            if self.captureIndex == self.maxCaptureFrames {
-                FileManager.default.createFile(
-                    atPath: self.captureDir.appendingPathComponent("DONE").path,
-                    contents: Data("done".utf8))
-                demoLog.log("[DopamineDemo] capture complete: \(self.maxCaptureFrames) frames")
+            guard let self, let host = self.host else { return }
+            for i in 0..<n {
+                let ms = Double(i) * (1000.0 / 60.0)
+                guard let img = host.renderOffscreen(elapsedMs: ms, width: w, height: h,
+                                                     dpr: dpr, anchorPx: pt) else { continue }
+                let out = Self.downscale(img, maxWidth: maxW) ?? img
+                Self.writePNG(out, to: dir.appendingPathComponent(String(format: "frame_%04d.png", i)))
             }
+            FileManager.default.createFile(
+                atPath: dir.appendingPathComponent("DONE").path, contents: Data("done".utf8))
+            demoLog.log("[DopamineDemo] capture complete: \(n) frames")
         }
     }
 

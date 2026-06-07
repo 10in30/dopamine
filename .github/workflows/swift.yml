@@ -183,9 +183,10 @@ jobs:
           # app writes a DONE marker when the sequence is complete.
           xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" || true
 
-          # Poll the app's data container for the DONE marker (≤40s).
+          # Poll the app's data container for the DONE marker (≤90s; off-screen
+          # rendering 110 frames with waitUntilCompleted can be slow on the sim).
           CAP=""
-          for _ in $(seq 1 80); do
+          for _ in $(seq 1 180); do
             DATA=$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data 2>/dev/null) || true
             CAP="$DATA/Documents/cap"
             [ -f "$CAP/DONE" ] && break

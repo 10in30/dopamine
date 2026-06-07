@@ -42,34 +42,19 @@ public final class MetalOverlayHost<Config: PassConfig> {
     private let library: MTLLibrary
     private let wantsShadow: Bool
 
-    // --- Frame capture (off by default) ---
-    // On a virtualized CI runner `simctl io recordVideo` cannot finalize a video
-    // (the AppleM2ScalerCSCDriver hardware is absent), so the demo captures frames
-    // IN-APP: each rendered light frame is read back to a CGImage and handed to
-    // this sink (the demo writes PNGs the CI then muxes). Reading the drawable
-    // requires `framebufferOnly = false`, so this is gated on `wantsCapture`.
-    private let wantsCapture: Bool
-    public var onLightFrame: ((CGImage) -> Void)?
-    private var captureTex: MTLTexture?
-    private var captureFrame = 0   // synthetic frame clock (capture mode)
-
     /// `library` is the effect's compiled `default.metallib` (built on macOS).
-    /// `wantsCapture` enables per-frame read-back (a small perf cost) for the
-    /// in-app recorder; leave false in production overlays.
-    public init(config: Config, device: MTLDevice, library: MTLLibrary, wantsShadow: Bool, wantsCapture: Bool = false) throws {
+    public init(config: Config, device: MTLDevice, library: MTLLibrary, wantsShadow: Bool) throws {
         guard let q = device.makeCommandQueue() else { throw MetalPassError.pipelineFailed("no command queue") }
         self.device = device
         self.queue = q
         self.config = config
         self.library = library
         self.wantsShadow = wantsShadow
-        self.wantsCapture = wantsCapture
 
         lightLayer = CAMetalLayer()
         lightLayer.device = device
         lightLayer.pixelFormat = .bgra8Unorm
-        // Capture needs the drawable texture readable as a blit source.
-        lightLayer.framebufferOnly = !wantsCapture
+        lightLayer.framebufferOnly = true
         lightLayer.isOpaque = false
 
         if wantsShadow {
@@ -92,7 +77,6 @@ public final class MetalOverlayHost<Config: PassConfig> {
             pixelFormat: lightLayer.pixelFormat, wantsShadow: wantsShadow
         )
         startTime = CACurrentMediaTime()
-        captureFrame = 0
     }
 
     /// Build a command buffer + render encoder for one layer's next drawable.
@@ -113,39 +97,24 @@ public final class MetalOverlayHost<Config: PassConfig> {
         return (cb, drawable, enc)
     }
 
-    /// Drive one frame (call from a CADisplayLink / DisplayLink). `dpr` is the
-    /// content scale; `anchorPx` the effect origin in points.
+    /// Drive one on-screen frame (call from a CADisplayLink). `dpr` is the content
+    /// scale; `anchorPx` the effect origin in points.
     public func tick(now: CFTimeInterval, dpr: Float, anchorPx: SIMD2<Float>) {
         guard let runner else { return }
+        let elapsedMs = (now - startTime) * 1000
 
         // The LIGHT pass is mandatory. If no drawable is available this frame,
         // skip the whole tick rather than crash on a nil encoder.
         guard let light = beginPass(lightLayer) else { return }
 
-        // In CAPTURE mode advance the effect by a fixed 1/60s per RENDERED frame
-        // (a synthetic clock), not wall-clock: the headless simulator renders at a
-        // low, erratic rate, so a wall-clock effect would be over within a couple
-        // of frames and the rest of the capture would be empty. Frame-driving makes
-        // N captured frames == N/60 s of the effect, so the clip is complete +
-        // smooth regardless of the runner's real frame rate.
-        let elapsedMs: Double
-        if wantsCapture {
-            elapsedMs = Double(captureFrame) * (1000.0 / 60.0)
-            captureFrame += 1
-        } else {
-            elapsedMs = (now - startTime) * 1000
-        }
-
         let w = Float(lightLayer.drawableSize.width)
         let h = Float(lightLayer.drawableSize.height)
 
-        // Optional shadow pass into its own drawable / command buffer — keeping
-        // the two CSS canvases' separation (see option (1) in the file header).
+        // Optional shadow pass into its own drawable / command buffer.
         let shadow = shadowLayer.flatMap { beginPass($0) }
 
         // Encode the draw calls FIRST, then end encoding. (Encoding into an
-        // already-ended encoder is Metal API misuse and crashes — the draws
-        // must happen while the encoder is still open.)
+        // already-ended encoder is Metal API misuse and crashes.)
         runner.render(
             elapsedMs: elapsedMs, width: w, height: h, anchorPx: anchorPx, dpr: dpr,
             lightEncoder: light.enc, shadowEncoder: shadow?.enc
@@ -154,33 +123,42 @@ public final class MetalOverlayHost<Config: PassConfig> {
         shadow?.enc.endEncoding()
         light.enc.endEncoding()
 
-        // Capture: copy the rendered light texture into a CPU-readable texture
-        // (within the same command buffer, before present), then read it back to
-        // a CGImage in the completion handler and hand it to the sink.
-        if wantsCapture, let sink = onLightFrame {
-            let tex = captureTexture(width: light.drawable.texture.width, height: light.drawable.texture.height)
-            if let tex, let blit = light.cb.makeBlitCommandEncoder() {
-                blit.copy(from: light.drawable.texture, to: tex)
-                blit.endEncoding()
-                light.cb.addCompletedHandler { _ in
-                    if let img = Self.makeCGImage(from: tex) { sink(img) }
-                }
-            }
-        }
-
         if let shadow { shadow.cb.present(shadow.drawable); shadow.cb.commit() }
         light.cb.present(light.drawable); light.cb.commit()
     }
 
-    /// Lazily (re)allocate the shared-storage capture texture for `width`×`height`.
-    private func captureTexture(width: Int, height: Int) -> MTLTexture? {
-        if let t = captureTex, t.width == width, t.height == height { return t }
-        let d = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
-        d.storageMode = .shared
-        d.usage = [.shaderRead]
-        captureTex = device.makeTexture(descriptor: d)
-        return captureTex
+    // MARK: - Off-screen capture (CI recorder)
+    //
+    // recordVideo can't finalize a video on a virtualized runner, so the demo
+    // records the effect by rendering it OFF-SCREEN, frame by frame, at synthetic
+    // times. This deliberately avoids CADisplayLink + CAMetalLayer.nextDrawable
+    // (which, framebuffer-starved on a headless sim, blocks with 1s timeouts and
+    // returns nil) — so timing is exact and the sequence is complete + smooth
+    // regardless of the simulator's real frame rate. The light pass only.
+
+    /// Render ONE light frame at `elapsedMs` into an owned, CPU-readable texture
+    /// and return it as an sRGB CGImage. Synchronous (waits for the GPU).
+    public func renderOffscreen(elapsedMs: Double, width: Int, height: Int,
+                                dpr: Float, anchorPx: SIMD2<Float>) -> CGImage? {
+        guard let runner, width > 0, height > 0 else { return nil }
+        let desc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: lightLayer.pixelFormat, width: width, height: height, mipmapped: false)
+        desc.usage = [.renderTarget, .shaderRead]
+        desc.storageMode = .shared
+        guard let tex = device.makeTexture(descriptor: desc),
+              let cb = queue.makeCommandBuffer() else { return nil }
+        let rpd = MTLRenderPassDescriptor()
+        rpd.colorAttachments[0].texture = tex
+        rpd.colorAttachments[0].loadAction = .clear
+        rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        rpd.colorAttachments[0].storeAction = .store
+        guard let enc = cb.makeRenderCommandEncoder(descriptor: rpd) else { return nil }
+        runner.render(elapsedMs: elapsedMs, width: Float(width), height: Float(height),
+                      anchorPx: anchorPx, dpr: dpr, lightEncoder: enc, shadowEncoder: nil)
+        enc.endEncoding()
+        cb.commit()
+        cb.waitUntilCompleted()
+        return Self.makeCGImage(from: tex)
     }
 
     /// Read a `.shared` bgra8 texture back into an sRGB CGImage. We swap B↔R into
@@ -194,9 +172,8 @@ public final class MetalOverlayHost<Config: PassConfig> {
             tex.getBytes($0.baseAddress!, bytesPerRow: bpr,
                          from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
         }
-        // BGRA → RGBA.
         var i = 0
-        while i < buf.count { buf.swapAt(i, i + 2); i += 4 }
+        while i < buf.count { buf.swapAt(i, i + 2); i += 4 }   // BGRA → RGBA
         let cs = CGColorSpaceCreateDeviceRGB()
         let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
         guard let ctx = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8,
