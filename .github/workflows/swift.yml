@@ -184,15 +184,20 @@ jobs:
           # them to mp4 with the runner's preinstalled ffmpeg. The 3s autoplay loop
           # guarantees an active bloom across the window.
           mkdir -p /tmp/frames
+          # First screenshot runs VISIBLY so any simctl error surfaces (no masking).
+          echo "--- probe screenshot ---"
+          xcrun simctl io "$UDID" screenshot "/tmp/frames/f_000.png" || echo "PROBE SCREENSHOT FAILED"
+          ls -la /tmp/frames/f_000.png || true
           for i in $(seq -w 1 80); do
-            timeout 5 xcrun simctl io "$UDID" screenshot --type=png "/tmp/frames/f_$i.png" \
-              >/dev/null 2>&1 || true
+            timeout 10 xcrun simctl io "$UDID" screenshot "/tmp/frames/f_$i.png" >/dev/null 2>&1 || true
           done
-          echo "--- captured frames ---"; ls -1 /tmp/frames | wc -l
-          # 12 fps playback of the ~80 stills → a ~6–7s clip. yuv420p for QuickTime.
+          COUNT=$(ls -1 /tmp/frames/*.png 2>/dev/null | wc -l | tr -d ' ')
+          echo "--- captured frames: $COUNT ---"
+          # 12 fps playback of the stills → a few-second clip. yuv420p for QuickTime.
+          # No -vf scale: simulator stills are already even-dimensioned; keep it simple
+          # and let the log surface any real error.
           ffmpeg -y -framerate 12 -pattern_type glob -i '/tmp/frames/*.png' \
-            -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p' \
-            /tmp/solarbloom.mp4 >/tmp/ffmpeg.log 2>&1 || { echo "ffmpeg failed"; tail -40 /tmp/ffmpeg.log; }
+            -pix_fmt yuv420p /tmp/solarbloom.mp4 2>&1 | tee /tmp/ffmpeg.log | tail -25 || true
           echo "--- recorded file ---"
           ls -la /tmp/solarbloom.mp4 || echo "no clip produced"
 
