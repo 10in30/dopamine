@@ -178,10 +178,18 @@ jobs:
           # returns immediately and each screenshot is a one-shot — neither hangs.
           brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
 
-          # Launch FIRST; the app autoplays + re-fires Solarbloom on a 3s loop, so an
-          # active bloom is on-screen across the whole capture window.
-          xcrun simctl launch "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" || true
-          sleep 1
+          # Launch with the app's stdout/stderr streamed to a file (FD-detached so it
+          # can't wedge the step). --console-pty attaches the app's output; if the app
+          # crashes on launch (e.g. no Metal device in the headless runner) the
+          # backtrace lands here. The app also print()s when it fires.
+          xcrun simctl launch --console-pty "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" \
+            >/tmp/app.log 2>&1 </dev/null &
+          APP_PID=$!
+          sleep 4
+          echo "--- app liveness (is DopamineDemo still running?) ---"
+          xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep -i dopamine \
+            || echo ">>> DopamineDemo is NOT running (crashed or never foregrounded)"
+          echo "--- app console (first 60 lines) ---"; head -60 /tmp/app.log || true
 
           # Capture stills with one-shot `simctl io screenshot` (NOT recordVideo,
           # whose CoreSimulator daemon wedges the runner). ~70 frames with a small
@@ -191,6 +199,7 @@ jobs:
             xcrun simctl io "$UDID" screenshot "/tmp/frames/f_$i.png" >/dev/null 2>&1 || true
             sleep 0.15
           done
+          kill -9 "$APP_PID" 2>/dev/null || true
           COUNT=$(ls -1 /tmp/frames/*.png 2>/dev/null | wc -l | tr -d ' ')
           echo "--- captured frames: $COUNT ---"
           # 12 fps playback of the stills → a ~6s clip. The scale filter forces
@@ -199,15 +208,21 @@ jobs:
           ffmpeg -y -framerate 12 -pattern_type glob -i '/tmp/frames/*.png' \
             -vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p' \
             /tmp/solarbloom.mp4 2>&1 | tee /tmp/ffmpeg.log | tail -20 || true
+          # Bundle the clip + a few sample stills + the app console into one dir so the
+          # artifact lets us SEE what was actually on screen and why.
+          mkdir -p /tmp/out
+          cp /tmp/solarbloom.mp4 /tmp/out/ 2>/dev/null || true
+          cp /tmp/app.log /tmp/out/ 2>/dev/null || true
+          cp /tmp/frames/f_01.png /tmp/frames/f_20.png /tmp/frames/f_45.png /tmp/frames/f_70.png /tmp/out/ 2>/dev/null || true
           echo "--- recorded file ---"
-          ls -la /tmp/solarbloom.mp4 || echo "no clip produced"
+          ls -la /tmp/out || echo "no clip produced"
 
       - name: Upload recorded clip
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: solarbloom-sim-clip
-          path: /tmp/solarbloom.mp4
+          path: /tmp/out
           if-no-files-found: warn
 
   # ===========================================================================
