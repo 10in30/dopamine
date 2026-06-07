@@ -203,10 +203,16 @@ jobs:
           echo "recordVideo started pid=$REC"
           # ~9s of real time → several full autoplay fires at the real frame rate.
           sleep 9
-          echo "stopping recordVideo (SIGINT) ..."
+          echo "stopping recordVideo (SIGINT to the real simctl recorder) ..."
+          # SIGINT must reach the actual `simctl` recorder child — that is what
+          # finalizes the moov atom. Signalling only the `xcrun` parent ($REC)
+          # does NOT propagate (proven: the recorder ran the full poll, then a
+          # SIGKILL truncated the file to ~46KB). pkill the recorder by name.
+          pkill -INT -f 'simctl.*recordVideo' 2>/dev/null || true
           kill -INT "$REC" 2>/dev/null || true
-          # Bounded wait for the recorder to finalize + exit (≤15s); then force-kill.
-          for _ in $(seq 1 30); do kill -0 "$REC" 2>/dev/null || break; sleep 0.5; done
+          # Bounded wait for finalize + exit (≤20s); then force-kill everything.
+          for _ in $(seq 1 40); do kill -0 "$REC" 2>/dev/null || break; sleep 0.5; done
+          pkill -9 -f 'simctl.*recordVideo' 2>/dev/null || true
           kill -9 "$REC" 2>/dev/null || true
           echo "--- recordVideo log ---"; cat /tmp/rec.log || true
 

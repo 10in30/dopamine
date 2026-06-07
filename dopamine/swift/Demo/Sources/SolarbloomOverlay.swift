@@ -68,7 +68,13 @@ final class OverlayUIView: UIView {
             return
         }
         demoLog.log("[DopamineDemo] Metal device=\(device.name, privacy: .public) library loaded")
-        host = try? MetalOverlayHost(config: SolarbloomConfig(), device: device, library: library, wantsShadow: true)
+        // Light pass only. The shadow pass is a SECOND full-screen CAMetalLayer,
+        // and Core Animation has no layer-level `multiply` blend (see
+        // MetalOverlayHost header) — stacked under a now-translucent light layer
+        // it would composite as an opaque sheet over the UI. The headline is the
+        // light bloom cast over the card; the shadow cast is deferred until the
+        // two passes are composited into one target.
+        host = try? MetalOverlayHost(config: SolarbloomConfig(), device: device, library: library, wantsShadow: false)
         solar = try? Solarbloom()
         if host == nil { demoLog.error("[DopamineDemo] failed to build overlay host") }
 

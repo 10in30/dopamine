@@ -336,5 +336,11 @@ fragment float4 solarbloom_fragment(
     }
 
     col = dop_ditherAdd(col, frag, u.timeS, 1.0 - u.style);
-    return float4(col, 1.0);
+    // PREMULTIPLIED-alpha output: alpha = the light's own brightness. Dark
+    // regions become transparent so the UI beneath shows through, and bright
+    // bloom reads as cast light over it (returning opaque alpha=1 painted the
+    // whole overlay black over the card). col is the emitted light, so
+    // col_channel <= max(col) = alpha holds → valid premultiplied.
+    float outA = clamp(max(max(col.r, col.g), col.b), 0.0, 1.0);
+    return float4(col, outA);
 }
