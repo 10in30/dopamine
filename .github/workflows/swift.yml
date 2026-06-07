@@ -37,7 +37,7 @@ jobs:
     runs-on: macos-14   # Apple-silicon runner with a recent Xcode
     env:
       BUNDLE_ID: ai.polyguard.DopamineDemo
-      SIM_NAME: iPhone 15
+      SIM_NAME: iPhone 16
       AUTOPLAY: solarbloom
     steps:
       - uses: actions/checkout@v4
