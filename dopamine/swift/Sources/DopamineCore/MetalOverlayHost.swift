@@ -51,6 +51,7 @@ public final class MetalOverlayHost<Config: PassConfig> {
     private let wantsCapture: Bool
     public var onLightFrame: ((CGImage) -> Void)?
     private var captureTex: MTLTexture?
+    private var captureFrame = 0   // synthetic frame clock (capture mode)
 
     /// `library` is the effect's compiled `default.metallib` (built on macOS).
     /// `wantsCapture` enables per-frame read-back (a small perf cost) for the
@@ -91,6 +92,7 @@ public final class MetalOverlayHost<Config: PassConfig> {
             pixelFormat: lightLayer.pixelFormat, wantsShadow: wantsShadow
         )
         startTime = CACurrentMediaTime()
+        captureFrame = 0
     }
 
     /// Build a command buffer + render encoder for one layer's next drawable.
@@ -115,11 +117,24 @@ public final class MetalOverlayHost<Config: PassConfig> {
     /// content scale; `anchorPx` the effect origin in points.
     public func tick(now: CFTimeInterval, dpr: Float, anchorPx: SIMD2<Float>) {
         guard let runner else { return }
-        let elapsedMs = (now - startTime) * 1000
 
         // The LIGHT pass is mandatory. If no drawable is available this frame,
         // skip the whole tick rather than crash on a nil encoder.
         guard let light = beginPass(lightLayer) else { return }
+
+        // In CAPTURE mode advance the effect by a fixed 1/60s per RENDERED frame
+        // (a synthetic clock), not wall-clock: the headless simulator renders at a
+        // low, erratic rate, so a wall-clock effect would be over within a couple
+        // of frames and the rest of the capture would be empty. Frame-driving makes
+        // N captured frames == N/60 s of the effect, so the clip is complete +
+        // smooth regardless of the runner's real frame rate.
+        let elapsedMs: Double
+        if wantsCapture {
+            elapsedMs = Double(captureFrame) * (1000.0 / 60.0)
+            captureFrame += 1
+        } else {
+            elapsedMs = (now - startTime) * 1000
+        }
 
         let w = Float(lightLayer.drawableSize.width)
         let h = Float(lightLayer.drawableSize.height)

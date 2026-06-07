@@ -58,7 +58,9 @@ final class OverlayUIView: UIView {
     private let captureEnabled = Autoplay.requestedEffect != nil
     private let captureQueue = DispatchQueue(label: "ai.polyguard.DopamineDemo.capture")
     private var captureIndex = 0
-    private let maxCaptureFrames = 120
+    // ~1.8s of effect at the host's synthetic 60fps capture clock (the celebratory
+    // bloom runs ~1.7s); a touch of afterglow tail, no long empty run.
+    private let maxCaptureFrames = 110
     private let captureMaxWidth = 640
     private lazy var captureDir: URL = {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
