@@ -127,21 +127,14 @@ final class OverlayUIView: UIView {
         return ms / 1000.0 / max(0.05, slowmo) + gap
     }
 
-    /// Resolve the current feeling, draw+upload the effect's panel (if any) for
-    /// that same feeling, play, and return the resolved params (for dwell timing).
+    /// Resolve the current feeling, play it, and return the resolved params (for
+    /// dwell timing). Any offscreen panel is built by the backbone inside `play`
+    /// from the effect's `PanelDrawing` conformance — no panel code here.
     @discardableResult
     private func playCurrent() -> [String: DopeValue] {
         guard let host, let resolveFn, !effects.isEmpty else { return [:] }
         let e = effects[idx % effects.count]
-        let f = feeling()
-        let params = resolveFn(f)
-        if let drawPanel = e.panel {
-            let scale = window?.screen.scale ?? UIScreen.main.scale
-            let px = CGSize(width: bounds.width * scale, height: bounds.height * scale)
-            host.setPanel(drawPanel(f, px))
-        } else {
-            host.setPanel(nil)
-        }
+        let params = resolveFn(feeling())
         try? host.play(params: params)
         demoLog.log("[DopamineDemo] fired \(e.name, privacy: .public) slowmo=\(self.slowmo)")
         return params

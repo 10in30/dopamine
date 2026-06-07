@@ -13,7 +13,6 @@
 #if canImport(Metal)
 import Metal
 import QuartzCore
-import CoreGraphics
 import simd
 import DopamineCore
 import DopamineEffectSolarbloom
@@ -25,28 +24,16 @@ public protocol AnyEffectHost: AnyObject {
     var timeScale: Double { get set }
     func play(params: [String: DopeValue]) throws
     func tick(now: CFTimeInterval, dpr: Float, anchorPx: SIMD2<Float>)
-    /// Upload the offscreen panel image hybrid effects (comic/heartburst) sample;
-    /// nil for pure-shader effects.
-    func setPanel(_ image: CGImage?)
 }
 extension MetalOverlayHost: AnyEffectHost {}
 
-/// One registered effect: a name, an optional panel drawer (hybrid effects draw
-/// their word/hearts into a CGImage of the given pixel size for the resolved
-/// feeling), and a builder returning a ready host + a feeling→params resolver
-/// (nil if the effect failed to load its metallib/dope).
+/// One registered effect: a name + a builder returning a ready host and a
+/// feeling→params resolver (nil if the effect failed to load its metallib/dope).
+/// Hybrid effects (comic/heartburst) need NO entry here for their panel — the
+/// backbone builds it from the effect's `PanelDrawing` conformance.
 struct DemoEffect {
     let name: String
-    let panel: ((_ feeling: DopeResolveInput, _ sizePx: CGSize) -> CGImage?)?
     let build: (MTLDevice) -> (host: any AnyEffectHost, resolve: (DopeResolveInput) -> [String: DopeValue])?
-
-    init(name: String,
-         panel: ((_ feeling: DopeResolveInput, _ sizePx: CGSize) -> CGImage?)? = nil,
-         build: @escaping (MTLDevice) -> (host: any AnyEffectHost, resolve: (DopeResolveInput) -> [String: DopeValue])?) {
-        self.name = name
-        self.panel = panel
-        self.build = build
-    }
 }
 
 enum EffectRegistry {

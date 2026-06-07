@@ -29,6 +29,25 @@ import QuartzCore
 import CoreGraphics
 import simd
 
+/// A hybrid effect that needs an offscreen "panel" (the web's Canvas2D layer it
+/// samples in-shader — e.g. comic's word, heartburst's hearts) supplies ONLY its
+/// CONTENT by conforming its `PassConfig` to this. The BACKBONE owns everything
+/// else: allocating the surface, running the draw, uploading to a texture, and
+/// binding it at fragment texture(0). The context is flipped to a top-left origin
+/// so the draw matches the web's Canvas2D coordinate space. This mirrors the web,
+/// where the panel RUNNER is shared framework and only the draw fn is per-effect.
+public protocol PanelDrawing {
+    /// Panel pixel size for the given canvas size. Default: the whole canvas.
+    func panelSizePx(canvasPx: CGSize, params: [String: DopeValue]) -> CGSize
+    /// Paint the panel (RGBA channels per the effect's own shader contract) into
+    /// `ctx` (top-left origin, extent = `sizePx`). `params` is the resolved bag
+    /// (incl. the scatter seed) so the draw is deterministic for the feeling.
+    func drawPanel(_ ctx: CGContext, sizePx: CGSize, params: [String: DopeValue])
+}
+public extension PanelDrawing {
+    func panelSizePx(canvasPx: CGSize, params: [String: DopeValue]) -> CGSize { canvasPx }
+}
+
 /// A minimal overlay host: owns a CAMetalLayer for the light pass and (optionally)
 /// one for the shadow pass, plus the device/library, and drives a runner.
 public final class MetalOverlayHost<Config: PassConfig> {
@@ -88,6 +107,32 @@ public final class MetalOverlayHost<Config: PassConfig> {
             pixelFormat: lightLayer.pixelFormat, wantsShadow: wantsShadow
         )
         startTime = CACurrentMediaTime()
+
+        // If this effect supplies panel content, the BACKBONE builds + uploads it
+        // here (once per fire). The effect only painted into the CGContext.
+        if let pd = config as? PanelDrawing {
+            let canvas = CGSize(width: lightLayer.drawableSize.width,
+                                height: lightLayer.drawableSize.height)
+            let sz = pd.panelSizePx(canvasPx: canvas, params: params)
+            setPanel(Self.makePanelImage(sz) { ctx in pd.drawPanel(ctx, sizePx: sz, params: params) })
+        } else {
+            setPanel(nil)
+        }
+    }
+
+    /// Allocate an RGBA panel CGContext (top-left origin, matching Canvas2D), run
+    /// the effect's draw, and return the image. Pure Core Graphics — the shared
+    /// "panel runner" the per-effect `drawPanel` plugs into.
+    private static func makePanelImage(_ sizePx: CGSize, _ draw: (CGContext) -> Void) -> CGImage? {
+        let w = max(1, Int(sizePx.width.rounded())), h = max(1, Int(sizePx.height.rounded()))
+        let cs = CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8,
+                                  bytesPerRow: 0, space: cs,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.clear(CGRect(x: 0, y: 0, width: w, height: h))
+        ctx.translateBy(x: 0, y: CGFloat(h)); ctx.scaleBy(x: 1, y: -1)  // top-left origin
+        draw(ctx)
+        return ctx.makeImage()
     }
 
     /// Set (or clear with nil) the offscreen panel image hybrid effects sample.
