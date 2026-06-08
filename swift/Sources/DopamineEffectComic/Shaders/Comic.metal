@@ -194,7 +194,12 @@ fragment float4 comic_fragment(
     // Suppress fills under ink (so outlines punch through as unlit black). But
     // where the ink overlaps the WORD fill we soften the carve a lot, so the
     // outline frames the letters instead of eating their bright bodies.
-    float carve = ink * (0.96 - 0.7 * wordFill);
+    // Gentle carve: the outline should FRAME the burst, not gut it. A near-total
+    // carve (old 0.96) left the burst outline reading as a transparent gap that
+    // masked the balloon — worse at high whimsy, where inkBoost fattens the ink.
+    // Keep the word's soft carve (0.26 at wordFill=1) but darken the burst outline
+    // only partway so the balloon shows through.
+    float carve = ink * (0.45 - 0.19 * wordFill);
     col *= (1.0 - carve);
     // Subtle chiaroscuro rim-light on ink edges toward the noir end (a glint).
     float rim = ink * (1.0 - u.style) * 0.18;

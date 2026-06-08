@@ -102,8 +102,12 @@ public final class MetalPassRunner<Config: PassConfig> {
     private let device: MTLDevice
     private let lightPipeline: MTLRenderPipelineState
     private let shadowPipeline: MTLRenderPipelineState?
-    private let params: [String: DopeValue]
-    public let durationMs: Double
+    // Params/duration are per-FIRE, but the pipelines depend only on the config's
+    // functions + pixel format — NOT on params. So a re-fire can swap params in
+    // place (`updateParams`) and reuse the (expensive-to-build) pipelines instead
+    // of rebuilding the whole runner. See `MetalOverlayHost.prepare`.
+    private var params: [String: DopeValue]
+    public private(set) var durationMs: Double
 
     // Texture plumbing for HYBRID effects. Pure-shader effects (Solarbloom et al.)
     // draw everything analytically and bind nothing; but comic/heartburst draw
@@ -196,6 +200,14 @@ public final class MetalPassRunner<Config: PassConfig> {
         var clear: [UInt8] = [0, 0, 0, 0]
         ph.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: &clear, bytesPerRow: 4)
         placeholderTex = ph
+    }
+
+    /// Swap in fresh per-fire params (and re-derive duration) WITHOUT rebuilding
+    /// the pipelines. The pipelines are pure functions of the config + pixel
+    /// format, so this is the cheap path a re-fire takes.
+    public func updateParams(_ params: [String: DopeValue]) {
+        self.params = params
+        if case let .number(d)? = params["durationMs"] { durationMs = d } else { durationMs = 0 }
     }
 
     /// Build the StandardUniforms for one pass.

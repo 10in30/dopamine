@@ -16,6 +16,10 @@ private struct TargetFrameKey: PreferenceKey {
 }
 
 struct ContentView: View {
+    // Which effect to play. Defaults to the first registered effect, matching the
+    // overlay's initial current effect.
+    @State private var effectName: String = EffectRegistry.allNames.first ?? "solarbloom"
+
     // The feeling controls (mirror the web demo's mood / intensity / whimsy).
     @State private var mood: String = "celebratory"
     @State private var intensity: Double = 0.8
@@ -29,6 +33,9 @@ struct ContentView: View {
     // (comic / heartburst / inkstroke here) land their centrepiece on the matching
     // box at its size; everything else falls back to the card anchor + full canvas.
     @State private var targets: [String: CGRect] = [:]
+    // True while an effect is playing. Used to fade the targeted chip's content
+    // out (so its label doesn't show through the effect) and back in after.
+    @State private var effectActive = false
 
     private let moods = ["serene", "celebratory", "electric"]
 
@@ -50,9 +57,17 @@ struct ContentView: View {
             // self-drives autoplay (single effect or the full sequence) from the
             // launch args; the Fire button still replays the current effect.
             EffectOverlay(
+                effectName: effectName,
                 fireToken: fireToken,
                 mood: mood, intensity: intensity, whimsy: whimsy,
-                anchor: anchor, targets: targets
+                anchor: anchor, targets: targets,
+                onActiveChange: { active in
+                    if active {
+                        effectActive = true                 // cut out instantly
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.4)) { effectActive = false }  // fade back in
+                    }
+                }
             )
             .allowsHitTesting(false)
             .ignoresSafeArea()
@@ -71,6 +86,10 @@ struct ContentView: View {
                     .font(.system(size: 34, weight: .bold))
                     .foregroundStyle(.green)
             }
+            // Hide the green check badge while a CARD-anchored effect plays over it
+            // (an effect with no target chip), so it doesn't show through. The rest
+            // of the card (title/subtitle) stays. Cut out instantly, fade back in.
+            .opacity(effectActive && targets[effectName] == nil ? 0 : 1)
             Text("Order complete")
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(.white)
@@ -136,10 +155,24 @@ struct ContentView: View {
                     Color.clear.preference(key: TargetFrameKey.self, value: [key: geo.frame(in: .global)])
                 }
             )
+            // Hide this chip while ITS effect is playing over it (the label/box
+            // showing through the effect is confusing); fades back in after.
+            // Opacity doesn't affect layout, so the published frame stays valid.
+            .opacity(effectActive && effectName == key ? 0 : 1)
     }
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Effect").font(.caption).foregroundStyle(.white.opacity(0.6))
+                // A menu picker (not segmented) — there are nine effects, too many
+                // to fit as segments. Selecting an effect switches it; tap Fire to play.
+                Picker("Effect", selection: $effectName) {
+                    ForEach(EffectRegistry.allNames, id: \.self) { Text($0.capitalized).tag($0) }
+                }
+                .pickerStyle(.menu)
+                .tint(.orange)
+            }
             VStack(alignment: .leading, spacing: 6) {
                 Text("Mood").font(.caption).foregroundStyle(.white.opacity(0.6))
                 Picker("Mood", selection: $mood) {

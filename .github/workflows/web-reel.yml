@@ -1,19 +1,25 @@
-# Dopamine — WEB reel CI.
+# Dopamine — WEB publish + reel CI.
 #
-# Renders every web effect in headless Chromium (WebGL via SwiftShader, so no GPU
-# is needed) frame-by-frame at a fixed timestep, then stitches them into one reel
-# `e2e/output/dopamine-suite.mp4`, uploaded as an artifact. This is the
-# browser-rendered counterpart to the Metal/iOS clip from `swift.yml`.
+# TWO jobs:
+#   1. deploy-demo — build the Vite demo and publish it to GitHub Pages (fast).
+#      Runs first so the live site updates without waiting on the slow reel.
+#      Only on main / workflow_dispatch — PRs don't publish to the live site.
+#   2. reel — render every web effect in headless Chromium (WebGL via SwiftShader,
+#      so no GPU is needed) frame-by-frame, stitch them into one reel
+#      `e2e/output/dopamine-suite.mp4`, uploaded as an artifact. Runs AFTER the
+#      demo is published (the browser-rendered counterpart to swift.yml's iOS clip).
 #
-# Runs on Linux (ubuntu) — it's a pure Node + Playwright capture, ~10x cheaper
-# than the macOS runner. The `reel` pipeline is the repo's own
-# scripts/render-clips.mjs + scripts/stitch.mjs.
+# Both run on Linux (ubuntu) — pure Node + Playwright, ~10x cheaper than macOS.
 #
-# INCREMENTAL: per-effect clips are cached between runs. Each run re-renders only
-# the effects whose `packages/effect-<name>/**` changed (or ALL of them when a
-# shared input — core, the effects umbrella, the demo, or the reel pipeline —
-# changed), then re-stitches the full reel from the cached + freshly-rendered
-# clips. See scripts/reel-changed.mjs for the policy.
+# INCREMENTAL reel: per-effect clips are cached between runs. Each run re-renders
+# only the effects whose `packages/effect-<name>/**` changed (or ALL when a shared
+# input — core, the effects umbrella, the demo, or the reel pipeline — changed),
+# then re-stitches the full reel from cached + freshly-rendered clips. See
+# scripts/reel-changed.mjs for the policy.
+#
+# GitHub Pages must be enabled (Settings ▸ Pages ▸ Source: GitHub Actions). The
+# deploy job's `configure-pages` with `enablement: true` tries to turn it on
+# automatically; if the org blocks that, enable it once by hand.
 
 name: web-reel
 
@@ -33,8 +39,77 @@ on:
       - ".github/workflows/web-reel.yml"
   workflow_dispatch:
 
+# Least privilege by default; the deploy job widens to what Pages needs.
+permissions:
+  contents: read
+
 jobs:
+  # ---------------------------------------------------------------------------
+  # Publish the Vite demo to GitHub Pages FIRST (fast) so the live site updates
+  # promptly, ahead of the slow headless reel render. main / dispatch only.
+  # ---------------------------------------------------------------------------
+  deploy-demo:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # Serialize Pages deployments (don't cancel an in-flight one); scoped to this
+    # job so the reel isn't queued behind it.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # Retry: ffmpeg-static downloads its binary at install time and intermittently
+      # 504s; retry a few times before failing (it's an optional dep anyway).
+      - name: Install deps
+        run: |
+          n=0
+          until npm install; do
+            n=$((n+1))
+            if [ "$n" -ge 4 ]; then echo "npm install failed after $n attempts"; exit 1; fi
+            echo "npm install failed (attempt $n) — retrying in 15s…"; sleep 15
+          done
+
+      # The demo is a Vite app whose config resolves @dopamine/* to source, so this
+      # produces a self-contained static site in examples/demo/dist (base: "./", so
+      # it works under the /<repo>/ project-pages path with no hardcoded base).
+      - name: Build the web packages + demo
+        run: npm run build
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload the demo as a Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: examples/demo/dist
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
+
+  # ---------------------------------------------------------------------------
+  # Render + stitch the reel. Comes AFTER the demo publish; `always()` so PRs
+  # (where deploy-demo is skipped) still render it.
+  # ---------------------------------------------------------------------------
   reel:
+    needs: [deploy-demo]
+    if: always()
     runs-on: ubuntu-latest
     defaults:
       run:

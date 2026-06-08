@@ -7,10 +7,12 @@
 // Simulator). The XcodeGen `project.yml` next to this folder turns these
 // sources + the local SwiftPM packages into `DopamineDemo.xcodeproj`.
 //
-// AUTOPLAY: launch with `-autoplay solarbloom` (an argument the simulator passes
-// via `simctl launch … --args`) — or set the env var `DOPAMINE_AUTOPLAY=solarbloom`
-// — and the app fires the effect automatically ~0.4s after launch, so CI can
-// screen-record a headless run with no tap.
+// AUTOPLAY (SIMULATOR ONLY): launch with `-autoplay solarbloom` (an argument the
+// simulator passes via `simctl launch … --args`) — or set the env var
+// `DOPAMINE_AUTOPLAY=solarbloom` — and the app fires the effect automatically
+// ~0.4s after launch, so CI can screen-record a headless run with no tap. On a
+// REAL DEVICE autoplay is disabled (see `Autoplay.requestedEffect`); the user
+// drives the demo with the in-app effect picker + Fire button instead.
 
 import SwiftUI
 
@@ -28,6 +30,10 @@ struct DopamineDemoApp: App {
 /// `-autoplay solarbloom` (argv) or `DOPAMINE_AUTOPLAY=solarbloom` (env).
 enum Autoplay {
     static var requestedEffect: String? {
+        // Autoplay is a SIMULATOR / CI affordance only. On a real device we never
+        // autoplay — the user picks an effect and taps Fire — so any stray
+        // `-autoplay` arg or env var is ignored there.
+        #if targetEnvironment(simulator)
         let args = ProcessInfo.processInfo.arguments
         if let i = args.firstIndex(of: "-autoplay"), i + 1 < args.count {
             return args[i + 1]
@@ -36,6 +42,9 @@ enum Autoplay {
             return env
         }
         return nil
+        #else
+        return nil
+        #endif
     }
 
     /// Slow-motion time scale for the effect (1.0 = real time). `-slowmo 0.25`
