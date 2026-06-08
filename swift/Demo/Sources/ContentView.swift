@@ -16,6 +16,10 @@ private struct TargetFrameKey: PreferenceKey {
 }
 
 struct ContentView: View {
+    // Which effect to play. Defaults to the first registered effect, matching the
+    // overlay's initial current effect.
+    @State private var effectName: String = EffectRegistry.allNames.first ?? "solarbloom"
+
     // The feeling controls (mirror the web demo's mood / intensity / whimsy).
     @State private var mood: String = "celebratory"
     @State private var intensity: Double = 0.8
@@ -50,6 +54,7 @@ struct ContentView: View {
             // self-drives autoplay (single effect or the full sequence) from the
             // launch args; the Fire button still replays the current effect.
             EffectOverlay(
+                effectName: effectName,
                 fireToken: fireToken,
                 mood: mood, intensity: intensity, whimsy: whimsy,
                 anchor: anchor, targets: targets
@@ -140,6 +145,16 @@ struct ContentView: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Effect").font(.caption).foregroundStyle(.white.opacity(0.6))
+                // A menu picker (not segmented) — there are nine effects, too many
+                // to fit as segments. Selecting an effect switches it; tap Fire to play.
+                Picker("Effect", selection: $effectName) {
+                    ForEach(EffectRegistry.allNames, id: \.self) { Text($0.capitalized).tag($0) }
+                }
+                .pickerStyle(.menu)
+                .tint(.orange)
+            }
             VStack(alignment: .leading, spacing: 6) {
                 Text("Mood").font(.caption).foregroundStyle(.white.opacity(0.6))
                 Picker("Mood", selection: $mood) {

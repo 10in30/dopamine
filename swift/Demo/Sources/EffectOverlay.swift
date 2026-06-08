@@ -21,6 +21,7 @@ import DopamineCore
 private let demoLog = Logger(subsystem: "ai.polyguard.DopamineDemo", category: "overlay")
 
 struct EffectOverlay: UIViewRepresentable {
+    var effectName: String
     var fireToken: Int
     var mood: String
     var intensity: Double
@@ -38,6 +39,9 @@ struct EffectOverlay: UIViewRepresentable {
         view.mood = mood
         view.intensity = intensity
         view.whimsy = whimsy
+        // Picker selection: make the chosen effect current (does NOT play it; Fire
+        // plays). No-op during autoplay or if it's already current.
+        view.switchTo(effectName)
         // Manual Fire: bump replays the CURRENT effect (not used during autoplay).
         if fireToken != view.lastFiredToken {
             view.lastFiredToken = fireToken
@@ -120,8 +124,13 @@ final class OverlayUIView: UIView {
     /// do the heavy `prepare` (pipeline compile + panel texture). The layer is NOT
     /// attached and the clock is NOT started — that's `attach` + `play()`.
     private func buildAndPrepare(_ i: Int) -> Prepared? {
-        guard let device, !effects.isEmpty else { return nil }
-        let e = effects[i % effects.count]
+        guard !effects.isEmpty else { return nil }
+        return buildAndPrepare(effects[i % effects.count])
+    }
+
+    /// Build + prepare a specific effect (same as the index form, by `DemoEffect`).
+    private func buildAndPrepare(_ e: DemoEffect) -> Prepared? {
+        guard let device else { return nil }
         guard let built = e.build(device) else {
             demoLog.error("[DopamineDemo] failed to build effect=\(e.name, privacy: .public)"); return nil
         }
@@ -159,6 +168,23 @@ final class OverlayUIView: UIView {
         var ms = 1800.0
         if case let .number(v)? = params["durationMs"] { ms = v }
         return ms / 1000.0 / max(0.05, slowmo) + gap
+    }
+
+    /// Picker selection: make `name` the current effect WITHOUT playing it — the
+    /// user taps Fire to play. Ignored during autoplay (CI / simulator) and when
+    /// `name` is already current. Builds from the full `EffectRegistry.all`, so
+    /// every effect is reachable manually.
+    func switchTo(_ name: String) {
+        guard Autoplay.requestedEffect == nil else { return }   // don't fight autoplay
+        guard current?.name != name else { return }
+        guard let e = EffectRegistry.all.first(where: { $0.name == name }),
+              let next = buildAndPrepare(e) else {
+            demoLog.error("[DopamineDemo] switchTo unknown/failed effect=\(name, privacy: .public)"); return
+        }
+        current?.host.lightLayer.removeFromSuperlayer()
+        current = next
+        attach(next)   // prepared + attached, but NOT played — Fire plays it
+        demoLog.log("[DopamineDemo] switched to \(next.name, privacy: .public)")
     }
 
     /// Manual Fire: re-prepare the current effect with a fresh feeling, then play.

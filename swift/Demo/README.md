@@ -33,22 +33,51 @@ xcrun simctl install booted "$APP"
 xcrun simctl launch booted ai.polyguard.DopamineDemo -autoplay solarbloom
 ```
 
-## Autoplay
+## Install to a physical device (macOS only)
 
-Launch path for headless / CI firing — either:
+```sh
+cd swift/Demo
+./install-device.sh                  # auto-picks the one connected iPhone
+./install-device.sh "Joshua"         # or filter by device name / UDID
+LAUNCH=1 ./install-device.sh         # also foreground the app after install
+```
+
+On the device there is no autoplay (that's simulator/CI only) — pick an effect
+from the **Effect** menu and tap **Fire**.
+
+The script installs XcodeGen if needed, regenerates the project, builds for the
+connected device with **automatic code signing**, and installs via `devicectl`
+(Xcode 15+). Signing is configured in `project.yml`
+(`CODE_SIGN_STYLE: Automatic`, `DEVELOPMENT_TEAM: HY6Z2F5595` — t-zero Security
+Inc). `-allowProvisioningUpdates` lets Xcode register the device and mint the
+provisioning profile on first run.
+
+Requirements: Xcode, an Apple Developer account signed into Xcode for that team,
+and the iPhone paired & trusted (verify with `xcrun devicectl list devices`).
+To sign with a different team, edit the `DEVELOPMENT_TEAM` line in `project.yml`
+(or override `DEVELOPMENT_TEAM=…` on the `xcodebuild` invocation). Opening the
+generated `DopamineDemo.xcodeproj` in Xcode and picking your device + team in
+**Signing & Capabilities** works too.
+
+## Autoplay (Simulator / CI only)
+
+Launch path for headless / CI firing in the **Simulator** — either:
 
 - launch argument: `xcrun simctl launch booted ai.polyguard.DopamineDemo -autoplay solarbloom`
 - environment variable: `DOPAMINE_AUTOPLAY=solarbloom`
 
-When set, the app fires the effect ~0.4 s after launch (see `Autoplay` in
-`Sources/DopamineDemoApp.swift` and `maybeAutoplay()` in `ContentView.swift`).
+When set, the app fires the effect ~0.8 s after launch (see `Autoplay` in
+`Sources/DopamineDemoApp.swift`). **On a real device autoplay is disabled** —
+`Autoplay.requestedEffect` returns `nil` outside the simulator — so the app
+opens idle and you drive it with the **Effect** picker + **Fire** button.
 
 ## Files
 
 - `project.yml` — XcodeGen spec (app target + path deps + the `DopamineDemo` scheme).
+- `install-device.sh` — build + install to a connected iPhone (signed, via `devicectl`).
 - `Info.plist` — bundle id `ai.polyguard.DopamineDemo`, Metal capability, portrait.
 - `Sources/DopamineDemoApp.swift` — `@main` SwiftUI `App` + autoplay parsing.
-- `Sources/ContentView.swift` — card + Fire button + mood/intensity/whimsy controls.
+- `Sources/ContentView.swift` — card + effect picker + Fire button + mood/intensity/whimsy controls.
 - `Sources/SolarbloomOverlay.swift` — `UIViewRepresentable` hosting the Metal
   overlay layers + the `CADisplayLink` tick; resolves the feeling and plays.
 

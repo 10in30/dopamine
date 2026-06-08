@@ -2,3 +2,5 @@
 .swiftpm/
 *.xcodeproj
 DerivedData/
+# install-device.sh builds into Demo/build via -derivedDataPath.
+Demo/build/

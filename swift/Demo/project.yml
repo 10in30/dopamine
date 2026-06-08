@@ -55,10 +55,17 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.polyguard.DopamineDemo
-        # Simulator builds in CI are unsigned.
-        CODE_SIGNING_REQUIRED: NO
-        CODE_SIGN_IDENTITY: ""
-        CODE_SIGNING_ALLOWED: NO
+        # Automatic signing so device builds (Xcode GUI + install-device.sh) "just
+        # work": Xcode provisions the bundle id and registers the connected device
+        # under this team. DEVELOPMENT_TEAM is the t-zero Security Inc org team —
+        # it's not a secret (it ships in every signed app). Switch teams by editing
+        # this one line (or overriding DEVELOPMENT_TEAM= on the xcodebuild line).
+        #
+        # The simulator CI build stays UNSIGNED: swift.yml passes
+        # `CODE_SIGNING_ALLOWED=NO` on the xcodebuild command line, which overrides
+        # these settings — so CI never needs a signing identity.
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: HY6Z2F5595
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.9"
     dependencies:

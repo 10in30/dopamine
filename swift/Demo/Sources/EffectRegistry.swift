@@ -116,6 +116,10 @@ enum EffectRegistry {
         },
     ]
 
+    /// Effect names in registry order — the data source for the demo's effect
+    /// picker. Kept in sync with `all` automatically.
+    static let allNames: [String] = all.map(\.name)
+
     /// Resolve the autoplay request to an ordered effect list:
     /// `all`/`sequence` → every effect; a specific name → just that one;
     /// anything else → the first registered effect (the manual-Fire default).
