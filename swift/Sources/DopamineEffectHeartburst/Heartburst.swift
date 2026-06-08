@@ -65,8 +65,9 @@ private func heartFlash(_ life: Double, beatStrength: Double, doubleBeat: Double
 
 /// Overall panel presence over normalized life: a quick snap-in, a proud hold
 /// through the beats + burst, then a clean fade at the tail so the panel clears.
-/// Port of `index.ts` `heartPresence`.
-private func heartPresence(_ life: Double) -> Double {
+/// Port of `index.ts` `heartPresence`. Internal so the panel draw (a separate
+/// file in this module) can fade its geometry with the same curve.
+func heartPresence(_ life: Double) -> Double {
     let t = life < 0 ? 0 : (life > 1 ? 1 : life)
     if t < 0.04 { return t / 0.04 }
     if t < 0.8 { return 1 }

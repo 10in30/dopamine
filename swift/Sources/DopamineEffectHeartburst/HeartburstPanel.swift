@@ -33,18 +33,20 @@ import DopamineCore
 extension HeartburstConfig: PanelDrawing {
     public func panelSizePx(canvasPx: CGSize, params: [String: DopeValue]) -> CGSize { canvasPx }
 
-    public func drawPanel(_ ctx: CGContext, sizePx: CGSize, params: [String: DopeValue]) {
+    public func drawPanel(_ ctx: CGContext, sizePx: CGSize, params: [String: DopeValue], life: Double) {
         let w = sizePx.width, h = sizePx.height
         guard w > 1, h > 1 else { return }
 
         func num(_ k: String, _ d: Double) -> Double {
             if case let .number(v)? = params[k] { return v }; return d
         }
-        let seedParam   = num("heartburstSeed", 0)
-        let heartScale  = num("heartScale", 0.22)
-        let burstCount  = num("burstCount", 14)
-        let burstSpread = num("burstSpread", 0.4)
-        let inkWeight   = num("inkWeight", 3)
+        let seedParam    = num("heartburstSeed", 0)
+        let heartScale   = num("heartScale", 0.22)
+        let burstCount   = num("burstCount", 14)
+        let burstSpread  = num("burstSpread", 0.4)
+        let inkWeight    = num("inkWeight", 3)
+        let beatStrength = num("beatStrength", 1)
+        let doubleBeat   = num("doubleBeat", 1)
 
         // The web additive compositing keeps the R/G/B channel masks independent.
         ctx.setBlendMode(.plusLighter)
@@ -57,10 +59,14 @@ extension HeartburstConfig: PanelDrawing {
         let dpr: CGFloat = 1.0   // host re-rasterizes at the device size already.
         let ink = max(1, CGFloat(inkWeight) * dpr)
 
-        // STATIC snapshot pose.
-        let presence: CGFloat = 1.0
-        let heartScaleMul: CGFloat = 1.0   // shader pulses the hero via u.beat.
-        let b: CGFloat = 0.45              // representative mid-burst flight.
+        // LIVE pose, redrawn every frame by the host (mirrors the web panel runner):
+        // the panel fades in/out with presence, the hero swells on the lub-dub beat,
+        // and the little hearts fly outward as the burst progresses. Without this the
+        // burst hearts are frozen mid-flight (the old static snapshot).
+        let presence = CGFloat(heartPresence(life))
+        if presence <= 0.001 { return }   // cleared frame (web early-out)
+        let heartScaleMul = CGFloat(heartbeatScale(life, strength: beatStrength, doubleBeat: doubleBeat))
+        let b = CGFloat(burstProgress(life))
 
         // ---- Parametric heart trace (classic 16 sin³ curve, cusp UP) ----------
         // Matches heartburst-renderer.ts `traceHeart` exactly. `s` is the half-size.

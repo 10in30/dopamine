@@ -50,7 +50,10 @@ extension ComicConfig: PanelDrawing {
     // The whole canvas — the panel is a full-frame overlay (web `panelSizePx`).
     public func panelSizePx(canvasPx: CGSize, params: [String: DopeValue]) -> CGSize { canvasPx }
 
-    public func drawPanel(_ ctx: CGContext, sizePx: CGSize, params: [String: DopeValue]) {
+    // `life` is accepted (the host redraws the panel each frame) but the comic word
+    // + starburst are a STATIC composition — the shader animates the slam-in / flash
+    // / halftone via its uniforms — so the geometry is baked at the landed pose.
+    public func drawPanel(_ ctx: CGContext, sizePx: CGSize, params: [String: DopeValue], life: Double) {
         let w = sizePx.width, h = sizePx.height
         guard w > 1, h > 1 else { return }
 

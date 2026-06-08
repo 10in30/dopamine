@@ -98,9 +98,10 @@ ${GLSL_DITHER}
 
 // A travelling ring's launch time as a fraction of life. The drop strikes at
 // t=0 and successive rings (the secondary swells of a real impact) follow in a
-// quick stagger, so the pool reads as one event rippling out, not N drops.
+// stagger wide enough that, at any instant, the rings sit at clearly DIFFERENT
+// radii — a family of distinct sizes rippling out, not bunched near-duplicates.
 float ringLaunch(int i){
-  return float(i) * 0.045;
+  return float(i) * 0.12;
 }
 
 // The wave surface as a function of normalized radius rn (= r / minDim) and the
@@ -122,14 +123,17 @@ void waveField(float rn, float jitterScale, out float h, out float slope, out fl
     float t0 = ringLaunch(i);
     float age = uLife - t0;                         // 0..(1-t0)
     if (age <= 0.0) continue;
-    // Front radius travels outward; the packet has a finite, slowly-growing width.
+    // Front radius travels outward; the packet starts tight and SWELLS markedly as
+    // the ring expands, so each ring visibly changes size as it travels out (and an
+    // older ring is both farther AND fatter than a younger one).
     float front_r = uSpeed * age;                   // expected crest of this ring
-    float width = uWavelength * (1.4 + 1.8 * age);  // packet half-extent (spreads)
+    float width = uWavelength * (1.0 + 2.6 * age);  // packet half-extent (grows as it expands)
     float d = rn - front_r;                         // signed distance to the front
     float pkt = exp(-(d * d) / (2.0 * width * width));
     if (pkt < 0.002) continue;
-    // Gentle global fade so late rings don't outshine the settle.
-    float decay = (1.0 - smoothstep(0.6, 1.0, age));
+    // Amplitude fades CONTINUOUSLY as the ring ages/expands (not just a late cutoff),
+    // so each crest dims steadily as it grows — on top of the 1/sqrt(r) spreading.
+    float decay = pow(max(1.0 - age, 0.0), 1.3);
     // 1/sqrt(r) spreading (clamped near the origin so the drop isn't a spike).
     float spread = 1.0 / sqrt(max(rn, uWavelength * 0.5));
     // On the cel end, quantize the carrier phase so the rings advance "on twos"
