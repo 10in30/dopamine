@@ -1,0 +1,100 @@
+// ============================================================================
+// EXAMPLE .dope — "Comic Burst" — demonstrates the explicitly-requested comic
+// OUTLINE glyphs (starburst + onomatopoeia "POW"/"ZAP" letterforms) as embedded
+// vector outline paths, alongside a Solarbloom-style radial render. Trimmed to
+// highlight the outline-path + step-function pieces; palette/tempo blocks are
+// the same shape as verdict.dope.jsonc (see that file for the fully-annotated
+// mappings). JSONC comments are annotation only.
+// ============================================================================
+{
+  "fmt": "dopamine-effect",
+  "v": "1.0.0",
+  "id": "dopamine.success.comic-burst",
+  "extends": "dopamine.success.solarbloom",   // inherit palette/tempo/param mappings
+  "meta": {
+    "name": "Comic Burst",
+    "description": "A radial pop with a comic starburst frame and an onomatopoeia glyph.",
+    "tags": ["success", "comic", "radial", "high-whimsy"]
+  },
+
+  "controls": {
+    "mood": { "type": "enum", "default": "electric",
+              "options": ["serene", "celebratory", "electric"], "ui": "segmented" },
+    "intensity": { "type": "scalar", "default": 0.85, "min": 0, "max": 1, "step": 0.01, "ui": "slider" },
+    // This effect is meant to live at the cel/hand-drawn end; clamp whimsy high
+    // so a host can't accidentally turn it photoreal (a host-customization demo):
+    "whimsy": { "type": "scalar", "default": 0.9, "min": 0.6, "max": 1, "step": 0.01, "ui": "slider",
+                "help": "Clamped to the cel/comic range for this effect." },
+    "seed": { "type": "int", "default": null, "nullable": true },
+    "glyph": {                                  // a host-swappable CHOICE control
+      "type": "enum", "label": "Onomatopoeia", "default": "pow",
+      "options": ["pow", "zap", "none"], "ui": "segmented",
+      "help": "Which comic word draws inside the burst (selects an outline below)."
+    }
+  },
+
+  // -- §5.1 The explicitly-requested comic OUTLINE glyphs ---------------------
+  // All in a 0..100 viewBox. Provided as SVG path strings (easiest to author);
+  // a Bodymovin/Lottie shape form is equally valid (see verdict example).
+  "geometry": {
+    "kind": "radial",
+    "viewBox": [0, 0, 100, 100],
+    "outlines": {
+
+      // STARBURST — a classic 12-point comic explosion frame. role drives the
+      // renderer to use it as the bloom silhouette / mask at high whimsy.
+      "starburst": {
+        "role": "burst-frame",
+        "svgPath": "M50 2 L58 24 L78 12 L70 35 L96 33 L74 47 L94 62 L68 58 L74 84 L55 66 L50 98 L45 66 L26 84 L32 58 L6 62 L26 47 L4 33 L30 35 L22 12 L42 24 Z"
+      },
+
+      // ONOMATOPOEIA "POW" — bold blocky comic letterforms (closed outlines).
+      // Drawn as three letter subpaths in one path; even-odd fill for counters.
+      "onomatopoeia.pow": {
+        "role": "word-glyph",
+        "svgPath": "M16 38 L16 64 L24 64 L24 56 L30 56 Q38 56 38 47 Q38 38 30 38 Z M24 44 L29 44 Q31 44 31 47 Q31 50 29 50 L24 50 Z  M42 38 Q42 64 56 64 Q70 64 70 38 Q70 38 56 38 Q42 38 42 38 Z M50 45 Q50 57 56 57 Q62 57 62 45 Q62 45 56 45 Q50 45 50 45 Z  M74 38 L80 64 L86 64 L90 50 L94 64 L100 64 L96 38 L90 38 L88 52 L84 38 Z",
+        "note": "Schematic letterforms — real glyphs would be precise Bodymovin exports."
+      },
+
+      // ONOMATOPOEIA "ZAP" — alternate word, selected via the `glyph` control.
+      "onomatopoeia.zap": {
+        "role": "word-glyph",
+        "svgPath": "M14 38 L40 38 L40 45 L24 57 L40 57 L40 64 L14 64 L14 57 L30 45 L14 45 Z  M44 38 L58 38 L66 64 L58 64 L56 56 L46 56 L44 64 L36 64 Z M48 49 L54 49 L51 41 Z  M72 38 L72 64 L80 64 L80 56 L86 56 Q94 56 94 47 Q94 38 86 38 Z M80 44 L85 44 Q87 44 87 47 Q87 50 85 50 L80 50 Z"
+      }
+    },
+
+    // The active word glyph is chosen by the `glyph` control at resolve time:
+    "select": {
+      "wordGlyph": {
+        "fromControl": "glyph",
+        "cases": { "pow": "onomatopoeia.pow", "zap": "onomatopoeia.zap", "none": null }
+      }
+    }
+  },
+
+  // -- §5.2 The animate-on-twos STEP function (this effect leans on it) -------
+  "tempo": {
+    "stepping": { "curve": "$ref:tempo.curves.animateOnTwos" },
+    "curves": {
+      "animateOnTwos": {
+        "kind": "step",
+        "domain": "timeSeconds",
+        "gridHz": 12,                 // == NPR_TIME_STEP_MS (1000/12), 24fps on twos
+        "blendControl": "whimsy",     // here clamped >=0.6, so strongly stepped
+        "generator": { "type": "uniform-staircase", "hz": 12 }
+      }
+    }
+  },
+
+  // render.params / backends inherited from `extends` (solarbloom); the only
+  // additions are the burst-frame + word-glyph outline roles the comic shader
+  // consumes. (Omitted here — see verdict.dope.jsonc for the full render block.)
+  "render": {
+    "params": {},                     // inherited
+    "backends": {
+      "webgl2": { "shader": { "$ref": "shaders/comic-burst.frag.glsl" },
+                  "blend": "screen", "stage": "fullscreen-triangle" }
+    },
+    "fallbackOrder": ["metal", "webgl2", "svg"]
+  }
+}

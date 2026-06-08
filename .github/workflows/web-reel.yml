@@ -1,0 +1,63 @@
+# Dopamine — WEB reel CI.
+#
+# Renders every web effect in headless Chromium (WebGL via SwiftShader, so no GPU
+# is needed) frame-by-frame at a fixed timestep, then stitches them into one reel
+# `e2e/output/dopamine-suite.mp4`, uploaded as an artifact. This is the
+# browser-rendered counterpart to the Metal/iOS clip from `swift.yml`.
+#
+# Runs on Linux (ubuntu) — it's a pure Node + Playwright capture, ~10x cheaper
+# than the macOS runner. The `reel` pipeline is the repo's own
+# scripts/render-clips.mjs + scripts/stitch.mjs.
+
+name: web-reel
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "packages/**"
+      - "examples/**"
+      - "scripts/**"
+      - ".github/workflows/web-reel.yml"
+  workflow_dispatch:
+
+jobs:
+  reel:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install deps
+        run: npm install
+
+      - name: Install Chromium (+ OS deps)
+        run: npx playwright install --with-deps chromium
+
+      - name: Build the web packages + demo
+        run: npm run build
+
+      - name: Render + stitch the effect reel
+        run: npm run reel
+
+      - name: List output
+        if: always()
+        run: ls -laR e2e/output || echo "no output"
+
+      - name: Upload web reel
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dopamine-web-reel
+          path: |
+            e2e/output/dopamine-suite.mp4
+            e2e/output/clips
+          if-no-files-found: warn

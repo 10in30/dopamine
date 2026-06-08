@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tsbuildinfo
+e2e/output/
+test-results/
+.playwright/
+.DS_Store
+
+# Claude Code agent worktrees / local scratch
+.claude/

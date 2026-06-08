@@ -1,0 +1,94 @@
+# XcodeGen spec for the Solarbloom iOS demo.
+#
+# SwiftPM cannot emit an `.app`, so this generates `DopamineDemo.xcodeproj`
+# around the SwiftUI sources in `Sources/`, depending on the local SwiftPM
+# packages by PATH (the package at `..`, i.e. swift/). The macOS CI runs:
+#
+#   brew install xcodegen
+#   cd swift/Demo && xcodegen generate
+#   xcodebuild -project DopamineDemo.xcodeproj -scheme DopamineDemo \
+#     -destination 'platform=iOS Simulator,name=iPhone 15' build
+#
+# Then boot a simulator, install, and launch with the autoplay arg:
+#   xcrun simctl launch booted ai.polyguard.DopamineDemo -autoplay solarbloom
+#
+# UNVERIFIED ON LINUX: XcodeGen + xcodebuild + the iOS SDK exist only on macOS.
+
+name: DopamineDemo
+
+options:
+  bundleIdPrefix: ai.polyguard
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+
+# The local SwiftPM packages (DopamineCore + DopamineEffectSolarbloom) live one
+# directory up. `path` is relative to this project.yml.
+packages:
+  Dopamine:
+    path: ".."
+
+targets:
+  DopamineDemo:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    # Let XcodeGen own the Info.plist. A bare `INFOPLIST_FILE` in settings.base
+    # was silently dropped (the built .app shipped with NO Info.plist, so simctl
+    # reported a missing CFBundleVersion). The `info:` block both WIRES
+    # INFOPLIST_FILE / GENERATE_INFOPLIST_FILE=NO and writes a complete plist;
+    # XcodeGen merges the standard keys (CFBundleExecutable / Identifier / Name /
+    # PackageType, etc.). Versions are QUOTED so they serialize as <string>, which
+    # simctl install requires (an integer CFBundleVersion is rejected).
+    info:
+      path: Info.plist
+      properties:
+        CFBundleVersion: "1"
+        CFBundleShortVersionString: "1.0"
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIRequiredDeviceCapabilities:
+          - metal
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.polyguard.DopamineDemo
+        # Simulator builds in CI are unsigned.
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_ALLOWED: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.9"
+    dependencies:
+      - package: Dopamine
+        product: DopamineCore
+      - package: Dopamine
+        product: DopamineEffectSolarbloom
+      - package: Dopamine
+        product: DopamineEffectAurora
+      - package: Dopamine
+        product: DopamineEffectComic
+      - package: Dopamine
+        product: DopamineEffectConfetti
+      - package: Dopamine
+        product: DopamineEffectFail
+      - package: Dopamine
+        product: DopamineEffectHeartburst
+      - package: Dopamine
+        product: DopamineEffectInkstroke
+      - package: Dopamine
+        product: DopamineEffectLightning
+      - package: Dopamine
+        product: DopamineEffectRipple
+
+schemes:
+  DopamineDemo:
+    build:
+      targets:
+        DopamineDemo: all
+    run:
+      # Convenience: running from Xcode autoplay-fires the effect.
+      commandLineArguments:
+        "-autoplay solarbloom": false

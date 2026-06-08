@@ -1,0 +1,33 @@
+{
+  "name": "dopamine-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Dopamine — gorgeous, next-generation visual effects & animated icons.",
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @dopamine/core && npm run build -w @dopamine/effect-solarbloom -w @dopamine/effect-inkstroke -w @dopamine/effect-comic -w @dopamine/effect-fail -w @dopamine/effect-aurora -w @dopamine/effect-ripple -w @dopamine/effect-confetti -w @dopamine/effect-heartburst -w @dopamine/effect-lightning && npm run build -w @dopamine/effects && npm run build -w @dopamine/react && npm run build -w @dopamine/demo",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "npm run dev -w @dopamine/demo",
+    "record": "node scripts/record.mjs",
+    "render": "node scripts/render-offline.mjs",
+    "clips": "node scripts/render-clips.mjs",
+    "stitch": "node scripts/stitch.mjs",
+    "reel": "node scripts/render-clips.mjs && node scripts/stitch.mjs",
+    "bake-sdf": "node scripts/bake-sdf.mjs",
+    "pack-dope": "node scripts/pack-dope.mjs",
+    "gen-uniforms": "node scripts/gen-uniforms.mjs",
+    "gen-uniforms:check": "node scripts/gen-uniforms.mjs --check"
+  },
+  "devDependencies": {
+    "ffmpeg-static": "^5.3.0",
+    "playwright": "^1.48.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.4"
+  }
+}

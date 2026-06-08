@@ -1,0 +1,378 @@
+# Dopamine — Swift / Metal CI.
+#
+# Two jobs:
+#   • macos-14  — the real validator: swift build + swift test (Metal compiles +
+#                 the Metal-guarded tests run), the gen-uniforms staleness gate,
+#                 then XcodeGen → xcodebuild the iOS-Simulator demo, boot a sim,
+#                 launch it with the autoplay arg, and screen-record a ~5s clip
+#                 uploaded as an artifact. build+test are MUST-PASS; the record
+#                 step is continue-on-error initially.
+#   • linux     — portability guard: build + the parity test in the swift:6.0.3
+#                 container with NO Apple SDK (proves the canImport guards).
+#
+# Logs are deliberately verbose (tool versions echoed, recorded file listed) so a
+# failure is diagnosable from the logs alone.
+#
+# COST NOTE: macOS runners burn ~10x Linux minutes; the paths: filter keeps this
+# off web-only changes.
+
+name: swift
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "swift/**"
+      - "scripts/gen-uniforms.mjs"
+      - ".github/workflows/swift.yml"
+  workflow_dispatch:
+
+jobs:
+  # ===========================================================================
+  # macOS — the validator. Metal + iOS Simulator are macOS-only, so the metallib
+  # compile, the Metal-guarded tests, the demo .app build, and the screen-record
+  # can only happen here.
+  # ===========================================================================
+  macos:
+    runs-on: macos-15-xlarge   # M2 Pro (public preview): real GPU + the AppleM2
+                               # scaler hardware, and a faster display than the M1
+                               # standard runners — so AVFoundation screen capture
+                               # runs at a usable frame rate.
+    env:
+      BUNDLE_ID: ai.polyguard.DopamineDemo
+      SIM_NAME: iPhone 16
+      AUTOPLAY: all    # cycle EVERY registered effect in sequence (one clip of the whole set)
+      SLOWMO: "0.25"   # play each effect at 1/4 speed so the low-fps screen grab samples it smoothly
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Caches so we don't rebuild the whole pipeline every run ---
+      # Exact key = identical sources → cache hit, no rebuild/re-save; otherwise the
+      # restore-key prefix pulls the most recent cache and SwiftPM/Xcode build only
+      # what changed.
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: |
+            swift/.build
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-xl-spm-${{ hashFiles('swift/**/*.swift', 'swift/**/*.metal', 'swift/**/Package.*') }}
+          restore-keys: ${{ runner.os }}-xl-spm-
+      - name: Cache Xcode DerivedData
+        uses: actions/cache@v4
+        with:
+          path: swift/Demo/build
+          key: ${{ runner.os }}-xl-dd-${{ hashFiles('swift/**/*.swift', 'swift/**/*.metal', 'swift/Demo/project.yml') }}
+          restore-keys: ${{ runner.os }}-xl-dd-
+      - name: Cache Homebrew downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: ${{ runner.os }}-xl-brew-ffmpeg-xcodegen-v1
+
+      # The macos-14 image ships several Xcodes; the default select (15.4) is too
+      # old to read the project format XcodeGen emits (format 77 → needs Xcode 16+).
+      # Select the newest installed Xcode so xcodebuild can open the generated project.
+      - name: Select newest Xcode
+        run: |
+          set -x
+          latest=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Selecting $latest"
+          sudo xcode-select -s "$latest/Contents/Developer"
+          xcodebuild -version
+
+      - name: Tool versions
+        run: |
+          set -x
+          sw_vers
+          swift --version
+          xcodebuild -version
+          node --version
+          xcrun simctl --version || true
+
+      # --- MUST-PASS: build + test the Metal-backed package ---
+      - name: swift build (macOS — Metal + the MSL shaders compile)
+        working-directory: swift
+        run: swift build -v
+
+      - name: swift test (portable + Metal-guarded suites)
+        working-directory: swift
+        run: swift test -v
+
+      # --- MUST-PASS: the generated uniform files must be in sync with the .dope ---
+      - name: gen-uniforms staleness check
+        working-directory: .
+        run: |
+          set -x
+          node scripts/gen-uniforms.mjs --check
+          # belt-and-braces: regenerate and assert nothing changed in git
+          node scripts/gen-uniforms.mjs
+          git diff --exit-code -- swift/Sources swift/Generated
+
+      # --- MUST-PASS: generate + build the iOS demo for the Simulator ---
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        working-directory: swift/Demo
+        run: |
+          set -x
+          xcodegen generate
+          ls -la DopamineDemo.xcodeproj
+
+      - name: xcodebuild (iOS Simulator)
+        working-directory: swift/Demo
+        run: |
+          set -xo pipefail
+          # NOTE: `set -o pipefail` is essential — piping `xcodebuild … | tee`
+          # otherwise masks a FAILED build with tee's exit 0, leaving an empty
+          # .app that only blows up later at install. Fail loudly here instead.
+          xcodebuild \
+            -project DopamineDemo.xcodeproj \
+            -scheme DopamineDemo \
+            -destination "platform=iOS Simulator,name=${SIM_NAME}" \
+            -derivedDataPath build \
+            build CODE_SIGNING_ALLOWED=NO | tee xcodebuild.log
+          echo "--- built products ---"
+          find build/Build/Products -name 'DopamineDemo.app' -type d -print
+          echo "--- .app contents ---"
+          find build/Build/Products -name 'DopamineDemo.app' -type d -exec ls -lR {} \;
+
+      # --- BEST-EFFORT: boot a sim, autoplay, screen-record, upload the clip ---
+      - name: Boot simulator + install + launch (autoplay) + record
+        id: record
+        continue-on-error: true
+        working-directory: swift/Demo
+        run: |
+          set -x
+          # --- Force the Simulator onto the host GPU for Metal ---
+          # On a virtualized runner the sim otherwise uses a software renderer with
+          # no video-scaler hardware ("IOServiceMatching failed for
+          # AppleM2ScalerCSCDriver"), which both degrades the Metal effect AND keeps
+          # `simctl io recordVideo` from finalizing a playable file. These defaults
+          # + running the Simulator GUI app (this is an Apple-silicon macos-14
+          # runner) attach the real GPU, so the effect renders hardware-accelerated
+          # and the on-screen recording encodes a real, smooth, full-app clip.
+          defaults write com.apple.CoreSimulator.SimulatorCore MetalForcingEnabled -bool true 2>/dev/null || true
+          defaults write com.apple.CoreSimulator.SimulatorCore OpenGLCoreProfileEnabled -bool true 2>/dev/null || true
+          defaults write com.apple.CoreSimulator.SimulatorWindow LastWindowStyle -int 0 2>/dev/null || true
+
+          # Boot the named device (create if missing).
+          xcrun simctl list devices available
+          UDID=$(xcrun simctl list devices available | awk -F '[()]' "/${SIM_NAME} \(/{print \$2; exit}")
+          if [ -z "$UDID" ]; then
+            UDID=$(xcrun simctl create "dopamine-${SIM_NAME}" "${SIM_NAME}")
+          fi
+          echo "device UDID=$UDID"
+          xcrun simctl boot "$UDID" || true
+          # Run the Simulator GUI app attached to our device so its render server
+          # uses the GPU (headless `simctl boot` alone does not).
+          open -a Simulator --args -CurrentDeviceUDID "$UDID" || open -a Simulator || true
+          xcrun simctl bootstatus "$UDID" -b || true
+          sleep 8
+
+          # Resolve the CANONICAL product path from xcodebuild itself. The old
+          # `find … | head -1` could match an empty intermediate bundle, which
+          # looked like a build that produced no Info.plist / no executable.
+          APP=$(xcodebuild -project DopamineDemo.xcodeproj -scheme DopamineDemo \
+            -destination "platform=iOS Simulator,name=${SIM_NAME}" -derivedDataPath build \
+            -showBuildSettings 2>/dev/null \
+            | awk -F' = ' '/[[:space:]]TARGET_BUILD_DIR =/{d=$2} /[[:space:]]FULL_PRODUCT_NAME =/{n=$2} END{print d"/"n}')
+          echo "resolved APP=$APP"
+          echo "--- product contents (ground truth) ---"
+          ls -lR "$APP" || echo "product dir missing"
+          echo "--- every DopamineDemo.app under build/ ---"
+          find build -name 'DopamineDemo.app' -type d -exec sh -c 'echo "$1:"; ls -l "$1"' _ {} \; || true
+
+          # Belt-and-braces: ensure a valid, string-typed Info.plist is present
+          # (harmless if the real build already wrote one). CFBundleExecutable
+          # matches the product name.
+          cat > "$APP/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key><string>en</string>
+            <key>CFBundleExecutable</key><string>DopamineDemo</string>
+            <key>CFBundleIdentifier</key><string>ai.polyguard.DopamineDemo</string>
+            <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+            <key>CFBundleName</key><string>DopamineDemo</string>
+            <key>CFBundleDisplayName</key><string>Dopamine</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>1.0</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>LSRequiresIPhoneOS</key><true/>
+            <key>MinimumOSVersion</key><string>15.0</string>
+            <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
+            <key>UILaunchScreen</key><dict/>
+            <key>UISupportedInterfaceOrientations</key>
+            <array><string>UIInterfaceOrientationPortrait</string></array>
+          </dict>
+          </plist>
+          PLIST
+          echo "--- built Info.plist ---"
+          plutil -p "$APP/Info.plist" || true
+
+          xcrun simctl install "$UDID" "$APP"
+
+          brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
+          mkdir -p /tmp/out
+
+          # Pre-grant Screen Recording in TCC (SIP is disabled on Actions runners, so
+          # the TCC.db is writable). DocSystem/tccutil needs a bundle id — use the
+          # demo app's, which we control. recordVideo (below) captures the device
+          # directly and needs no TCC, but this also covers the AVFoundation desktop
+          # fallback and suppresses the macOS-15 consent modal.
+          git clone --depth 1 https://github.com/DocSystem/tccutil /tmp/tccutil 2>/dev/null || true
+          sudo python3 /tmp/tccutil/tccutil.py -e --screen-recording -id "$BUNDLE_ID" 2>&1 | tail -3 || true
+          sudo killall tccd 2>/dev/null || true
+
+          # Launch the app; autoplay loops the effect (spaced to the slow-mo
+          # duration so plays don't overlap). Slow-mo keeps each play long enough
+          # that the capture samples the whole animation.
+          xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE_ID" -autoplay "$AUTOPLAY" -slowmo "$SLOWMO" || true
+          sleep 2
+
+          # --- Record the DEVICE screen with simctl recordVideo ---
+          # This M2 runner HAS the AppleM2 scaler hardware the M1 runners lacked —
+          # the reason recordVideo never finalized before — so it can now write a
+          # real moov. recordVideo captures the device only (no desktop chrome, no
+          # screen-recording TCC, no consent modal). It only finalizes on an
+          # interactive Ctrl-C (a bare `kill -INT` is ignored), so drive it under a
+          # PTY and send a real ^C, then wait for it to flush the moov.
+          rm -f /tmp/solarbloom.mp4
+          UDID="$UDID" python3 <<'PY'
+          import os, pty, time, select, signal, sys
+          udid = os.environ["UDID"]
+          pid, fd = pty.fork()
+          if pid == 0:
+              os.execvp("xcrun", ["xcrun", "simctl", "io", udid, "recordVideo",
+                                  "--codec=h264", "--force", "/tmp/solarbloom.mp4"])
+              os._exit(127)
+          def pump(seconds):
+              end = time.time() + seconds
+              while time.time() < end:
+                  r, _, _ = select.select([fd], [], [], 0.3)
+                  if r:
+                      try:
+                          d = os.read(fd, 4096)
+                          if d: sys.stdout.write(d.decode(errors="replace")); sys.stdout.flush()
+                      except OSError:
+                          return
+          pump(88)                         # one full 9-effect slow-mo sequence (~72s + margin)
+          print(">>> sending Ctrl-C to recordVideo via PTY", flush=True)
+          os.write(fd, b"\x03")
+          deadline = time.time() + 90
+          exited = False
+          while time.time() < deadline:
+              r, _, _ = select.select([fd], [], [], 0.5)
+              if r:
+                  try:
+                      d = os.read(fd, 4096)
+                      if d: sys.stdout.write(d.decode(errors="replace")); sys.stdout.flush()
+                  except OSError:
+                      pass
+              wpid, _ = os.waitpid(pid, os.WNOHANG)
+              if wpid == pid:
+                  exited = True; print(">>> recordVideo exited cleanly", flush=True); break
+          if not exited:
+              print(">>> timeout — SIGKILL", flush=True)
+              try: os.kill(pid, signal.SIGKILL)
+              except ProcessLookupError: pass
+          PY
+          echo "--- recordVideo done ---"
+
+          # Fallback: if recordVideo still didn't finalize a playable file, grab the
+          # desktop with ffmpeg AVFoundation (the Simulator window, cropped center).
+          # The TCC grant above should keep this from prompting.
+          if ! { [ -s /tmp/solarbloom.mp4 ] && ffmpeg -v error -ss 1 -i /tmp/solarbloom.mp4 -frames:v 1 /tmp/probe.png >/dev/null 2>&1 && [ -s /tmp/probe.png ]; }; then
+            echo ">>> recordVideo not playable — AVFoundation desktop fallback"
+            SCREEN_IDX=$(ffmpeg -hide_banner -f avfoundation -list_devices true -i "" 2>&1 | grep -iE 'Capture screen' | head -1 | sed -E 's/.*\[([0-9]+)\].*/\1/')
+            [ -z "$SCREEN_IDX" ] && SCREEN_IDX=0
+            ffmpeg -y -hide_banner -f avfoundation -framerate 60 -capture_cursor 0 \
+              -i "${SCREEN_IDX}:none" -an -t 26 -vcodec libx264 -pix_fmt yuv420p \
+              -vf 'crop=320:700:(iw-320)/2:(ih-700)/2' /tmp/solarbloom.mp4 2>&1 | tail -20 || true
+          fi
+
+          # Restore real-time playback: the effect was captured at SLOWMO (e.g. 1/4)
+          # speed so the sim's low-fps presentation could sample the bloom. setpts
+          # *SLOWMO compresses the timestamps by exactly that factor — removing the
+          # slow-mo while KEEPING every captured frame, so it plays at true speed and
+          # stays smooth. (No-op when SLOWMO=1.)
+          if [ -s /tmp/solarbloom.mp4 ] && ffmpeg -v error -ss 1 -i /tmp/solarbloom.mp4 -frames:v 1 /tmp/probe.png >/dev/null 2>&1; then
+            echo "--- speeding clip back to real time (setpts*${SLOWMO}) ---"
+            rm -f /tmp/realtime.mp4
+            # NOTE: also force EVEN dimensions — the device is 1179x2556 and libx264
+            # yuv420p rejects odd widths (the bare setpts re-encode failed with
+            # "Invalid argument"). And only replace the original if the re-encode
+            # actually produced a playable file (a failed encode must NOT clobber
+            # the good recording — the pipe to tail hides ffmpeg's exit code).
+            ffmpeg -y -hide_banner -i /tmp/solarbloom.mp4 \
+              -vf "setpts=${SLOWMO}*PTS,scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+              -an -c:v libx264 -pix_fmt yuv420p /tmp/realtime.mp4 2>&1 | tail -8 || true
+            if [ -s /tmp/realtime.mp4 ] && ffmpeg -v error -ss 0 -i /tmp/realtime.mp4 -frames:v 1 /tmp/rt.png >/dev/null 2>&1; then
+              mv /tmp/realtime.mp4 /tmp/solarbloom.mp4
+              echo ">>> real-time clip OK"
+            else
+              echo ">>> speed-up failed — keeping the original slow-mo clip"
+            fi
+          fi
+
+          echo "--- app liveness ---"
+          xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep -i dopamine \
+            && echo ">>> DopamineDemo IS running" || echo ">>> DopamineDemo NOT running"
+          xcrun simctl spawn "$UDID" log show --last 3m --style compact \
+            --predicate 'process == "DopamineDemo"' 2>/dev/null \
+            | grep -iE 'DopamineDemo\]|Metal|metallib|Solarbloom|fired' | head -40 \
+            > /tmp/app.log || true
+          cat /tmp/app.log || true
+          CRASH=$(ls -t "$HOME"/Library/Logs/DiagnosticReports/DopamineDemo-*.ips 2>/dev/null | head -1)
+          if [ -n "$CRASH" ]; then cp "$CRASH" /tmp/crash.ips || true; echo "crash report copied"; else echo "no crash report"; fi
+
+          # NO screenshot fallback — we're solving recordVideo, period. Report
+          # whether the file is playable (probe one frame) for diagnosis, then
+          # upload whatever recordVideo produced (+ rec.log) regardless.
+          MP4_SZ=$(stat -f%z /tmp/solarbloom.mp4 2>/dev/null || echo 0)
+          echo "recorded mp4 size = $MP4_SZ bytes"
+          if [ "$MP4_SZ" -gt 50000 ] && ffmpeg -v error -ss 1 -i /tmp/solarbloom.mp4 \
+               -frames:v 1 /tmp/out/frame.png >/dev/null 2>&1 && [ -s /tmp/out/frame.png ]; then
+            echo ">>> recordVideo PLAYABLE — real-screen clip captured"
+          else
+            echo ">>> recordVideo NOT playable (no moov / encode failed)"
+          fi
+
+          cp /tmp/solarbloom.mp4 /tmp/out/ 2>/dev/null || true
+          cp /tmp/rec.log     /tmp/out/ 2>/dev/null || true
+          cp /tmp/app.log     /tmp/out/ 2>/dev/null || true
+          cp /tmp/crash.ips   /tmp/out/ 2>/dev/null || true
+          echo "--- recorded files ---"
+          ls -la /tmp/out || echo "no clip produced"
+
+      - name: Upload recorded clip
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: solarbloom-sim-clip
+          path: /tmp/out
+          if-no-files-found: warn
+
+  # ===========================================================================
+  # Linux — portability guard. The package must build + the parity test must pass
+  # with NO Apple SDK (every Metal/UIKit type compiled out behind canImport).
+  # ===========================================================================
+  linux:
+    runs-on: ubuntu-latest
+    container: swift:6.0.3
+    steps:
+      - uses: actions/checkout@v4
+      # No SwiftPM cache here: this job runs inside a container, where the checkout
+      # is root-owned and `hashFiles` (run on the host) can't read it. The Linux
+      # build+test is ~10s anyway, so caching it isn't worth the breakage.
+      - name: Tool versions
+        run: swift --version
+      - name: swift build (portable core + effect, Metal excluded)
+        working-directory: swift
+        run: swift build -v
+      - name: swift test (portable + the 192-case cross-platform parity)
+        working-directory: swift
+        run: swift test -v

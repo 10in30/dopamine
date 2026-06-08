@@ -1,0 +1,225 @@
+// ============================================================================
+// EXAMPLE .dope — "Calligraphic Verdict" (the ink-stroke success effect).
+//
+// This file reproduces today's `resolveInkParams` + `INK_BASELINES` (mood.ts),
+// the OKLCH golden-angle palette (color.ts), and the tempo/stepping (tempo.ts),
+// purely declaratively. It shows the three explicitly-requested path kinds:
+//   - an OUTLINE path (the signature stroke, a quadratic bezier P0/P1/P2)
+//   - an EASING bezier curve  (easeOutCubic -> strokeProgress)
+//   - a STEP-FUNCTION path    (animate-on-twos, Lottie hold keyframes)
+// plus host-customizable control ranges.
+//
+// Comments are JSONC for annotation only; the shipped file is strict JSON.
+// ============================================================================
+{
+  "fmt": "dopamine-effect",
+  "v": "1.0.0",
+  "id": "dopamine.success.verdict",
+  "meta": {
+    "name": "Calligraphic Verdict",
+    "description": "A single confident ink/light signature stroke that writes itself across the frame.",
+    "tags": ["success", "ink", "directional"]
+  },
+
+  // -- §4 CONTROLS: the feeling API, introspectable + host-overridable --------
+  "controls": {
+    "mood": {
+      "type": "enum", "label": "Mood", "default": "celebratory",
+      "options": ["serene", "celebratory", "electric"], "ui": "segmented"
+    },
+    "intensity": {
+      "type": "scalar", "label": "Intensity", "ui": "slider",
+      "default": 0.7, "min": 0, "max": 1, "step": 0.01,
+      "help": "Saturation, brightness, gesture boldness, spray volume."
+    },
+    "whimsy": {
+      "type": "scalar", "label": "Whimsy", "ui": "slider",
+      "default": 0.5, "min": 0, "max": 1, "step": 0.01,
+      "help": "Wet sumi-e ink (0) -> flat cel / neon slash, animate-on-twos (1)."
+    },
+    "seed": { "type": "int", "label": "Seed", "default": null, "nullable": true,
+              "help": "Null = unique palette per fire; pin to reproduce." },
+    // origin is ignored for the directional gesture (index.ts ignores it for ink):
+    "origin": { "type": "point", "label": "Origin", "default": "center",
+                "appliesWhen": "geometry.kind == 'radial'" },
+    "target": { "type": "selector", "label": "Target", "default": "document.body" }
+  },
+
+  // -- §6 PALETTE: OKLCH golden-angle, seeded (color.ts buildPalette) ---------
+  "palette": {
+    "model": "oklch",
+    "space": "linear-srgb",
+    "generator": "golden-angle",
+    "goldenAngleDeg": 137.50776405003785,
+    "stops": 3,
+    "hueSpread": 0.55,
+    "hueStep": { "expr": "goldenAngleDeg * (0.35 + 0.65 * hueSpread)" },
+    "baseHue": { "from": "rng",
+                 "center": { "baseline": "hueCenter" },
+                 "range":  { "baseline": "hueRange" } },
+    "lightness": { "baseline": "lightness", "perStop": [0.0, 0.06, -0.05] },
+    "chroma": { "from": { "mul": [ { "baseline": "chroma" },
+                                   { "lerp": ["intensity", 0.7, 1.5] } ] },
+                "perStop": [0.0, 0.02, -0.01] },
+    "seed": {
+      "deterministic": true,
+      "source": "controls.seed",
+      "prng": "mulberry32",
+      "note": "baseHue draws first from mulberry32(seed) (inside buildPalette), then inkSeed = rng()*1000 — same order as resolveInkParams, so a pinned seed reproduces byte-for-byte."
+    },
+    // INK_BASELINES color register:
+    "perMood": {
+      "serene":      { "hueCenter": 230, "hueRange": 120, "lightness": 0.82, "chroma": 0.10 },
+      "celebratory": { "hueCenter": 50,  "hueRange": 320, "lightness": 0.82, "chroma": 0.17 },
+      "electric":    { "hueCenter": 35,  "hueRange": 150, "lightness": 0.80, "chroma": 0.24 }
+    }
+  },
+
+  // -- §7 TEMPO + §5.2 CURVES (easing + STEP function) ------------------------
+  "tempo": {
+    "durationMs": { "from": { "round": { "mul": [ { "baseline": "durationMs" },
+                                                  { "lerp": ["intensity", 1.1, 0.9] } ] } } },
+    "confirm": {
+      "kind": "draw-window",
+      "windowMs": { "perEffect": { "stroke": 360 } },   // STROKE_DRAW_MS
+      "progress": "$ref:tempo.curves.easeOutCubic"      // strokeProgress
+    },
+    "envelope": { "curve": "$ref:tempo.curves.envelope",
+                  "overshoot": { "param": "overshoot" } },
+    "stepping": { "curve": "$ref:tempo.curves.animateOnTwos" },
+
+    "curves": {
+      // (a) EASING BEZIER — easeOutCubic, as a Lottie keyframe pair.
+      "easeOutCubic": {
+        "kind": "bezier",
+        "keys": [
+          { "t": 0, "s": [0], "o": { "x": [0.215], "y": [0.61] },
+                              "i": { "x": [0.355], "y": [1] } },
+          { "t": 1, "s": [1] }
+        ]
+      },
+
+      // (b) HELD-BREATH ENVELOPE — fast attack(0.18)+overshoot, long decay.
+      "envelope": {
+        "kind": "bezier",
+        "domain": "life",
+        "keys": [
+          { "t": 0.00, "s": [0] },
+          { "t": 0.18, "s": [{ "expr": "1 + 0.4*overshoot" }],
+            "o": { "x": [0.5], "y": [1] }, "i": { "x": [0.34], "y": [1.4] } },
+          { "t": 1.00, "s": [0],
+            "i": { "x": [0.4], "y": [0] }, "o": { "x": [0.2], "y": [0] } }
+        ],
+        "note": "Portable approximation; tempo.ts envelope() stays analytic source-of-truth."
+      },
+
+      // (c) STEP FUNCTION — animate-on-twos. h:1 = Lottie HOLD (no interp).
+      //     12 Hz == NPR_TIME_STEP_MS (1000/12). Blended by whimsy: style 0 =
+      //     continuous clock, style 1 = fully snapped. (renderer.ts blend.)
+      "animateOnTwos": {
+        "kind": "step",
+        "domain": "timeSeconds",
+        "gridHz": 12,
+        "blendControl": "whimsy",
+        "generator": { "type": "uniform-staircase", "hz": 12 },
+        "keys": [
+          { "t": 0.0000, "s": [0.0000], "h": 1 },
+          { "t": 0.0833, "s": [0.0833], "h": 1 },
+          { "t": 0.1667, "s": [0.1667], "h": 1 },
+          { "t": 0.2500, "s": [0.2500], "h": 1 }
+        ]
+      }
+    }
+  },
+
+  // -- §5.1 GEOMETRY: the signature-stroke OUTLINE (quadratic P0/P1/P2) -------
+  "geometry": {
+    "kind": "directional",
+    "viewBox": [0, 0, 100, 100],
+    "outlines": {
+      "signature-stroke": {
+        "role": "signature-stroke",
+        // Quadratic bezier matching inkstroke-shader.ts P0/P1/P2 (low-left ->
+        // belly down -> flick up-right), normalized into viewBox space:
+        "svgPath": "M 24 56 Q 49 71 78 31",
+        "lottie": {
+          "c": false,
+          "v": [[24, 56], [78, 31]],            // endpoints (P0, P2)
+          "o": [[16.7, 10], [0, 0]],            // P0 out-tangent toward the belly control P1
+          "i": [[0, 0], [-9.7, 13.3]]           // P2 in-tangent from P1
+        }
+      }
+    }
+  },
+
+  // -- §8 RENDER: param mappings + uniform binding + backends -----------------
+  "render": {
+    // §11.2 — exactly resolveInkParams:
+    "params": {
+      "exposure": { "type": "float", "from": { "lerp": ["intensity", 0.8, 1.55] } },
+      "overshoot": { "type": "float",
+        "from": { "mul": [ { "baseline": "overshoot" }, { "lerp": ["intensity", 0.7, 1.25] } ] } },
+      "scale": { "type": "float",
+        "from": { "mul": [ { "baseline": "scale" }, { "lerp": ["intensity", 0.9, 1.08] } ] } },
+      "pressure": { "type": "float",
+        "from": { "mul": [ { "baseline": "pressure" }, { "lerp": ["intensity", 0.85, 1.2] } ] } },
+      "wetness": { "type": "float", "clamp01": true,
+        "from": { "mul": [ { "baseline": "wetness" }, { "lerp": ["whimsy", 1.0, 0.35] } ] } },
+      "bristle": { "type": "float", "clamp01": true,
+        "from": { "mul": [ { "baseline": "bristle" },
+                           { "lerp": ["whimsy", 0.85, 1.25] },
+                           { "lerp": ["intensity", 0.9, 1.1] } ] } },
+      "droplets": { "type": "int", "clampMax": "MAX_DROPS",
+        "from": { "round": { "mul": [ { "baseline": "droplets" },
+                                      { "lerp": ["intensity", 0.7, 1.3] } ] } } },
+      "style": { "type": "float", "from": { "control": "whimsy" } }
+    },
+    // INK_BASELINES non-color fields live in palette.perMood + here as baselines:
+    // (overshoot/scale/pressure/wetness/bristle/droplets/durationMs per mood)
+
+    "derived": {
+      "uDraw": { "from": { "curve": ["confirmProgress", "$ref:tempo.curves.easeOutCubic"] } },
+      "uLife": { "from": "life" },
+      "uAmp":  { "from": { "curve": ["life", "$ref:tempo.curves.envelope"] } },
+      "uTimeS": { "from": "animSeconds" }
+    },
+
+    "backends": {
+      "webgl2": {
+        "stage": "fullscreen-triangle",
+        "blend": "screen",
+        "shader": { "$ref": "shaders/inkstroke.frag.glsl" },
+        "uniforms": {
+          "resolution": "uResolution", "exposure": "uExposure",
+          "scale": "uScale", "pressure": "uPressure", "wetness": "uWetness",
+          "bristle": "uBristle", "droplets": "uDroplets", "style": "uStyle",
+          "seed": "uSeed",
+          "palette[0]": "uC0", "palette[1]": "uC1", "palette[2]": "uC2"
+        },
+        "caps": ["webgl2", "highp-float"]
+      },
+      "metal": {
+        "stage": "fullscreen-triangle",
+        "blend": "screen",
+        "shader": { "$ref": "shaders/inkstroke.metal" },
+        "uniforms": {
+          "resolution": "resolution", "exposure": "exposure",
+          "scale": "scale", "pressure": "pressure", "wetness": "wetness",
+          "bristle": "bristle", "droplets": "droplets", "style": "style",
+          "seed": "seed", "palette[0]": "c0", "palette[1]": "c1", "palette[2]": "c2"
+        },
+        "caps": ["metal2"]
+      },
+      "svg": {
+        "strategy": "outline-only",
+        "note": "Draws geometry.outlines['signature-stroke'] with stroke-dashoffset draw-on driven by easeOutCubic; no light casting, no spray."
+      }
+    },
+    "fallbackOrder": ["metal", "webgl2", "svg"]
+  },
+
+  // -- §9.3 Optional pure-Lottie fallback for hosts without our runtime -------
+  "compat": {
+    "lottieFallback": { "$ref": "lottie/verdict.lottie" }
+  }
+}
