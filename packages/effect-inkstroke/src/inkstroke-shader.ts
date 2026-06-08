@@ -256,7 +256,7 @@ void main(){
   strokeGeom(1.0, A, B, C);   // includes the cel "on twos" jitter (whimsy)
   float draw = inkDraw();   // length-aware pen progress (slower for small targets)
 
-  // The pen has written up to arc fraction `draw` along the tick. Walk the path
+  // The pen has written up to arc fraction "draw" along the tick. Walk the path
   // in a few steps; for each, treat it as a capsule with pressure-varying radius
   // and accumulate coverage. (Cheap analytic approximation of a swept brush.)
   float base = minDim * 0.045 * min(uTarget.x / res.x, 1.0);  // half-width, target-scaled
