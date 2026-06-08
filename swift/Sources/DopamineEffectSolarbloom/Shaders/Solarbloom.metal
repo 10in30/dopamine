@@ -320,8 +320,13 @@ fragment float4 solarbloom_fragment(
     sparkHead *= sparkHead;
     float cFade = 1.0 - smoothstep(0.7, 1.0, u.life);
     float3 checkTint = mix(float3(1.0), u.c0 + 0.4, 0.5);
-    col += (float3(1.0) * ccore * 1.6 + checkTint * cglow) * cFade * u.exposure;
-    col += float3(1.0) * sparkHead * drawing * cFade * u.exposure * 2.0;
+    // The checkmark is the FUNCTIONAL confirmation — keep it at full brightness
+    // regardless of intensity, instead of dimming it via u.exposure
+    // (= lerp(intensity, 0.75, 1.5)). 1.5 = the exposure at full intensity, so the
+    // glyph reads identically at any intensity. (Still fades out via cFade.)
+    float checkExposure = 1.5;
+    col += (float3(1.0) * ccore * 1.6 + checkTint * cglow) * cFade * checkExposure;
+    col += float3(1.0) * sparkHead * drawing * cFade * checkExposure * 2.0;
 
     // ---- Filmic tonemap + dither ----
     col = dop_tonemapACES(col * 0.62);

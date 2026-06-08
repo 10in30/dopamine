@@ -468,9 +468,13 @@ void main(){
   float cFade = 1.0 - smoothstep(0.7, 1.0, uLife);
   vec3 checkTint = mix(vec3(1.0), uC0 + 0.4, 0.5);
   // The checkmark is the unambiguous confirmation, so it must out-shine the
-  // bloom core it sits inside — overdrive its core and leading spark.
-  col += (vec3(1.0) * ccore * 1.6 + checkTint * cglow) * cFade * uExposure;
-  col += vec3(1.0) * sparkHead * drawing * cFade * uExposure * 2.0;
+  // bloom core it sits inside — overdrive its core and leading spark. Keep it at
+  // FULL brightness regardless of intensity (don't dim via uExposure =
+  // lerp(intensity, 0.75, 1.5)); 1.5 = the exposure at full intensity, so the
+  // glyph reads identically at any intensity. (Still fades out via cFade.)
+  float checkExposure = 1.5;
+  col += (vec3(1.0) * ccore * 1.6 + checkTint * cglow) * cFade * checkExposure;
+  col += vec3(1.0) * sparkHead * drawing * cFade * checkExposure * 2.0;
 
   // ---- Filmic tonemap + dither ----
   // Pre-exposure < 1 keeps the bloom a focused burst (not an all-over haze)

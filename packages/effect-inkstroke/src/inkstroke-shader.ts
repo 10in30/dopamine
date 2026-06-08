@@ -92,6 +92,17 @@ ${GLSL_DITHER}
 ${GLSL_SD_SEG}
 ${GLSL_PARTICLES}
 
+// Length-aware pen progress. The bespoke draw window (STROKE_DRAW_MS = 360 ms) is
+// calibrated for a full-canvas stroke; shrunk to a targeted element the gesture
+// would flick by too fast to read, so STRETCH the window as the target narrows
+// (clamped to 2.2x). Untargeted (uTarget.x == res.x) => x1, so the full-screen pen
+// is unchanged and matches the bespoke strokeProgress (easeOutCubic of animMs/360).
+float inkDraw(){
+  float drawDur = 360.0 * clamp(uResolution.x / max(uTarget.x, 1.0), 1.0, 2.2);
+  float t = clamp(uTimeS * 1000.0 / drawDur, 0.0, 1.0);
+  return 1.0 - pow(1.0 - t, 3.0);
+}
+
 // The gesture is now a real CHECKMARK: two straight legs A->B->C. A is the
 // upper-left start, B is the bottom vertex (a SHORT down-stroke), C is the far
 // upper-right (a LONG up-flick) — a confident tick. The pen writes leg1 then
@@ -159,8 +170,11 @@ float inkOcclusion(vec2 p){
   float minDim = min(res.x, res.y);
   vec2 A, B, C;
   strokeGeom(0.0, A, B, C);   // drop the cel jitter for the shadow
-  float base = minDim * 0.045;
+  // Width scales with the targeted element (as the length does) so a shrunk
+  // stroke stays proportionally thin, not fat. Untargeted (uTarget==res) => x1.
+  float base = minDim * 0.045 * min(uTarget.x / res.x, 1.0);
   float occ = 0.0;
+  float draw = inkDraw();   // length-aware pen progress
 
   // Walk the two-leg tick by arc fraction; only the drawn portion casts shadow.
   float segT, leg;
@@ -168,10 +182,10 @@ float inkOcclusion(vec2 p){
   for (int i = 0; i < STEPS; i++) {
     float u0 = float(i) / float(STEPS);
     float u1 = float(i + 1) / float(STEPS);
-    if (u0 > uDraw) break;
-    float uc = clamp((u0 + u1) * 0.5, 0.0, uDraw);
+    if (u0 > draw) break;
+    float uc = clamp((u0 + u1) * 0.5, 0.0, draw);
     vec2 a = checkPos(A, B, C, u0, segT, leg);
-    vec2 b = checkPos(A, B, C, min(u1, uDraw), segT, leg);
+    vec2 b = checkPos(A, B, C, min(u1, draw), segT, leg);
     float belly = inkPressure(uc);
     float taper = inkTaper(uc);
     float rad = base * (0.55 + 1.25 * belly) * (0.4 + 0.6 * taper);
@@ -240,11 +254,12 @@ void main(){
   float len = uScale * uTarget.x;
   vec2 A, B, C;
   strokeGeom(1.0, A, B, C);   // includes the cel "on twos" jitter (whimsy)
+  float draw = inkDraw();   // length-aware pen progress (slower for small targets)
 
-  // The pen has written up to arc fraction uDraw along the tick. Walk the path
+  // The pen has written up to arc fraction `draw` along the tick. Walk the path
   // in a few steps; for each, treat it as a capsule with pressure-varying radius
   // and accumulate coverage. (Cheap analytic approximation of a swept brush.)
-  float base = minDim * 0.045;                     // base half-width (bold)
+  float base = minDim * 0.045 * min(uTarget.x / res.x, 1.0);  // half-width, target-scaled
   float ink = 0.0;       // 0..1 ink coverage (solid body)
   float edge = 0.0;      // proximity to the wet outer edge (for bleed/spray)
   float bodyT = 0.0;     // arc fraction at the nearest body sample (0..1)
@@ -258,10 +273,10 @@ void main(){
     float u0 = float(i) / float(STEPS);
     float u1 = float(i + 1) / float(STEPS);
     // Only consider the written portion of the path.
-    if (u0 > uDraw) break;
-    float uc = clamp((u0 + u1) * 0.5, 0.0, uDraw);
+    if (u0 > draw) break;
+    float uc = clamp((u0 + u1) * 0.5, 0.0, draw);
     vec2 a = checkPos(A, B, C, u0, segT, leg);
-    vec2 b = checkPos(A, B, C, min(u1, uDraw), segT, leg);
+    vec2 b = checkPos(A, B, C, min(u1, draw), segT, leg);
 
     // Across-direction of THIS leg (the two legs travel differently), so the
     // bristle rake and the signed offset stay true to the local travel.
@@ -318,7 +333,7 @@ void main(){
   // from the stroke spine (NOT a radial core, NOT a full-width band): it traces
   // the same directional arc, so the light it casts follows the mark instead of
   // pooling elsewhere on the page.
-  float wash = exp(-bestDist / (minDim * 0.10)) * 0.10 * smoothstep(0.02, 0.12, uDraw);
+  float wash = exp(-bestDist / (minDim * 0.10)) * 0.10 * smoothstep(0.02, 0.12, draw);
 
   float gain = uAmp * uExposure;
   // Compose the ink as a COHERENT mark: the body holds the core hue (uC0/uC1),
@@ -351,7 +366,7 @@ void main(){
 
   // WET LEADING TIP: a bright hot point that races at the pen head while
   // drawing, with a short afterglow. This is the "it's happening now" spark.
-  float drawing = smoothstep(0.0, 0.05, uDraw) * (1.0 - smoothstep(0.9, 1.04, uDraw));
+  float drawing = smoothstep(0.0, 0.05, draw) * (1.0 - smoothstep(0.9, 1.04, draw));
   float td = length(frag - tipPos);
   float tipGlow = (tipR * 1.7) / (td + tipR * 0.5); tipGlow *= tipGlow;
   col += vec3(1.0) * tipGlow * drawing * gain * 1.8;
@@ -388,7 +403,7 @@ void main(){
   // AFTER-SHIMMER underline: once the stroke is essentially done, a quick
   // horizontal sweep of light settles beneath the gesture (a confident
   // "signed" underline) then fades — reinforces the success read without a core.
-  float ul = smoothstep(0.78, 0.92, uDraw) * (1.0 - smoothstep(0.45, 1.0, uLife));
+  float ul = smoothstep(0.78, 0.92, draw) * (1.0 - smoothstep(0.45, 1.0, uLife));
   // Settle the underline just below the tick's bottom vertex, spanning its width.
   float ulY = B.y - len * 0.10;
   float uy = exp(-pow((frag.y - ulY) / (minDim * 0.012), 2.0));
