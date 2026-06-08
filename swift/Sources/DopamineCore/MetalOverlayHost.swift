@@ -136,10 +136,21 @@ public final class MetalOverlayHost<Config: PassConfig> {
     /// effect during the current one's dwell). The layer's `drawableSize` must be
     /// set before calling this (the panel is sized from it).
     public func prepare(params: [String: DopeValue]) throws {
-        runner = try MetalPassRunner(
-            config: config, params: params, device: device, library: library,
-            pixelFormat: lightLayer.pixelFormat, wantsShadow: wantsShadow
-        )
+        // Build the pipelines ONCE per host (first prepare = at effect load /
+        // selection). A re-fire only swaps params — rebuilding the runner every
+        // fire would recompile pipelines on the main thread and make the first
+        // Fire hitch.
+        let builtNewRunner: Bool
+        if let runner {
+            runner.updateParams(params)
+            builtNewRunner = false
+        } else {
+            runner = try MetalPassRunner(
+                config: config, params: params, device: device, library: library,
+                pixelFormat: lightLayer.pixelFormat, wantsShadow: wantsShadow
+            )
+            builtNewRunner = true
+        }
         // The backbone retains the draw state and builds the first panel; `tick`
         // re-draws it every frame (so the panel geometry animates, mirroring the
         // web). Pure-shader effects clear it.
@@ -156,6 +167,14 @@ public final class MetalOverlayHost<Config: PassConfig> {
             panelParams = [:]
             panelSizePx = .zero
             setPanel(nil)
+        }
+        // Warm the freshly-built pipeline at LOAD time: render one tiny throwaway
+        // offscreen frame so the first on-screen frame (the first Fire) doesn't
+        // hitch on first-use shader compilation. Warmup cost is resolution-
+        // independent, so 32×32 suffices; skipped on a cheap param-only re-prepare.
+        if builtNewRunner {
+            _ = renderOffscreen(elapsedMs: 0, width: 32, height: 32, dpr: 1,
+                                anchorPx: SIMD2<Float>(16, 16))
         }
     }
 
