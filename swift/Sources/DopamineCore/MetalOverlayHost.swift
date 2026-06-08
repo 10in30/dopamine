@@ -98,6 +98,9 @@ public final class MetalOverlayHost<Config: PassConfig> {
     /// animates). An empty `panelSizePx` ⇒ a pure-shader effect with no panel.
     private var panelParams: [String: DopeValue] = [:]
     private var panelSizePx: CGSize = .zero
+    /// Reused CPU staging buffer for the per-frame panel texture upload (avoids a
+    /// multi-MB heap allocation every tick for hybrid effects). Sized lazily.
+    private var uploadBuffer: [UInt8] = []
 
     /// `library` is the effect's compiled `default.metallib` (built on macOS).
     public init(config: Config, device: MTLDevice, library: MTLLibrary, wantsShadow: Bool) throws {
@@ -224,22 +227,35 @@ public final class MetalOverlayHost<Config: PassConfig> {
             guard let t = device.makeTexture(descriptor: d) else { panelTex = nil; return }
             tex = t
         }
-        var data = [UInt8](repeating: 0, count: bpr * h)
+        // Reuse the upload buffer across frames — the panel is re-uploaded EVERY
+        // frame (the geometry animates), so allocating a fresh multi-MB array per
+        // tick churns the heap on the main thread (hybrid effects felt sluggish).
+        // Resize only on a size change; otherwise zero in place (the premultiplied
+        // draw composites over it, so it must start transparent).
+        let needed = bpr * h
+        if uploadBuffer.count != needed {
+            uploadBuffer = [UInt8](repeating: 0, count: needed)
+        } else {
+            uploadBuffer.withUnsafeMutableBytes { _ = $0.initializeMemory(as: UInt8.self, repeating: 0) }
+        }
         let cs = CGColorSpaceCreateDeviceRGB()
         let info = CGImageAlphaInfo.premultipliedLast.rawValue
-        guard let ctx = CGContext(data: &data, width: w, height: h, bitsPerComponent: 8,
-                                  bytesPerRow: bpr, space: cs, bitmapInfo: info) else { panelTex = nil; return }
-        // Emulate WebGL's `UNPACK_FLIP_Y_WEBGL = true` (the web panel upload): the
-        // panel shaders SAMPLE the texture in a y-up vUv (matching the web vertex),
-        // so texture row 0 must be the BOTTOM of the drawn panel. Flip the upload
-        // context's y before drawing the (top-left-origin) image — otherwise the
-        // panel (comic word, heartburst hearts) renders upside down.
-        ctx.translateBy(x: 0, y: CGFloat(h)); ctx.scaleBy(x: 1, y: -1)
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
-        data.withUnsafeMutableBytes {
+        let ok: Bool = uploadBuffer.withUnsafeMutableBytes { raw -> Bool in
+            guard let base = raw.baseAddress,
+                  let ctx = CGContext(data: base, width: w, height: h, bitsPerComponent: 8,
+                                      bytesPerRow: bpr, space: cs, bitmapInfo: info) else { return false }
+            // Emulate WebGL's `UNPACK_FLIP_Y_WEBGL = true` (the web panel upload): the
+            // panel shaders SAMPLE the texture in a y-up vUv (matching the web vertex),
+            // so texture row 0 must be the BOTTOM of the drawn panel. Flip the upload
+            // context's y before drawing the (top-left-origin) image — otherwise the
+            // panel (comic word, heartburst hearts) renders upside down.
+            ctx.translateBy(x: 0, y: CGFloat(h)); ctx.scaleBy(x: 1, y: -1)
+            ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
             tex.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0,
-                        withBytes: $0.baseAddress!, bytesPerRow: bpr)
+                        withBytes: base, bytesPerRow: bpr)
+            return true
         }
+        guard ok else { panelTex = nil; return }
         panelTex = tex
     }
 

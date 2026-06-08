@@ -82,6 +82,27 @@ final class OverlayUIView: UIView {
     private let slowmo = Autoplay.slowmoScale
     private var idx = 0
 
+    // MARK: - Performance tuning knobs (device, parity-free)
+
+    /// Cap the render resolution. These are soft glow effects, so rendering at the
+    /// full native 3× of a ProMotion phone is wasteful super-sampling; 2× stays
+    /// crisp while cutting fragment-shader fill cost ~2.25× on a 3× device (fill
+    /// cost scales ~linearly with pixel count).
+    static let maxRenderScale: CGFloat = 2.0
+    /// Seconds to keep rendering past an effect's life so it fully fades before the
+    /// display link is paused (idle ⇒ zero GPU/CPU).
+    static let idleTailSeconds: CFTimeInterval = 0.4
+
+    /// Effective render scale = native scale clamped to `maxRenderScale`. Used for
+    /// BOTH the layer `drawableSize` AND the `dpr` handed to the host, so the
+    /// anchor/target device-px math stays consistent with the (capped) drawable.
+    private var renderScale: CGFloat {
+        min(window?.screen.scale ?? UIScreen.main.scale, Self.maxRenderScale)
+    }
+    /// Manual mode only: host-clock time after which the current effect has played
+    /// and faded — `tick` pauses the link past this. Pushed forward on each play.
+    private var activeUntil: CFTimeInterval = 0
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .clear
@@ -101,8 +122,14 @@ final class OverlayUIView: UIView {
         current = buildAndPrepare(0)
         if let current { attach(current) }
         let link = CADisplayLink(target: self, selector: #selector(tick))
+        // Cap to 60fps: on a ProMotion device CADisplayLink targets up to 120Hz,
+        // doubling GPU cost for no perceptible benefit on these effects.
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
         link.add(to: .main, forMode: .common)
         displayLink = link
+        // Manual mode starts idle (nothing playing ⇒ nothing to draw); Fire resumes
+        // it. Autoplay (CI) renders continuously, so it stays unpaused.
+        link.isPaused = (Autoplay.requestedEffect == nil)
         if Autoplay.requestedEffect != nil {
             // Let the layer size + (in CI) the recorder warm up before the first play.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.startAutoplay() }
@@ -110,7 +137,7 @@ final class OverlayUIView: UIView {
     }
 
     private func canvasPx() -> CGSize {
-        let scale = window?.screen.scale ?? UIScreen.main.scale
+        let scale = renderScale
         var w = bounds.width, h = bounds.height
         if w < 1 || h < 1 { let s = UIScreen.main.bounds.size; w = s.width; h = s.height }
         return CGSize(width: w * scale, height: h * scale)
@@ -135,7 +162,7 @@ final class OverlayUIView: UIView {
             demoLog.error("[DopamineDemo] failed to build effect=\(e.name, privacy: .public)"); return nil
         }
         built.host.timeScale = slowmo
-        let scale = window?.screen.scale ?? UIScreen.main.scale
+        let scale = renderScale
         let px = canvasPx()
         built.host.lightLayer.isOpaque = false
         built.host.lightLayer.contentsScale = scale
@@ -149,14 +176,14 @@ final class OverlayUIView: UIView {
     private func attach(_ p: Prepared) {
         let l = p.host.lightLayer
         l.frame = bounds
-        l.contentsScale = window?.screen.scale ?? UIScreen.main.scale
+        l.contentsScale = renderScale
         l.drawableSize = canvasPx()
         layer.addSublayer(l)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let scale = window?.screen.scale ?? UIScreen.main.scale
+        let scale = renderScale
         if let l = current?.host.lightLayer {
             l.frame = bounds; l.contentsScale = scale
             l.drawableSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
@@ -187,21 +214,30 @@ final class OverlayUIView: UIView {
         demoLog.log("[DopamineDemo] switched to \(next.name, privacy: .public)")
     }
 
+    /// Start (or restart) playback of `p`: start its clock, resume the display link,
+    /// and set the idle deadline so `tick` can pause again once it has faded.
+    private func beginPlaying(_ p: Prepared) {
+        p.host.play()
+        activeUntil = CACurrentMediaTime() + dwellSeconds(p.params, gap: Self.idleTailSeconds)
+        displayLink?.isPaused = false
+    }
+
     /// Manual Fire: re-prepare the current effect with a fresh feeling, then play.
     func fireCurrent() {
         guard let cur = current else { return }
         let params = cur.resolve(feeling())
         try? cur.host.prepare(params: params)
-        current = Prepared(name: cur.name, host: cur.host, resolve: cur.resolve, params: params)
-        cur.host.play()
-        demoLog.log("[DopamineDemo] fired \(cur.name, privacy: .public) slowmo=\(self.slowmo)")
+        let played = Prepared(name: cur.name, host: cur.host, resolve: cur.resolve, params: params)
+        current = played
+        beginPlaying(played)
+        demoLog.log("[DopamineDemo] fired \(played.name, privacy: .public) slowmo=\(self.slowmo)")
     }
 
     // MARK: - Autoplay (prepare-ahead)
 
     private func startAutoplay() {
         guard let cur = current else { return }
-        cur.host.play()
+        beginPlaying(cur)
         demoLog.log("[DopamineDemo] fired \(cur.name, privacy: .public) slowmo=\(self.slowmo)")
         prefetchNext()
         scheduleAdvance()
@@ -229,14 +265,22 @@ final class OverlayUIView: UIView {
         current = next
         pending = nil
         attach(next)
-        next.host.play()
+        beginPlaying(next)
         demoLog.log("[DopamineDemo] fired \(next.name, privacy: .public) slowmo=\(self.slowmo)")
         prefetchNext()
         scheduleAdvance()
     }
 
     @objc private func tick() {
-        let scale = Float(window?.screen.scale ?? UIScreen.main.scale)
+        let now = CACurrentMediaTime()
+        // Idle pause (manual mode only): once the effect has played and faded, stop
+        // rendering entirely — the overlay has nothing to show until the next Fire.
+        // Autoplay (CI) renders continuously.
+        if Autoplay.requestedEffect == nil && now > activeUntil {
+            displayLink?.isPaused = true
+            return
+        }
+        let scale = Float(renderScale)
         // Resolve the anchor: a registered target box (centre + size) for the
         // current effect, else the card anchor, else the view centre.
         // anchorPoint2D and the target rects are in SwiftUI `.global` (window)
@@ -255,7 +299,7 @@ final class OverlayUIView: UIView {
         } else {
             pt = SIMD2<Float>(Float(bounds.midX), Float(bounds.midY))  // already local
         }
-        current?.host.tick(now: CACurrentMediaTime(), dpr: scale, anchorPx: pt, targetPx: target)
+        current?.host.tick(now: now, dpr: scale, anchorPx: pt, targetPx: target)
     }
 
     /// Map a SwiftUI `.global` (window) point into this view's local coordinates.
