@@ -176,9 +176,12 @@ extension ComicConfig: PanelDrawing {
         // face stands in for the web's mood-picked bundled display faces.
         func makeRun(_ px: CGFloat) -> CTLine {
             let font = CTFontCreateWithName("Helvetica-Bold" as CFString, px, nil)
+            // Use Core Text attribute KEYS (kCT*), not UIKit/AppKit's `.font` /
+            // `.foregroundColor` — those need UIKit/AppKit, which aren't available
+            // when this package is built for macOS. CoreText is cross-platform.
             let attrs: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: fillColor,
+                NSAttributedString.Key(kCTFontAttributeName as String): font,
+                NSAttributedString.Key(kCTForegroundColorAttributeName as String): fillColor,
             ]
             let s = NSAttributedString(string: word, attributes: attrs)
             return CTLineCreateWithAttributedString(s)
