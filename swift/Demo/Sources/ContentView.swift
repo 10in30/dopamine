@@ -62,7 +62,11 @@ struct ContentView: View {
                 mood: mood, intensity: intensity, whimsy: whimsy,
                 anchor: anchor, targets: targets,
                 onActiveChange: { active in
-                    withAnimation(.easeInOut(duration: 0.28)) { effectActive = active }
+                    if active {
+                        effectActive = true                 // cut out instantly
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.4)) { effectActive = false }  // fade back in
+                    }
                 }
             )
             .allowsHitTesting(false)
@@ -82,6 +86,10 @@ struct ContentView: View {
                     .font(.system(size: 34, weight: .bold))
                     .foregroundStyle(.green)
             }
+            // Hide the green check badge while a CARD-anchored effect plays over it
+            // (an effect with no target chip), so it doesn't show through. The rest
+            // of the card (title/subtitle) stays. Cut out instantly, fade back in.
+            .opacity(effectActive && targets[effectName] == nil ? 0 : 1)
             Text("Order complete")
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(.white)
