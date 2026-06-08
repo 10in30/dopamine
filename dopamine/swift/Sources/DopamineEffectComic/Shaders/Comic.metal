@@ -160,7 +160,7 @@ fragment float4 comic_fragment(
     // tone for the dots: more dots where the field is "darker" value. We want a
     // lively mid coverage so the classic dot field shows.
     float burstTone = mix(0.35, 0.7, u.halftone);
-    float dots = comic_benday(frag, u.dotSize, burstTone, radians(15.0) + u.comicSeed);
+    float dots = comic_benday(frag, u.dotSize, burstTone, 0.26179939 + u.comicSeed); // 15° in rad
     // Ben-Day strength: subtle at noir, dominant at pop. The dots ADD the accent
     // color on the printed field.
     float3 burstCol = burstBase + (u.c2 - burstBase) * dots * u.halftone * 0.55;
@@ -171,7 +171,7 @@ fragment float4 comic_fragment(
     // a bright, saturated fill that screams off the page (pop) or a luminous
     // near-white with a spot tint (noir). Brighter than the burst so it reads
     // as the foreground shout.
-    float wordDots = comic_benday(frag, u.dotSize * 0.7, 0.5, radians(75.0) + u.comicSeed);
+    float wordDots = comic_benday(frag, u.dotSize * 0.7, 0.5, 1.30899694 + u.comicSeed); // 75° in rad
     float3 wordBright = clamp(u.c0 * 1.35 + 0.25, 0.0, 1.4);
     float3 wordBase = mix(float3(0.96, 0.97, 1.0), wordBright, clamp(u.saturation + 0.2, 0.0, 1.0));
     float3 wordCol = wordBase + (u.c2 - wordBase) * wordDots * u.halftone * 0.25 * u.style;

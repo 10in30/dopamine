@@ -161,7 +161,7 @@ fragment float4 heartburst_fragment(
     heartCol *= 1.0 - rimDark * 0.5 * (1.0 - u.style);
 
     // Halftone blush on the heart toward the pop end (printed sticker shading).
-    float blush = dop_benday(frag, u.dotSize, mix(0.35, 0.6, u.halftone), radians(20.0) + u.heartburstSeed);
+    float blush = dop_benday(frag, u.dotSize, mix(0.35, 0.6, u.halftone), 0.34906585 + u.heartburstSeed); // 20° in rad
     heartCol += (u.c2 - heartCol) * blush * u.halftone * u.style * 0.28;
 
     col += heartCol * heartFill * u.presence * u.exposure * 1.6;
