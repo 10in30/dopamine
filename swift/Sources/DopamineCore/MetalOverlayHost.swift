@@ -36,13 +36,34 @@ import simd
 /// binding it at fragment texture(0). The context is flipped to a top-left origin
 /// so the draw matches the web's Canvas2D coordinate space. This mirrors the web,
 /// where the panel RUNNER is shared framework and only the draw fn is per-effect.
+/// Per-frame state for a hybrid panel draw (the Swift mirror of the web
+/// `PanelFrameInfo`, extended with the targeted element's box).
+public struct PanelFrame {
+    /// Normalized effect progress 0..1 so the panel geometry can animate.
+    public var life: Double
+    /// The targeted element's CENTRE in panel device px (top-left origin, y-down —
+    /// the panel's own coordinate space). The centrepiece is drawn here instead of
+    /// the canvas centre, so it sits on the page element.
+    public var centerPx: CGPoint
+    /// The targeted element's SIZE in device px. The centrepiece is sized to this
+    /// box. Defaults to the full canvas when no element is targeted.
+    public var targetPx: CGSize
+    public init(life: Double, centerPx: CGPoint, targetPx: CGSize) {
+        self.life = life; self.centerPx = centerPx; self.targetPx = targetPx
+    }
+}
+
 public protocol PanelDrawing {
     /// Panel pixel size for the given canvas size. Default: the whole canvas.
     func panelSizePx(canvasPx: CGSize, params: [String: DopeValue]) -> CGSize
     /// Paint the panel (RGBA channels per the effect's own shader contract) into
     /// `ctx` (top-left origin, extent = `sizePx`). `params` is the resolved bag
     /// (incl. the scatter seed) so the draw is deterministic for the feeling.
-    func drawPanel(_ ctx: CGContext, sizePx: CGSize, params: [String: DopeValue])
+    /// `frame` carries the per-frame progress + the targeted element box, so the
+    /// panel GEOMETRY animates AND lands on the page element — mirroring the web
+    /// panel runner, which re-draws the Canvas2D panel every frame. The host
+    /// redraws + re-uploads the panel on every tick.
+    func drawPanel(_ ctx: CGContext, sizePx: CGSize, params: [String: DopeValue], frame: PanelFrame)
 }
 public extension PanelDrawing {
     func panelSizePx(canvasPx: CGSize, params: [String: DopeValue]) -> CGSize { canvasPx }
@@ -71,6 +92,12 @@ public final class MetalOverlayHost<Config: PassConfig> {
     /// samples. Set it once per fire with `setPanel(_:)`; it's bound at fragment
     /// texture(0) every frame until cleared. nil for pure-shader effects.
     private var panelTex: MTLTexture?
+
+    /// Retained panel-draw state so the host can RE-DRAW the panel every tick (the
+    /// web panel runner redraws its Canvas2D every frame so the panel geometry
+    /// animates). An empty `panelSizePx` ⇒ a pure-shader effect with no panel.
+    private var panelParams: [String: DopeValue] = [:]
+    private var panelSizePx: CGSize = .zero
 
     /// `library` is the effect's compiled `default.metallib` (built on macOS).
     public init(config: Config, device: MTLDevice, library: MTLLibrary, wantsShadow: Bool) throws {
@@ -110,16 +137,49 @@ public final class MetalOverlayHost<Config: PassConfig> {
             config: config, params: params, device: device, library: library,
             pixelFormat: lightLayer.pixelFormat, wantsShadow: wantsShadow
         )
-        // The backbone builds + uploads the panel texture (the effect only painted
-        // into the CGContext); pure-shader effects clear it.
+        // The backbone retains the draw state and builds the first panel; `tick`
+        // re-draws it every frame (so the panel geometry animates, mirroring the
+        // web). Pure-shader effects clear it.
         if let pd = config as? PanelDrawing {
             let canvas = CGSize(width: lightLayer.drawableSize.width,
                                 height: lightLayer.drawableSize.height)
-            let sz = pd.panelSizePx(canvasPx: canvas, params: params)
-            setPanel(Self.makePanelImage(sz) { ctx in pd.drawPanel(ctx, sizePx: sz, params: params) })
+            panelParams = params
+            panelSizePx = pd.panelSizePx(canvasPx: canvas, params: params)
+            // Initial pose: centred, full canvas (the live tick supplies the element box).
+            redrawPanel(life: 0,
+                        centerPx: CGPoint(x: panelSizePx.width * 0.5, y: panelSizePx.height * 0.5),
+                        targetPx: panelSizePx)
         } else {
+            panelParams = [:]
+            panelSizePx = .zero
             setPanel(nil)
         }
+    }
+
+    /// Re-draw + re-upload the hybrid panel for this frame. The web panel runner
+    /// redraws its Canvas2D every frame, so the panel GEOMETRY (e.g. heartburst's
+    /// burst hearts flying outward) animates AND lands on the page element; this
+    /// mirrors that. No-op for pure-shader effects (empty `panelSizePx`).
+    private func redrawPanel(life: Double, centerPx: CGPoint, targetPx: CGSize) {
+        guard let pd = config as? PanelDrawing,
+              panelSizePx.width >= 1, panelSizePx.height >= 1 else { return }
+        let sz = panelSizePx
+        let frame = PanelFrame(life: life, centerPx: centerPx, targetPx: targetPx)
+        setPanel(Self.makePanelImage(sz) { ctx in
+            pd.drawPanel(ctx, sizePx: sz, params: panelParams, frame: frame)
+        })
+    }
+
+    /// Convert the per-tick anchor + element box (POINTS) into the panel's device-px
+    /// space (y-down, top-left). A non-positive `targetPx` ⇒ the full canvas.
+    private func panelFrameInputs(dpr: Float, anchorPx: SIMD2<Float>, targetPx: SIMD2<Float>)
+        -> (center: CGPoint, target: CGSize) {
+        let d = CGFloat(dpr)
+        let center = CGPoint(x: CGFloat(anchorPx.x) * d, y: CGFloat(anchorPx.y) * d)
+        let target = (targetPx.x > 0 && targetPx.y > 0)
+            ? CGSize(width: CGFloat(targetPx.x) * d, height: CGFloat(targetPx.y) * d)
+            : panelSizePx
+        return (center, target)
     }
 
     /// Start the (already-prepared) effect's animation clock. Cheap — no pipeline
@@ -150,16 +210,31 @@ public final class MetalOverlayHost<Config: PassConfig> {
         guard let image else { panelTex = nil; return }
         let w = image.width, h = image.height, bpr = w * 4
         guard w > 0, h > 0 else { panelTex = nil; return }
-        let d = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .rgba8Unorm, width: w, height: h, mipmapped: false)
-        d.usage = [.shaderRead]
-        d.storageMode = .shared
-        guard let tex = device.makeTexture(descriptor: d) else { panelTex = nil; return }
+        // Reuse the existing texture when the size is unchanged — the panel is
+        // re-uploaded every frame, so allocating a fresh full-screen texture each
+        // tick would churn ~12 MB/frame.
+        let tex: MTLTexture
+        if let existing = panelTex, existing.width == w, existing.height == h {
+            tex = existing
+        } else {
+            let d = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .rgba8Unorm, width: w, height: h, mipmapped: false)
+            d.usage = [.shaderRead]
+            d.storageMode = .shared
+            guard let t = device.makeTexture(descriptor: d) else { panelTex = nil; return }
+            tex = t
+        }
         var data = [UInt8](repeating: 0, count: bpr * h)
         let cs = CGColorSpaceCreateDeviceRGB()
         let info = CGImageAlphaInfo.premultipliedLast.rawValue
         guard let ctx = CGContext(data: &data, width: w, height: h, bitsPerComponent: 8,
                                   bytesPerRow: bpr, space: cs, bitmapInfo: info) else { panelTex = nil; return }
+        // Emulate WebGL's `UNPACK_FLIP_Y_WEBGL = true` (the web panel upload): the
+        // panel shaders SAMPLE the texture in a y-up vUv (matching the web vertex),
+        // so texture row 0 must be the BOTTOM of the drawn panel. Flip the upload
+        // context's y before drawing the (top-left-origin) image — otherwise the
+        // panel (comic word, heartburst hearts) renders upside down.
+        ctx.translateBy(x: 0, y: CGFloat(h)); ctx.scaleBy(x: 1, y: -1)
         ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
         data.withUnsafeMutableBytes {
             tex.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0,
@@ -187,10 +262,18 @@ public final class MetalOverlayHost<Config: PassConfig> {
     }
 
     /// Drive one on-screen frame (call from a CADisplayLink). `dpr` is the content
-    /// scale; `anchorPx` the effect origin in points.
-    public func tick(now: CFTimeInterval, dpr: Float, anchorPx: SIMD2<Float>) {
+    /// scale; `anchorPx` the effect origin in points; `targetPx` the targeted
+    /// element's size in points (zero ⇒ the centrepiece fills the whole canvas).
+    public func tick(now: CFTimeInterval, dpr: Float, anchorPx: SIMD2<Float>,
+                     targetPx: SIMD2<Float> = .zero) {
         guard let runner else { return }
         let elapsedMs = (now - startTime) * 1000 * timeScale
+
+        // Re-draw the hybrid panel for this frame's life (the web redraws its
+        // Canvas2D every frame, so the panel geometry animates) on the page element.
+        let life = Swift.min(Swift.max(elapsedMs, 0) / Swift.max(runner.durationMs, 1), 1)
+        let pf = panelFrameInputs(dpr: dpr, anchorPx: anchorPx, targetPx: targetPx)
+        redrawPanel(life: life, centerPx: pf.center, targetPx: pf.target)
 
         // The LIGHT pass is mandatory. If no drawable is available this frame,
         // skip the whole tick rather than crash on a nil encoder.
@@ -205,7 +288,8 @@ public final class MetalOverlayHost<Config: PassConfig> {
         // Encode the draw calls FIRST, then end encoding. (Encoding into an
         // already-ended encoder is Metal API misuse and crashes.)
         runner.render(
-            elapsedMs: elapsedMs, width: w, height: h, anchorPx: anchorPx, dpr: dpr,
+            elapsedMs: elapsedMs, width: w, height: h, anchorPx: anchorPx,
+            targetPx: targetPx, dpr: dpr,
             lightEncoder: light.enc, shadowEncoder: shadow?.enc, panel: panelTex
         )
 
@@ -228,8 +312,14 @@ public final class MetalOverlayHost<Config: PassConfig> {
     /// Render ONE light frame at `elapsedMs` into an owned, CPU-readable texture
     /// and return it as an sRGB CGImage. Synchronous (waits for the GPU).
     public func renderOffscreen(elapsedMs: Double, width: Int, height: Int,
-                                dpr: Float, anchorPx: SIMD2<Float>) -> CGImage? {
+                                dpr: Float, anchorPx: SIMD2<Float>,
+                                targetPx: SIMD2<Float> = .zero) -> CGImage? {
         guard let runner, width > 0, height > 0 else { return nil }
+        // Re-draw the hybrid panel for this frame's life so the off-screen capture
+        // animates the panel geometry too (mirrors the live `tick` path).
+        let life = Swift.min(Swift.max(elapsedMs, 0) / Swift.max(runner.durationMs, 1), 1)
+        let pf = panelFrameInputs(dpr: dpr, anchorPx: anchorPx, targetPx: targetPx)
+        redrawPanel(life: life, centerPx: pf.center, targetPx: pf.target)
         let desc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: lightLayer.pixelFormat, width: width, height: height, mipmapped: false)
         desc.usage = [.renderTarget, .shaderRead]
@@ -243,7 +333,8 @@ public final class MetalOverlayHost<Config: PassConfig> {
         rpd.colorAttachments[0].storeAction = .store
         guard let enc = cb.makeRenderCommandEncoder(descriptor: rpd) else { return nil }
         runner.render(elapsedMs: elapsedMs, width: Float(width), height: Float(height),
-                      anchorPx: anchorPx, dpr: dpr, lightEncoder: enc, shadowEncoder: nil)
+                      anchorPx: anchorPx, targetPx: targetPx, dpr: dpr,
+                      lightEncoder: enc, shadowEncoder: nil, panel: panelTex)
         enc.endEncoding()
         cb.commit()
         cb.waitUntilCompleted()

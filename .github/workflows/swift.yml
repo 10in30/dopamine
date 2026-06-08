@@ -25,6 +25,11 @@ on:
       - "swift/**"
       - "scripts/gen-uniforms.mjs"
       - ".github/workflows/swift.yml"
+  pull_request:
+    paths:
+      - "swift/**"
+      - "scripts/gen-uniforms.mjs"
+      - ".github/workflows/swift.yml"
   workflow_dispatch:
 
 jobs:

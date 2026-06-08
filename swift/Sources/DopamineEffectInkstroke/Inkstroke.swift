@@ -61,9 +61,9 @@ public struct InkstrokeConfig: PassConfig {
     public typealias Uniforms = InkstrokeUniforms
     public var vertexFunction = "inkstroke_vertex"
     public var fragmentFunction = "inkstroke_fragment"
-    // The gesture composes itself across the whole surface, so it ignores the
-    // anchor (web: index.ts comment "no origin").
-    public var usesOrigin = false
+    // The gesture centres on the targeted element (uses origin + target size); it
+    // falls back to the canvas centre + full canvas when nothing is targeted.
+    public var usesOrigin = true
     public init() {}
 
     public func shadowHeightFrac(_ params: [String: DopeValue]) -> Double {

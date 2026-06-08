@@ -86,6 +86,10 @@ if (typeof document !== "undefined") void ensureComicFonts();
  * blend them independently in the shader. To keep channels independent we draw
  * each layer onto the same 2D context but only write the intended channel.
  */
+/** Starburst + word size relative to the targeted element box (≈1.5×). See the
+ * Swift `COMIC_TARGET_FILL` — keep the two in sync. */
+const COMIC_TARGET_FILL = 1.7;
+
 export function drawPanel(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -94,13 +98,20 @@ export function drawPanel(
   scale: number,
   presence: number,
   dpr: number,
+  center: { x: number; y: number },
+  span: number,
 ): void {
   ctx.clearRect(0, 0, w, h);
   if (presence <= 0.001) return;
 
-  const cx = w * 0.5;
-  const cy = h * 0.5;
-  const minDim = Math.min(w, h);
+  // Position + size the word/starburst to the targeted element (defaults to the
+  // canvas centre + full canvas, reproducing the old screen-centred pose).
+  const cx = center.x;
+  const cy = center.y;
+  // The starburst + word read at ~150% of the targeted element, clamped to the
+  // canvas so a full-page fire (target == canvas) keeps its original size. Kept in
+  // sync with ComicPanel.swift. TUNABLE.
+  const minDim = Math.min(span * COMIC_TARGET_FILL, Math.min(w, h));
   const rng = mulberry32((params.comicSeed * 1000) >>> 0);
 
   // Deterministic per-fire tilt so the panel feels hand-placed (a few degrees).

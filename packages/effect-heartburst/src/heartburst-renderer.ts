@@ -44,6 +44,10 @@ export interface HeartburstRenderParams {
  * the given context's current path. `rot` rotates it (radians). The classic
  * heart curve, normalized so its bounding extent ≈ `s` and the cusp points UP.
  */
+/** Hero-heart size relative to the targeted element box (≈1.5×). See the Swift
+ * `HEARTBURST_TARGET_FILL` — keep the two in sync. */
+const HEARTBURST_TARGET_FILL = 3.6;
+
 function traceHeart(ctx: CanvasRenderingContext2D, s: number, rot: number): void {
   const steps = 48;
   ctx.beginPath();
@@ -86,13 +90,20 @@ export function drawHeartburstPanel(
   life: number,
   presence: number,
   dpr: number,
+  center: { x: number; y: number },
+  span: number,
 ): void {
   ctx.clearRect(0, 0, w, h);
   if (presence <= 0.001) return;
 
-  const cx = w * 0.5;
-  const cy = h * 0.5;
-  const minDim = Math.min(w, h);
+  // Position the hearts on the targeted element (centre) and size them to its box
+  // (`span`), so the centrepiece matches the page element instead of the canvas.
+  const cx = center.x;
+  const cy = center.y;
+  // The hero heart reads at ~150% of the targeted element (heartScale ~0.22 ⇒
+  // heart extent ≈ 1.5× the box), clamped to the canvas so a full-page fire
+  // (target == canvas) keeps its original size. Sync w/ HeartburstPanel.swift.
+  const minDim = Math.min(span * HEARTBURST_TARGET_FILL, Math.min(w, h));
   const seed = (params.heartburstSeed * 1000) >>> 0;
   const rng = mulberry32(seed);
 

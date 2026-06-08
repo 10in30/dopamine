@@ -30,37 +30,56 @@ import Foundation
 import CoreGraphics
 import DopamineCore
 
+/// How big the hero heart reads relative to the targeted element box. The heart's
+/// extent ≈ 2·heartScale·basis, so this lifts the default heartScale (~0.22) to a
+/// heart ≈ 1.5× the element. Kept in sync with the web renderer.
+private let HEARTBURST_TARGET_FILL: CGFloat = 3.6
+
 extension HeartburstConfig: PanelDrawing {
     public func panelSizePx(canvasPx: CGSize, params: [String: DopeValue]) -> CGSize { canvasPx }
 
-    public func drawPanel(_ ctx: CGContext, sizePx: CGSize, params: [String: DopeValue]) {
+    public func drawPanel(_ ctx: CGContext, sizePx: CGSize, params: [String: DopeValue], frame: PanelFrame) {
         let w = sizePx.width, h = sizePx.height
         guard w > 1, h > 1 else { return }
+        let life = frame.life
 
         func num(_ k: String, _ d: Double) -> Double {
             if case let .number(v)? = params[k] { return v }; return d
         }
-        let seedParam   = num("heartburstSeed", 0)
-        let heartScale  = num("heartScale", 0.22)
-        let burstCount  = num("burstCount", 14)
-        let burstSpread = num("burstSpread", 0.4)
-        let inkWeight   = num("inkWeight", 3)
+        let seedParam    = num("heartburstSeed", 0)
+        let heartScale   = num("heartScale", 0.22)
+        let burstCount   = num("burstCount", 14)
+        let burstSpread  = num("burstSpread", 0.4)
+        let inkWeight    = num("inkWeight", 3)
+        let beatStrength = num("beatStrength", 1)
+        let doubleBeat   = num("doubleBeat", 1)
 
         // The web additive compositing keeps the R/G/B channel masks independent.
         ctx.setBlendMode(.plusLighter)
 
-        let cx = w * 0.5, cy = h * 0.5
-        let minDim = min(w, h)
+        // Position the hearts on the targeted element (centre) and size them to its
+        // box, so the centrepiece matches the page element instead of the canvas.
+        // Defaults (centre, full canvas) reproduce the old screen-centred pose.
+        let cx = frame.centerPx.x, cy = frame.centerPx.y
+        // The centrepiece should read at ~150% of the targeted element (not a small
+        // fraction of it), so scale the sizing basis up — but clamp to the canvas so a
+        // full-page fire (target == canvas) keeps its original size. `heartScale`
+        // (~0.22) then gives a hero heart whose extent ≈ 1.5× the element box. TUNABLE.
+        let minDim = min(min(frame.targetPx.width, frame.targetPx.height) * HEARTBURST_TARGET_FILL, min(w, h))
         // The web rng seeds from (heartburstSeed * 1000) >>> 0.
         let rng = mulberry32(UInt32(truncatingIfNeeded: Int((seedParam * 1000).rounded(.towardZero))))
 
         let dpr: CGFloat = 1.0   // host re-rasterizes at the device size already.
         let ink = max(1, CGFloat(inkWeight) * dpr)
 
-        // STATIC snapshot pose.
-        let presence: CGFloat = 1.0
-        let heartScaleMul: CGFloat = 1.0   // shader pulses the hero via u.beat.
-        let b: CGFloat = 0.45              // representative mid-burst flight.
+        // LIVE pose, redrawn every frame by the host (mirrors the web panel runner):
+        // the panel fades in/out with presence, the hero swells on the lub-dub beat,
+        // and the little hearts fly outward as the burst progresses. Without this the
+        // burst hearts are frozen mid-flight (the old static snapshot).
+        let presence = CGFloat(heartPresence(life))
+        if presence <= 0.001 { return }   // cleared frame (web early-out)
+        let heartScaleMul = CGFloat(heartbeatScale(life, strength: beatStrength, doubleBeat: doubleBeat))
+        let b = CGFloat(burstProgress(life))
 
         // ---- Parametric heart trace (classic 16 sin³ curve, cusp UP) ----------
         // Matches heartburst-renderer.ts `traceHeart` exactly. `s` is the half-size.

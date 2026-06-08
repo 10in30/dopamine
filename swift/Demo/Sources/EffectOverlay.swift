@@ -26,11 +26,15 @@ struct EffectOverlay: UIViewRepresentable {
     var intensity: Double
     var whimsy: Double
     var anchor: CGPoint
+    /// Per-effect target boxes (global points). The overlay aims the matching
+    /// effect's centrepiece at the box centre, sized to the box.
+    var targets: [String: CGRect] = [:]
 
     func makeUIView(context: Context) -> OverlayUIView { OverlayUIView() }
 
     func updateUIView(_ view: OverlayUIView, context: Context) {
         view.anchorPoint2D = anchor
+        view.targets = targets
         view.mood = mood
         view.intensity = intensity
         view.whimsy = whimsy
@@ -62,6 +66,7 @@ final class OverlayUIView: UIView {
     private var pendingIdx = 0
 
     var anchorPoint2D: CGPoint = .zero
+    var targets: [String: CGRect] = [:]
     var lastFiredToken: Int = 0
     var mood = "celebratory"
     var intensity = 0.8
@@ -206,9 +211,30 @@ final class OverlayUIView: UIView {
 
     @objc private func tick() {
         let scale = Float(window?.screen.scale ?? UIScreen.main.scale)
-        let pt = anchorPoint2D == .zero
-            ? SIMD2<Float>(Float(bounds.midX), Float(bounds.midY))
-            : SIMD2<Float>(Float(anchorPoint2D.x), Float(anchorPoint2D.y))
-        current?.host.tick(now: CACurrentMediaTime(), dpr: scale, anchorPx: pt)
+        // Resolve the anchor: a registered target box (centre + size) for the
+        // current effect, else the card anchor, else the view centre.
+        // anchorPoint2D and the target rects are in SwiftUI `.global` (window)
+        // coords — convert them into THIS view's local space so the Metal layer
+        // (sized to our bounds) lines up with the on-screen elements. Without this,
+        // a non-zero overlay origin in the window shifts EVERY effect by a constant.
+        var pt: SIMD2<Float>
+        var target = SIMD2<Float>(0, 0)
+        if let name = current?.name, let r = targets[name] {
+            let c = localPoint(CGPoint(x: r.midX, y: r.midY))
+            pt = SIMD2<Float>(Float(c.x), Float(c.y))
+            target = SIMD2<Float>(Float(r.width), Float(r.height))
+        } else if anchorPoint2D != .zero {
+            let c = localPoint(anchorPoint2D)
+            pt = SIMD2<Float>(Float(c.x), Float(c.y))
+        } else {
+            pt = SIMD2<Float>(Float(bounds.midX), Float(bounds.midY))  // already local
+        }
+        current?.host.tick(now: CACurrentMediaTime(), dpr: scale, anchorPx: pt, targetPx: target)
+    }
+
+    /// Map a SwiftUI `.global` (window) point into this view's local coordinates.
+    /// Identity when the overlay already sits at the window origin.
+    private func localPoint(_ global: CGPoint) -> CGPoint {
+        window != nil ? convert(global, from: nil) : global
     }
 }

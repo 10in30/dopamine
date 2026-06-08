@@ -59,3 +59,15 @@ public func burstProgress(_ life: Double) -> Double {
     if t <= HEARTBEAT_PHASE { return 0 }
     return easeOutCubic((t - HEARTBEAT_PHASE) / (1 - HEARTBEAT_PHASE))
 }
+
+/// Overall panel presence over normalized life: a quick snap-in, a proud hold
+/// through the beats + burst, then a clean fade at the tail so the panel clears.
+/// Port of `index.ts` `heartPresence`. Lives here (unguarded tempo) so BOTH the
+/// Metal-guarded config `frame()` and the CoreGraphics-guarded panel draw can use it.
+public func heartPresence(_ life: Double) -> Double {
+    let t = tempoClamp01(life)
+    if t < 0.04 { return t / 0.04 }
+    if t < 0.8 { return 1 }
+    let fade = 1 - (t - 0.8) / 0.2
+    return pow(max(0, fade), 1.4)
+}

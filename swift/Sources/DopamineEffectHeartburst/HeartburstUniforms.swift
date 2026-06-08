@@ -13,6 +13,7 @@ public struct HeartburstUniforms {
     // standard (matches StandardUniforms order)
     public var resolution: SIMD2<Float> = SIMD2<Float>(0, 0)
     public var origin: SIMD2<Float> = SIMD2<Float>(0, 0)
+    public var target: SIMD2<Float> = SIMD2<Float>(0, 0)
     public var life: Float = 0
     public var timeS: Float = 0
     public var style: Float = 0
@@ -53,6 +54,7 @@ public func packHeartburstUniforms(
     // standard half
     u.resolution = s.resolution
     u.origin = s.origin
+    u.target = s.target
     u.life = s.life
     u.timeS = s.timeS
     u.style = s.style

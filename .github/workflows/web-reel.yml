@@ -8,12 +8,24 @@
 # Runs on Linux (ubuntu) — it's a pure Node + Playwright capture, ~10x cheaper
 # than the macOS runner. The `reel` pipeline is the repo's own
 # scripts/render-clips.mjs + scripts/stitch.mjs.
+#
+# INCREMENTAL: per-effect clips are cached between runs. Each run re-renders only
+# the effects whose `packages/effect-<name>/**` changed (or ALL of them when a
+# shared input — core, the effects umbrella, the demo, or the reel pipeline —
+# changed), then re-stitches the full reel from the cached + freshly-rendered
+# clips. See scripts/reel-changed.mjs for the policy.
 
 name: web-reel
 
 on:
   push:
     branches: ["main"]
+    paths:
+      - "packages/**"
+      - "examples/**"
+      - "scripts/**"
+      - ".github/workflows/web-reel.yml"
+  pull_request:
     paths:
       - "packages/**"
       - "examples/**"
@@ -28,7 +40,10 @@ jobs:
       run:
         working-directory: .
     steps:
+      # Full history so reel-changed can diff against the PR base / previous tip.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -36,8 +51,23 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
+      # Retry: ffmpeg-static downloads its binary from GitHub releases at install
+      # time, which intermittently 504s and fails the whole install. Retry a few
+      # times before giving up so a transient blip doesn't red the reel.
       - name: Install deps
-        run: npm install
+        run: |
+          n=0
+          until npm install; do
+            n=$((n+1))
+            if [ "$n" -ge 4 ]; then echo "npm install failed after $n attempts"; exit 1; fi
+            echo "npm install failed (attempt $n) — retrying in 15s…"; sleep 15
+          done
+
+      # ffmpeg-static is an OPTIONAL dep (its GitHub-releases binary download
+      # sometimes 504s); the reel falls back to the system ffmpeg, so make sure one
+      # is present (it usually is on ubuntu-latest).
+      - name: Ensure ffmpeg
+        run: ffmpeg -version >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y ffmpeg)
 
       - name: Install Chromium (+ OS deps)
         run: npx playwright install --with-deps chromium
@@ -45,8 +75,34 @@ jobs:
       - name: Build the web packages + demo
         run: npm run build
 
-      - name: Render + stitch the effect reel
-        run: npm run reel
+      # Restore previously-rendered per-effect clips. The key is unique per commit
+      # (so a fresh cache is always saved); restore-keys pulls the most recent prior
+      # cache (incl. main's) as the baseline of reusable clips.
+      - name: Restore reel clips cache
+        uses: actions/cache@v4
+        with:
+          path: e2e/output/clips
+          key: reel-clips-${{ github.sha }}
+          restore-keys: |
+            reel-clips-
+
+      # Which effects must (re)render: changed effects ∪ any clip missing from the
+      # restored cache (ALL when a shared input changed). Empty ⇒ reuse all cached.
+      - name: Plan which effects to render
+        id: plan
+        env:
+          REEL_BASE: >-
+            ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha
+              || github.event_name == 'push' && github.event.before
+              || '' }}
+        run: echo "effects=$(node scripts/reel-changed.mjs)" >> "$GITHUB_OUTPUT"
+
+      - name: Render changed effect clips
+        if: steps.plan.outputs.effects != ''
+        run: node scripts/render-clips.mjs ${{ steps.plan.outputs.effects }}
+
+      - name: Stitch the full reel (cached + freshly rendered clips)
+        run: npm run stitch
 
       - name: List output
         if: always()

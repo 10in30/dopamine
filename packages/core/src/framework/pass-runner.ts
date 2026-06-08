@@ -38,6 +38,7 @@ import {
   bindPalette,
   bindScalars,
   bindShadowGeometry,
+  bindTarget,
   computeScalarBinds,
 } from "./pass-common.js";
 
@@ -213,6 +214,7 @@ export function createPassInstance(
 
     // Standard uniforms.
     gl.uniform2f(u.uResolution, c.width, c.height);
+    bindTarget(gl, u, c, ctx.targetSize, dpr);
     if (config.usesOrigin && u.uOrigin) {
       // gl_FragCoord origin is bottom-left, so flip the anchor's y.
       gl.uniform2f(u.uOrigin, ctx.anchor.x * dpr, c.height - ctx.anchor.y * dpr);

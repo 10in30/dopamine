@@ -91,7 +91,8 @@ const CONFIG: PanelConfig<HBParams> = {
   draw: (pctx, w, h, params, info) => {
     const scale = heartbeatScale(info.life, params.beatStrength, params.doubleBeat);
     const presence = heartPresence(info.life);
-    drawHeartburstPanel(pctx, w, h, params, scale, info.life, presence, info.dpr);
+    const span = Math.min(info.targetPx.width, info.targetPx.height);
+    drawHeartburstPanel(pctx, w, h, params, scale, info.life, presence, info.dpr, info.centerPx, span);
   },
   frame: ({ life }, params) => {
     const beat = Math.max(0, heartbeatScale(life, params.beatStrength, params.doubleBeat) - 1);

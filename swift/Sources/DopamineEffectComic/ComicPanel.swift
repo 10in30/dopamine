@@ -40,6 +40,11 @@ import DopamineCore
 import CoreText
 #endif
 
+/// How big the starburst + word read relative to the targeted element box (the
+/// burst diameter ≈ 0.88·basis, so this gives a comic ≈ 1.5× the element). Kept in
+/// sync with the web comic renderer.
+private let COMIC_TARGET_FILL: CGFloat = 1.7
+
 extension ComicConfig: PanelDrawing {
     /// The per-fire SLAMMED token pool — the comic.dope `content.pool` (the seven
     /// affirmations + the checkmark sentinel, equal odds). Kept in sync with the
@@ -50,7 +55,11 @@ extension ComicConfig: PanelDrawing {
     // The whole canvas — the panel is a full-frame overlay (web `panelSizePx`).
     public func panelSizePx(canvasPx: CGSize, params: [String: DopeValue]) -> CGSize { canvasPx }
 
-    public func drawPanel(_ ctx: CGContext, sizePx: CGSize, params: [String: DopeValue]) {
+    // `frame` is accepted (the host redraws the panel each frame) but the comic word
+    // + starburst are a STATIC composition — the shader animates the slam-in / flash
+    // / halftone via its uniforms — so the geometry is baked at the landed pose. The
+    // frame's element box positions + sizes the word so it lands on the page element.
+    public func drawPanel(_ ctx: CGContext, sizePx: CGSize, params: [String: DopeValue], frame: PanelFrame) {
         let w = sizePx.width, h = sizePx.height
         guard w > 1, h > 1 else { return }
 
@@ -75,8 +84,13 @@ extension ComicConfig: PanelDrawing {
         // Core Graphics equivalent; set once for the whole panel.
         ctx.setBlendMode(.plusLighter)
 
-        let cx = w * 0.5, cy = h * 0.5
-        let minDim = min(w, h)
+        // Position + size the word/starburst to the targeted element (defaults to the
+        // canvas centre + full canvas, reproducing the old screen-centred pose).
+        let cx = frame.centerPx.x, cy = frame.centerPx.y
+        // The word + starburst read at ~150% of the targeted element (not a fraction
+        // of it), so scale the sizing basis up — but clamp to the canvas so a
+        // full-page fire (target == canvas) keeps its original size. Sync w/ the web.
+        let minDim = min(min(frame.targetPx.width, frame.targetPx.height) * COMIC_TARGET_FILL, min(w, h))
         // The web rng seeds the burst jitter from (comicSeed * 1000) >>> 0.
         let rng = mulberry32(UInt32(truncatingIfNeeded: Int((comicSeed * 1000).rounded(.towardZero))))
 

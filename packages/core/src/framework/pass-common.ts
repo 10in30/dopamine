@@ -148,6 +148,25 @@ export function allocTexture(glc: GLContext): WebGLTexture {
 
 /** The standard uniforms common to BOTH runners (excludes uOrigin/uCenter). */
 export const STANDARD_COMMON = [
-  "uResolution", "uLife", "uTimeS", "uStyle", "uAmp",
+  "uResolution", "uTarget", "uLife", "uTimeS", "uStyle", "uAmp",
   "uC0", "uC1", "uC2", "uShadow", "uShadowOffset", "uShadowSoft", "uShadowStrength",
 ] as const;
+
+/**
+ * Bind `uTarget` — the targeted element's size (device px) the centrepiece is
+ * sized to — falling back to the full canvas when no element box was supplied
+ * (so untargeted fires are unchanged). Shared by both runners; a no-op for
+ * shaders that don't declare it.
+ */
+export function bindTarget(
+  gl: WebGL2RenderingContext,
+  u: Record<string, WebGLUniformLocation | null>,
+  c: HTMLCanvasElement,
+  targetSize: { width: number; height: number } | undefined,
+  dpr: number,
+): void {
+  if (!u.uTarget) return;
+  const w = targetSize ? targetSize.width * dpr : c.width;
+  const h = targetSize ? targetSize.height * dpr : c.height;
+  gl.uniform2f(u.uTarget, w, h);
+}

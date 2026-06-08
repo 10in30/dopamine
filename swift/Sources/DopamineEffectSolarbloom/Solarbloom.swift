@@ -114,7 +114,10 @@ public struct SolarbloomConfig: PassConfig {
         // no SDF/glyph texture is bound. checkTexOn / sdfOn stay 0 until the host
         // uploads the baked-SDF / glyph texture and flips them on.
         var ex = extras
-        let minDim = Float(min(s.resolution.x, s.resolution.y))
+        // Size the checkmark glyph box to the TARGETED element (s.target defaults to
+        // the full canvas, so untargeted fires are unchanged), so the glyph matches
+        // the page element rather than the whole screen.
+        let minDim = Float(min(s.target.x, s.target.y))
         let checkBox = CHECK_BOX_FRAC * minDim
         if ex["checkBox"] == nil { ex["checkBox"] = Double(checkBox) }
         if ex["sdfStrokePx"] == nil { ex["sdfStrokePx"] = Double(checkBox * 0.11) }

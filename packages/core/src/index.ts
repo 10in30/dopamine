@@ -106,7 +106,13 @@ const DEFAULTS = { mood: "celebratory", intensity: 0.7, whimsy: 0.5 } as const;
 function resolveRequest(
   effect: string,
   options: DopamineSuccessOptions,
-): { factory: ReturnType<typeof getEffect>; target: HTMLElement; anchor: Anchor; feeling: FeelingInput } | null {
+): {
+  factory: ReturnType<typeof getEffect>;
+  target: HTMLElement;
+  anchor: Anchor;
+  targetSize: { width: number; height: number };
+  feeling: FeelingInput;
+} | null {
   const factory = getEffect(effect);
   if (!factory) throw new Error(`dopamine: unknown effect "${effect}"`);
   const target = options.target ?? document.body;
@@ -126,7 +132,11 @@ function resolveRequest(
     target === document.body || target === document.documentElement
       ? origin
       : { x: origin.x - rect.left, y: origin.y - rect.top };
-  return { factory, target, anchor, feeling };
+  // The element box the centrepiece is sized to (CSS px). Defaults to the target's
+  // own rect, so the centrepiece matches whatever element was fired on; an explicit
+  // `targetSize` lets a caller match a child element under a full-page overlay.
+  const targetSize = options.targetSize ?? { width: rect.width, height: rect.height };
+  return { factory, target, anchor, targetSize, feeling };
 }
 
 /**
@@ -143,6 +153,7 @@ export function play(effect: string, options: DopamineSuccessOptions = {}): Prom
     factory: req.factory,
     target: req.target,
     anchor: req.anchor,
+    targetSize: req.targetSize,
     feeling: req.feeling,
   });
 }
@@ -169,6 +180,7 @@ export function prepare(effect: string, options: DopamineSuccessOptions = {}): P
     factory: req.factory,
     target: req.target,
     anchor: req.anchor,
+    targetSize: req.targetSize,
     feeling: req.feeling,
   });
 }

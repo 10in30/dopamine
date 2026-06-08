@@ -11,6 +11,7 @@ struct AuroraUniforms {
     // --- standard (StandardUniforms, in declared order) ---
     float2 resolution;
     float2 origin;
+    float2 target;
     float  life;
     float  timeS;
     float  style;

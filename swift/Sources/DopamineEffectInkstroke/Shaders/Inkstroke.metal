@@ -59,8 +59,10 @@ inline void strokeGeom(float jitterScale, constant InkstrokeUniforms &u,
                        thread float2 &A, thread float2 &B, thread float2 &C) {
     float2 res = u.resolution;
     float minDim = min(res.x, res.y);
-    float len = u.scale * res.x;
-    float2 mid = float2(res.x * 0.5, res.y * 0.46);
+    // Length scales to the targeted element's width (u.target defaults to the canvas,
+    // so untargeted fires are unchanged); the gesture centres on the element.
+    float len = u.scale * u.target.x;
+    float2 mid = u.origin;
     float bt = floor(u.timeS * 12.0);
     float2 jit = (dop_hash21(bt + u.inkSeed) - 0.5) * minDim * 0.02 * u.style * jitterScale;
     A = mid + float2(-0.42, 0.18) * len + jit;   // upper-left: pen touches down
@@ -133,7 +135,7 @@ inline float inkOcclusion(float2 p, constant InkstrokeUniforms &u) {
     float2 launch = checkPos(A, B, C, 0.86, segT, leg);
     float2 launchDir = normalize(checkPos(A, B, C, 0.92, segT, leg)
                                - checkPos(A, B, C, 0.78, segT, leg));
-    float len = u.scale * res.x;
+    float len = u.scale * u.target.x;
     for (int i = 0; i < MAX_DROPS; i++) {
         if (float(i) >= u.droplets) break;
         float2 hh = dop_hash21(float(i) * 5.3 + u.inkSeed + 11.0);
@@ -143,8 +145,8 @@ inline float inkOcclusion(float2 p, constant InkstrokeUniforms &u) {
         float spd = (0.4 + hh.y) * len * 0.9;
         float spread = (hh.x - 0.5) * 1.4;
         float2 dir = normalize(launchDir + float2(-launchDir.y, launchDir.x) * spread);
-        float2 dp = launch + dir * spd * dlife - float2(0.0, 1.0) * (minDim * 0.9) * dlife * dlife;
-        float dsz = minDim * 0.006 * (0.4 + hh.y * 0.9) * (1.0 - 0.5 * dlife);
+        float2 dp = launch + dir * spd * dlife - float2(0.0, 1.0) * (len * 0.9) * dlife * dlife;
+        float dsz = len * 0.006 * (0.4 + hh.y * 0.9) * (1.0 - 0.5 * dlife);
         float dd = length(p - dp);
         occ = max(occ, (1.0 - smoothstep(dsz * 0.5, dsz * 1.2, dd)) * (1.0 - dlife) * 0.7);
     }
@@ -190,7 +192,7 @@ fragment float4 inkstroke_fragment(
     }
 
     // ---- Stroke geometry: a real CHECKMARK written in one motion. ----
-    float len = u.scale * res.x;
+    float len = u.scale * u.target.x;
     float2 A, B, C;
     strokeGeom(1.0, u, A, B, C);   // includes the cel "on twos" jitter (whimsy)
 
@@ -325,8 +327,8 @@ fragment float4 inkstroke_fragment(
         float2 dir = normalize(launchDir + float2(-launchDir.y, launchDir.x) * spread);
         // Ballistic arc (inlined from look/particles `ballisticPos`; outward +
         // gravity; y is up): origin + dir*speed*t - vec2(0,1)*gravity*t*t.
-        float2 dp = launch + dir * spd * dlife - float2(0.0, 1.0) * (minDim * 0.9) * dlife * dlife;
-        float dsz = minDim * 0.006 * (0.4 + hh.y * 0.9) * (1.0 - 0.5 * dlife);
+        float2 dp = launch + dir * spd * dlife - float2(0.0, 1.0) * (len * 0.9) * dlife * dlife;
+        float dsz = len * 0.006 * (0.4 + hh.y * 0.9) * (1.0 - 0.5 * dlife);
         float dd = length(frag - dp);
         float drop = dop_particleSprite(dd, dsz);   // shared soft round sprite
         // toon: crisp the droplet into a hard dot toward the cel end.

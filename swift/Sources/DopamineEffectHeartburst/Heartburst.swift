@@ -63,16 +63,6 @@ private func heartFlash(_ life: Double, beatStrength: Double, doubleBeat: Double
     return min(1.2, beat * 1.6 + burstSpike * 0.8)
 }
 
-/// Overall panel presence over normalized life: a quick snap-in, a proud hold
-/// through the beats + burst, then a clean fade at the tail so the panel clears.
-/// Port of `index.ts` `heartPresence`.
-private func heartPresence(_ life: Double) -> Double {
-    let t = life < 0 ? 0 : (life > 1 ? 1 : life)
-    if t < 0.04 { return t / 0.04 }
-    if t < 0.8 { return 1 }
-    let fade = 1 - (t - 0.8) / 0.2
-    return pow(max(0, fade), 1.4)
-}
 
 /// The per-effect pass config. The genuinely code-shaped bits: the MSL function
 /// names, the shadow height (= heart scale × 1.1), the per-frame (presence + beat
