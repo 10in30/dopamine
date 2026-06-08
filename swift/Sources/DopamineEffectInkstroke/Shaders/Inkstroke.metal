@@ -59,8 +59,10 @@ inline void strokeGeom(float jitterScale, constant InkstrokeUniforms &u,
                        thread float2 &A, thread float2 &B, thread float2 &C) {
     float2 res = u.resolution;
     float minDim = min(res.x, res.y);
-    float len = u.scale * res.x;
-    float2 mid = float2(res.x * 0.5, res.y * 0.46);
+    // Length scales to the targeted element's width (u.target defaults to the canvas,
+    // so untargeted fires are unchanged); the gesture centres on the element.
+    float len = u.scale * u.target.x;
+    float2 mid = u.origin;
     float bt = floor(u.timeS * 12.0);
     float2 jit = (dop_hash21(bt + u.inkSeed) - 0.5) * minDim * 0.02 * u.style * jitterScale;
     A = mid + float2(-0.42, 0.18) * len + jit;   // upper-left: pen touches down
@@ -133,7 +135,7 @@ inline float inkOcclusion(float2 p, constant InkstrokeUniforms &u) {
     float2 launch = checkPos(A, B, C, 0.86, segT, leg);
     float2 launchDir = normalize(checkPos(A, B, C, 0.92, segT, leg)
                                - checkPos(A, B, C, 0.78, segT, leg));
-    float len = u.scale * res.x;
+    float len = u.scale * u.target.x;
     for (int i = 0; i < MAX_DROPS; i++) {
         if (float(i) >= u.droplets) break;
         float2 hh = dop_hash21(float(i) * 5.3 + u.inkSeed + 11.0);
@@ -190,7 +192,7 @@ fragment float4 inkstroke_fragment(
     }
 
     // ---- Stroke geometry: a real CHECKMARK written in one motion. ----
-    float len = u.scale * res.x;
+    float len = u.scale * u.target.x;
     float2 A, B, C;
     strokeGeom(1.0, u, A, B, C);   // includes the cel "on twos" jitter (whimsy)
 

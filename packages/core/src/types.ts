@@ -37,6 +37,12 @@ export interface DopamineSuccessOptions {
   /** Origin of the bloom in viewport pixels. Default: center of `target`. */
   origin?: { x: number; y: number };
   /**
+   * Size (CSS px) of the element the effect's centrepiece (checkmark, ✗, comic
+   * word, hero heart, ink gesture) is sized to. Default: the `target`'s own box.
+   * Set this to match a CHILD element while the overlay still covers the page.
+   */
+  targetSize?: { width: number; height: number };
+  /**
    * Element the full-bleed overlay is mounted over. Default `document.body`,
    * i.e. the whole page. Light is cast (via `mix-blend-mode`) onto whatever
    * sits beneath the overlay.

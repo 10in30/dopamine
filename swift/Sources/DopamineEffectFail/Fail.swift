@@ -91,7 +91,9 @@ public struct FailConfig: PassConfig {
         // shader still draws when no SDF is bound. sdfOn stays 0 until the host
         // uploads the baked ✗ SDF texture and flips it on.
         var ex = extras
-        let minDim = Float(min(s.resolution.x, s.resolution.y))
+        // Size the ✗ box to the TARGETED element (s.target defaults to the full
+        // canvas, so untargeted fires are unchanged) so it matches the page element.
+        let minDim = Float(min(s.target.x, s.target.y))
         let boxPx = CROSS_BOX_FRAC * minDim
         if ex["boxPx"] == nil { ex["boxPx"] = Double(boxPx) }
         if ex["sdfStrokePx"] == nil { ex["sdfStrokePx"] = Double(boxPx * 0.13) }

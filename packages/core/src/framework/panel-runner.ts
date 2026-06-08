@@ -35,6 +35,7 @@ import {
   bindPalette,
   bindScalars,
   bindShadowGeometry,
+  bindTarget,
   computeScalarBinds,
 } from "./pass-common.js";
 
@@ -46,6 +47,17 @@ export interface PanelFrameInfo {
   life: number;
   /** Device-pixel ratio the panel is rendered at. */
   dpr: number;
+  /**
+   * Targeted element CENTRE in panel device px (canvas space, y-down). The
+   * centrepiece is drawn here instead of the canvas centre. Defaults to the
+   * canvas centre.
+   */
+  centerPx: { x: number; y: number };
+  /**
+   * Targeted element SIZE in device px. The centrepiece is sized to this box.
+   * Defaults to the full canvas.
+   */
+  targetPx: { width: number; height: number };
 }
 
 /** A registered "panel program": the Canvas2D draw for one frame. */
@@ -153,6 +165,7 @@ export function createPanelInstance<P extends PassParams>(
 
     // Standard uniforms.
     gl.uniform2f(u.uResolution, c.width, c.height);
+    bindTarget(gl, u, c, ctx.targetSize, dpr);
     gl.uniform2f(u.uCenter, c.width * 0.5, c.height * 0.5);
     gl.uniform1f(u.uLife, info.life);
     gl.uniform1f(u.uTimeS, info.elapsedMs / 1000);
@@ -177,7 +190,13 @@ export function createPanelInstance<P extends PassParams>(
         panel.height = c.height;
       }
       const life = Math.min(Math.max(elapsedMs, 0) / params.durationMs, 1);
-      const info: PanelFrameInfo = { elapsedMs, life, dpr };
+      // The targeted element box → panel device px (y-down canvas space). Defaults
+      // to the canvas centre + full canvas, reproducing the old screen-centred pose.
+      const centerPx = { x: ctx.anchor.x * dpr, y: ctx.anchor.y * dpr };
+      const targetPx = ctx.targetSize
+        ? { width: ctx.targetSize.width * dpr, height: ctx.targetSize.height * dpr }
+        : { width: c.width, height: c.height };
+      const info: PanelFrameInfo = { elapsedMs, life, dpr, centerPx, targetPx };
       const frameUniforms = config.frame(info, params);
       // Draw the shared offscreen panel once, then composite into each pass.
       config.draw(pctx, c.width, c.height, params, info);

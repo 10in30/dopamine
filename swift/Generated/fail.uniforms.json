@@ -4,6 +4,7 @@
   "standardUniforms": [
     "uResolution",
     "uOrigin",
+    "uTarget",
     "uLife",
     "uTimeS",
     "uStyle",
@@ -30,6 +31,7 @@
   "allUniforms": [
     "uResolution",
     "uOrigin",
+    "uTarget",
     "uLife",
     "uTimeS",
     "uStyle",

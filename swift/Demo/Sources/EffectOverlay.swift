@@ -26,11 +26,15 @@ struct EffectOverlay: UIViewRepresentable {
     var intensity: Double
     var whimsy: Double
     var anchor: CGPoint
+    /// Per-effect target boxes (global points). The overlay aims the matching
+    /// effect's centrepiece at the box centre, sized to the box.
+    var targets: [String: CGRect] = [:]
 
     func makeUIView(context: Context) -> OverlayUIView { OverlayUIView() }
 
     func updateUIView(_ view: OverlayUIView, context: Context) {
         view.anchorPoint2D = anchor
+        view.targets = targets
         view.mood = mood
         view.intensity = intensity
         view.whimsy = whimsy
@@ -62,6 +66,7 @@ final class OverlayUIView: UIView {
     private var pendingIdx = 0
 
     var anchorPoint2D: CGPoint = .zero
+    var targets: [String: CGRect] = [:]
     var lastFiredToken: Int = 0
     var mood = "celebratory"
     var intensity = 0.8
@@ -206,9 +211,17 @@ final class OverlayUIView: UIView {
 
     @objc private func tick() {
         let scale = Float(window?.screen.scale ?? UIScreen.main.scale)
-        let pt = anchorPoint2D == .zero
+        // If the current effect has a registered target box, aim its centrepiece at
+        // that box (centre + size); otherwise fall back to the card anchor (or the
+        // view centre) with a zero size = "fill the whole canvas".
+        var pt = anchorPoint2D == .zero
             ? SIMD2<Float>(Float(bounds.midX), Float(bounds.midY))
             : SIMD2<Float>(Float(anchorPoint2D.x), Float(anchorPoint2D.y))
-        current?.host.tick(now: CACurrentMediaTime(), dpr: scale, anchorPx: pt)
+        var target = SIMD2<Float>(0, 0)
+        if let name = current?.name, let r = targets[name] {
+            pt = SIMD2<Float>(Float(r.midX), Float(r.midY))
+            target = SIMD2<Float>(Float(r.width), Float(r.height))
+        }
+        current?.host.tick(now: CACurrentMediaTime(), dpr: scale, anchorPx: pt, targetPx: target)
     }
 }

@@ -55,6 +55,13 @@ export interface EffectContext {
   readonly shadow: GLContext | null;
   /** Where the effect is anchored, in CSS px relative to the surface. */
   readonly anchor: Anchor;
+  /**
+   * Size (CSS px) of the underlying element the effect targets, centred on
+   * {@link anchor}. The centrepiece (checkmark, ✗, comic word, hero heart, ink
+   * gesture) is sized to THIS box so it matches the page element. Omitted ⇒ the
+   * full render surface (the centrepiece fills the canvas, as before).
+   */
+  readonly targetSize?: { width: number; height: number };
   /** Device-pixel ratio to render at (already capped by the runtime). */
   readonly dpr: number;
 }

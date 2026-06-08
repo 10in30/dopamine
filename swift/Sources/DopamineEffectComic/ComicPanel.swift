@@ -50,10 +50,11 @@ extension ComicConfig: PanelDrawing {
     // The whole canvas — the panel is a full-frame overlay (web `panelSizePx`).
     public func panelSizePx(canvasPx: CGSize, params: [String: DopeValue]) -> CGSize { canvasPx }
 
-    // `life` is accepted (the host redraws the panel each frame) but the comic word
+    // `frame` is accepted (the host redraws the panel each frame) but the comic word
     // + starburst are a STATIC composition — the shader animates the slam-in / flash
-    // / halftone via its uniforms — so the geometry is baked at the landed pose.
-    public func drawPanel(_ ctx: CGContext, sizePx: CGSize, params: [String: DopeValue], life: Double) {
+    // / halftone via its uniforms — so the geometry is baked at the landed pose. The
+    // frame's element box positions + sizes the word so it lands on the page element.
+    public func drawPanel(_ ctx: CGContext, sizePx: CGSize, params: [String: DopeValue], frame: PanelFrame) {
         let w = sizePx.width, h = sizePx.height
         guard w > 1, h > 1 else { return }
 
@@ -78,8 +79,10 @@ extension ComicConfig: PanelDrawing {
         // Core Graphics equivalent; set once for the whole panel.
         ctx.setBlendMode(.plusLighter)
 
-        let cx = w * 0.5, cy = h * 0.5
-        let minDim = min(w, h)
+        // Position + size the word/starburst to the targeted element (defaults to the
+        // canvas centre + full canvas, reproducing the old screen-centred pose).
+        let cx = frame.centerPx.x, cy = frame.centerPx.y
+        let minDim = min(frame.targetPx.width, frame.targetPx.height)
         // The web rng seeds the burst jitter from (comicSeed * 1000) >>> 0.
         let rng = mulberry32(UInt32(truncatingIfNeeded: Int((comicSeed * 1000).rounded(.towardZero))))
 

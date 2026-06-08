@@ -34,7 +34,7 @@ public protocol AnyEffectHost: AnyObject {
     func prepare(params: [String: DopeValue]) throws
     /// Cheap: start the prepared effect's clock.
     func play()
-    func tick(now: CFTimeInterval, dpr: Float, anchorPx: SIMD2<Float>)
+    func tick(now: CFTimeInterval, dpr: Float, anchorPx: SIMD2<Float>, targetPx: SIMD2<Float>)
 }
 extension MetalOverlayHost: AnyEffectHost {}
 

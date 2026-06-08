@@ -210,11 +210,16 @@ export function teardown(target?: HTMLElement): void {
   for (const [t, host] of [...hosts]) release(t, host);
 }
 
-function buildEffectContext(host: Host, anchor: Anchor): EffectContext {
+function buildEffectContext(
+  host: Host,
+  anchor: Anchor,
+  targetSize?: { width: number; height: number },
+): EffectContext {
   return {
     light: host.light,
     shadow: host.shadow,
     anchor,
+    targetSize,
     get dpr() {
       return host.dpr;
     },
@@ -226,6 +231,8 @@ export interface PlayRequest {
   target: HTMLElement;
   /** Anchor in CSS px relative to the *target's* box (overlay-local). */
   anchor: Anchor;
+  /** Targeted element size (CSS px); the centrepiece is sized to this box. */
+  targetSize?: { width: number; height: number };
   feeling: FeelingInput;
 }
 
@@ -244,7 +251,7 @@ export function play(req: PlayRequest): Promise<void> {
 
   let instance;
   try {
-    instance = req.factory.create(params, buildEffectContext(host, req.anchor));
+    instance = req.factory.create(params, buildEffectContext(host, req.anchor, req.targetSize));
   } catch (err) {
     if (host.active.size === 0) quiesce(host);
     return Promise.reject(err);
@@ -312,7 +319,7 @@ export function prepare(req: PlayRequest): PreparedHandle | null {
 
   let instance;
   try {
-    instance = req.factory.create(params, buildEffectContext(host, req.anchor));
+    instance = req.factory.create(params, buildEffectContext(host, req.anchor, req.targetSize));
   } catch (err) {
     if (host.active.size === 0) quiesce(host);
     throw err;

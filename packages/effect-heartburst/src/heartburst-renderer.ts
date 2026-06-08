@@ -86,13 +86,17 @@ export function drawHeartburstPanel(
   life: number,
   presence: number,
   dpr: number,
+  center: { x: number; y: number },
+  span: number,
 ): void {
   ctx.clearRect(0, 0, w, h);
   if (presence <= 0.001) return;
 
-  const cx = w * 0.5;
-  const cy = h * 0.5;
-  const minDim = Math.min(w, h);
+  // Position the hearts on the targeted element (centre) and size them to its box
+  // (`span`), so the centrepiece matches the page element instead of the canvas.
+  const cx = center.x;
+  const cy = center.y;
+  const minDim = span;
   const seed = (params.heartburstSeed * 1000) >>> 0;
   const rng = mulberry32(seed);
 

@@ -33,9 +33,10 @@ import DopamineCore
 extension HeartburstConfig: PanelDrawing {
     public func panelSizePx(canvasPx: CGSize, params: [String: DopeValue]) -> CGSize { canvasPx }
 
-    public func drawPanel(_ ctx: CGContext, sizePx: CGSize, params: [String: DopeValue], life: Double) {
+    public func drawPanel(_ ctx: CGContext, sizePx: CGSize, params: [String: DopeValue], frame: PanelFrame) {
         let w = sizePx.width, h = sizePx.height
         guard w > 1, h > 1 else { return }
+        let life = frame.life
 
         func num(_ k: String, _ d: Double) -> Double {
             if case let .number(v)? = params[k] { return v }; return d
@@ -51,8 +52,11 @@ extension HeartburstConfig: PanelDrawing {
         // The web additive compositing keeps the R/G/B channel masks independent.
         ctx.setBlendMode(.plusLighter)
 
-        let cx = w * 0.5, cy = h * 0.5
-        let minDim = min(w, h)
+        // Position the hearts on the targeted element (centre) and size them to its
+        // box, so the centrepiece matches the page element instead of the canvas.
+        // Defaults (centre, full canvas) reproduce the old screen-centred pose.
+        let cx = frame.centerPx.x, cy = frame.centerPx.y
+        let minDim = min(frame.targetPx.width, frame.targetPx.height)
         // The web rng seeds from (heartburstSeed * 1000) >>> 0.
         let rng = mulberry32(UInt32(truncatingIfNeeded: Int((seedParam * 1000).rounded(.towardZero))))
 

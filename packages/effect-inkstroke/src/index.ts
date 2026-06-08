@@ -39,6 +39,9 @@ function resolveFromDope(feeling: { mood: string; intensity: number; whimsy: num
 const CONFIG: PassConfig = {
   vertex: INK_VERTEX_SRC,
   fragment: INK_FRAGMENT_SRC,
+  // The gesture centres on the targeted element (uOrigin) and scales to its box
+  // (uTarget, a standard uniform); both default to the full canvas when untargeted.
+  usesOrigin: true,
   uniforms: [
     "uDraw", "uExposure", "uScale", "uPressure", "uWetness", "uBristle",
     "uDroplets", "uSeed",

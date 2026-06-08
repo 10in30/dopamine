@@ -16,6 +16,10 @@ struct ContentView: View {
     @State private var fireToken: Int = 0
     // The anchor (effect origin) in view points — center of the card.
     @State private var anchor: CGPoint = .zero
+    // Per-effect TARGET boxes (global points). Effects that target an element
+    // (comic / heartburst / inkstroke here) land their centrepiece on the matching
+    // box at its size; everything else falls back to the card anchor + full canvas.
+    @State private var targets: [String: CGRect] = [:]
 
     private let moods = ["serene", "celebratory", "electric"]
 
@@ -23,9 +27,10 @@ struct ContentView: View {
         ZStack {
             Color(white: 0.11).ignoresSafeArea()
 
-            VStack(spacing: 28) {
+            VStack(spacing: 24) {
                 Spacer()
                 orderCard
+                targetsRow
                 Spacer()
                 controls
                 fireButton
@@ -38,7 +43,7 @@ struct ContentView: View {
             EffectOverlay(
                 fireToken: fireToken,
                 mood: mood, intensity: intensity, whimsy: whimsy,
-                anchor: anchor
+                anchor: anchor, targets: targets
             )
             .allowsHitTesting(false)
             .ignoresSafeArea()
@@ -85,6 +90,39 @@ struct ContentView: View {
                 }
             }
         )
+    }
+
+    // A row of three deliberately DIFFERENT-sized targets. comic / heartburst /
+    // inkstroke each aim at one, so the demo shows the centrepiece matching the
+    // element's location AND size (a small heart chip, a medium word button, a
+    // wide signature field).
+    private var targetsRow: some View {
+        HStack(spacing: 14) {
+            targetChip("heartburst", "♥", w: 46, h: 46, color: .pink)
+            targetChip("comic", "POW!", w: 104, h: 50, color: .orange)
+            targetChip("inkstroke", "Sign here", w: 184, h: 40, color: .blue)
+        }
+    }
+
+    private func targetChip(_ key: String, _ label: String, w: CGFloat, h: CGFloat, color: Color) -> some View {
+        Text(label)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.white.opacity(0.85))
+            .frame(width: w, height: h)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(color.opacity(0.30))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(color.opacity(0.7), lineWidth: 1)
+                    )
+            )
+            // Publish this chip's global box so the overlay can target it by effect.
+            .background(
+                GeometryReader { geo in
+                    Color.clear.onAppear { targets[key] = geo.frame(in: .global) }
+                }
+            )
     }
 
     private var controls: some View {

@@ -48,6 +48,7 @@ public struct FrameInfo {
 public struct StandardUniforms {
     public var resolution: SIMD2<Float> = .zero  // device px
     public var origin: SIMD2<Float> = .zero      // gl coords (y up)
+    public var target: SIMD2<Float> = .zero      // targeted element size, device px
     public var life: Float = 0
     public var timeS: Float = 0
     public var style: Float = 0
@@ -198,13 +199,19 @@ public final class MetalPassRunner<Config: PassConfig> {
     }
 
     /// Build the StandardUniforms for one pass.
-    private func standard(_ info: FrameInfo, amp: Double, width: Float, height: Float, anchorPx: SIMD2<Float>, dpr: Float, isShadow: Bool) -> StandardUniforms {
+    private func standard(_ info: FrameInfo, amp: Double, width: Float, height: Float, anchorPx: SIMD2<Float>, targetPx: SIMD2<Float>, dpr: Float, isShadow: Bool) -> StandardUniforms {
         var s = StandardUniforms()
         s.resolution = SIMD2(width, height)
         if config.usesOrigin {
             // gl_FragCoord origin is bottom-left, so flip the anchor's y.
             s.origin = SIMD2(anchorPx.x * dpr, height - anchorPx.y * dpr)
         }
+        // Element box (device px) the centrepiece is sized to. A non-positive
+        // size means "no element" → fall back to the full canvas, so untargeted
+        // fires render exactly as before.
+        let tw = targetPx.x > 0 ? targetPx.x * dpr : width
+        let th = targetPx.y > 0 ? targetPx.y * dpr : height
+        s.target = SIMD2(tw, th)
         s.life = Float(info.life)
         s.timeS = Float(info.animMs / 1000)
         s.style = (params["style"].flatMap { if case let .number(v) = $0 { return Float(v) } else { return nil } }) ?? 0
@@ -247,7 +254,8 @@ public final class MetalPassRunner<Config: PassConfig> {
     /// Render light (and shadow, if its encoder is provided) for `elapsedMs`.
     public func render(
         elapsedMs: Double,
-        width: Float, height: Float, anchorPx: SIMD2<Float>, dpr: Float,
+        width: Float, height: Float, anchorPx: SIMD2<Float>,
+        targetPx: SIMD2<Float> = .zero, dpr: Float,
         lightEncoder: MTLRenderCommandEncoder,
         shadowEncoder: MTLRenderCommandEncoder?,
         panel: MTLTexture? = nil
@@ -261,10 +269,10 @@ public final class MetalPassRunner<Config: PassConfig> {
         let (amp, extras) = config.frame(info, params)
 
         if let se = shadowEncoder, let sp = shadowPipeline {
-            let s = standard(info, amp: amp, width: width, height: height, anchorPx: anchorPx, dpr: dpr, isShadow: true)
+            let s = standard(info, amp: amp, width: width, height: height, anchorPx: anchorPx, targetPx: targetPx, dpr: dpr, isShadow: true)
             encodePass(se, pipeline: sp, uniforms: config.packUniforms(standard: s, params: params, extras: extras), panel: panel)
         }
-        let s = standard(info, amp: amp, width: width, height: height, anchorPx: anchorPx, dpr: dpr, isShadow: false)
+        let s = standard(info, amp: amp, width: width, height: height, anchorPx: anchorPx, targetPx: targetPx, dpr: dpr, isShadow: false)
         encodePass(lightEncoder, pipeline: lightPipeline, uniforms: config.packUniforms(standard: s, params: params, extras: extras), panel: panel)
     }
 

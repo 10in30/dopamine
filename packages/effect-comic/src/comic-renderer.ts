@@ -94,13 +94,17 @@ export function drawPanel(
   scale: number,
   presence: number,
   dpr: number,
+  center: { x: number; y: number },
+  span: number,
 ): void {
   ctx.clearRect(0, 0, w, h);
   if (presence <= 0.001) return;
 
-  const cx = w * 0.5;
-  const cy = h * 0.5;
-  const minDim = Math.min(w, h);
+  // Position + size the word/starburst to the targeted element (defaults to the
+  // canvas centre + full canvas, reproducing the old screen-centred pose).
+  const cx = center.x;
+  const cy = center.y;
+  const minDim = span;
   const rng = mulberry32((params.comicSeed * 1000) >>> 0);
 
   // Deterministic per-fire tilt so the panel feels hand-placed (a few degrees).

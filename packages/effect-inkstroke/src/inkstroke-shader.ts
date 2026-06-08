@@ -59,6 +59,8 @@ precision highp float;
 out vec4 fragColor;
 
 uniform vec2  uResolution;   // device pixels
+uniform vec2  uOrigin;       // gesture centre, gl coords (y up) — the targeted element
+uniform vec2  uTarget;       // targeted element size (device px); stroke length scales to it
 uniform float uDraw;         // pen / stroke draw progress 0..1 (fast confirm)
 uniform float uLife;         // whole-effect progress 0..1
 uniform float uTimeS;        // elapsed seconds
@@ -102,8 +104,10 @@ ${GLSL_PARTICLES}
 void strokeGeom(float jitterScale, out vec2 A, out vec2 B, out vec2 C){
   vec2 res = uResolution;
   float minDim = min(res.x, res.y);
-  float len = uScale * res.x;
-  vec2 mid = vec2(res.x * 0.5, res.y * 0.46);
+  // Length scales to the targeted element's width (uTarget defaults to the canvas,
+  // so untargeted fires are unchanged); the gesture centres on the element.
+  float len = uScale * uTarget.x;
+  vec2 mid = uOrigin;
   float bt = floor(uTimeS * 12.0);
   vec2 jit = (hash21(bt + uSeed) - 0.5) * minDim * 0.02 * uStyle * jitterScale;
   A = mid + vec2(-0.42, 0.18) * len + jit;   // upper-left: pen touches down
@@ -179,7 +183,7 @@ float inkOcclusion(vec2 p){
   vec2 launch = checkPos(A, B, C, 0.86, segT, leg);
   vec2 launchDir = normalize(checkPos(A, B, C, 0.92, segT, leg)
                            - checkPos(A, B, C, 0.78, segT, leg));
-  float len = uScale * res.x;
+  float len = uScale * uTarget.x;
   for (int i = 0; i < MAX_DROPS; i++) {
     if (float(i) >= uDroplets) break;
     vec2 hh = hash21(float(i) * 5.3 + uSeed + 11.0);
@@ -233,7 +237,7 @@ void main(){
   // A SHORT down-stroke from the upper-left (A) to the bottom vertex (B), then a
   // LONG up-flick to the far upper-right (C) — an unambiguous approving tick. The
   // pen writes leg1 then leg2; uDraw advances along total arc length.
-  float len = uScale * res.x;
+  float len = uScale * uTarget.x;
   vec2 A, B, C;
   strokeGeom(1.0, A, B, C);   // includes the cel "on twos" jitter (whimsy)
 

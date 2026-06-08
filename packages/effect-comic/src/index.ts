@@ -87,7 +87,8 @@ const CONFIG: PanelConfig<ComicRenderParams & PassParams> = {
   draw: (pctx, w, h, params, info) => {
     const scale = impactScale(info.elapsedMs, params.overshoot);
     const presence = impactPresence(info.life);
-    drawPanel(pctx, w, h, params, scale, presence, info.dpr);
+    const span = Math.min(info.targetPx.width, info.targetPx.height);
+    drawPanel(pctx, w, h, params, scale, presence, info.dpr, info.centerPx, span);
   },
   frame: ({ elapsedMs, life }) => {
     const presence = impactPresence(life);
