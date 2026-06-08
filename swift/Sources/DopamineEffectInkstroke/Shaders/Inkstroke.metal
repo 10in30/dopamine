@@ -43,7 +43,7 @@ using namespace metal;
 // (clamped to 2.2×). Untargeted (target.x == res.x) ⇒ ×1, so the full-screen pen
 // is unchanged and matches the web `strokeProgress` (easeOutCubic of animMs/360).
 inline float inkDraw(constant InkstrokeUniforms &u) {
-    float drawDur = 360.0 * clamp(u.resolution.x / max(u.target.x, 1.0), 1.0, 2.2);
+    float drawDur = 360.0 * clamp(u.resolution.x / max(u.target.x, 1.0), 1.0, 1.4);
     float t = clamp(u.timeS * 1000.0 / drawDur, 0.0, 1.0);
     return 1.0 - pow(1.0 - t, 3.0);
 }
@@ -154,7 +154,7 @@ inline float inkOcclusion(float2 p, constant InkstrokeUniforms &u) {
         if (float(i) >= u.droplets) break;
         float2 hh = dop_hash21(float(i) * 5.3 + u.inkSeed + 11.0);
         float dl = 0.6 + hh.x * 0.25;
-        float dlife = clamp((u.life - dl) / max(1.0 - dl, 0.001), 0.0, 1.0);
+        float dlife = clamp((draw - dl) / max(1.0 - dl, 0.001), 0.0, 1.0);
         if (dlife <= 0.0) continue;
         float spd = (0.4 + hh.y) * len * 0.9;
         float spread = (hh.x - 0.5) * 1.4;
@@ -335,7 +335,7 @@ fragment float4 inkstroke_fragment(
         if (float(i) >= u.droplets) break;
         float2 hh = dop_hash21(float(i) * 5.3 + u.inkSeed + 11.0);
         float dl = 0.6 + hh.x * 0.25;                 // launches as the flick happens
-        float dlife = clamp((u.life - dl) / max(1.0 - dl, 0.001), 0.0, 1.0);
+        float dlife = clamp((draw - dl) / max(1.0 - dl, 0.001), 0.0, 1.0);
         if (dlife <= 0.0) continue;
         float spd = (0.4 + hh.y) * len * 0.9;
         float spread = (hh.x - 0.5) * 1.4;

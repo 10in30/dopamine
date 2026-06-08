@@ -98,7 +98,7 @@ ${GLSL_PARTICLES}
 // (clamped to 2.2x). Untargeted (uTarget.x == res.x) => x1, so the full-screen pen
 // is unchanged and matches the bespoke strokeProgress (easeOutCubic of animMs/360).
 float inkDraw(){
-  float drawDur = 360.0 * clamp(uResolution.x / max(uTarget.x, 1.0), 1.0, 2.2);
+  float drawDur = 360.0 * clamp(uResolution.x / max(uTarget.x, 1.0), 1.0, 1.4);
   float t = clamp(uTimeS * 1000.0 / drawDur, 0.0, 1.0);
   return 1.0 - pow(1.0 - t, 3.0);
 }
@@ -202,7 +202,7 @@ float inkOcclusion(vec2 p){
     if (float(i) >= uDroplets) break;
     vec2 hh = hash21(float(i) * 5.3 + uSeed + 11.0);
     float dl = 0.6 + hh.x * 0.25;
-    float dlife = clamp((uLife - dl) / max(1.0 - dl, 0.001), 0.0, 1.0);
+    float dlife = clamp((draw - dl) / max(1.0 - dl, 0.001), 0.0, 1.0);
     if (dlife <= 0.0) continue;
     float spd = (0.4 + hh.y) * len * 0.9;
     float spread = (hh.x - 0.5) * 1.4;
@@ -381,7 +381,7 @@ void main(){
     if (float(i) >= uDroplets) break;
     vec2 hh = hash21(float(i) * 5.3 + uSeed + 11.0);
     float dl = 0.6 + hh.x * 0.25;                 // launches as the flick happens
-    float dlife = clamp((uLife - dl) / max(1.0 - dl, 0.001), 0.0, 1.0);
+    float dlife = clamp((draw - dl) / max(1.0 - dl, 0.001), 0.0, 1.0);
     if (dlife <= 0.0) continue;
     float spd = (0.4 + hh.y) * len * 0.9;
     float spread = (hh.x - 0.5) * 1.4;
