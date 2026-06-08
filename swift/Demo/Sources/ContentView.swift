@@ -6,6 +6,15 @@
 import SwiftUI
 import simd
 
+/// Collects each target chip's final laid-out frame (global points), keyed by
+/// effect name, so the overlay can aim that effect's centrepiece at the box.
+private struct TargetFrameKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] { [:] }
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
 struct ContentView: View {
     // The feeling controls (mirror the web demo's mood / intensity / whimsy).
     @State private var mood: String = "celebratory"
@@ -102,6 +111,10 @@ struct ContentView: View {
             targetChip("comic", "POW!", w: 104, h: 50, color: .orange)
             targetChip("inkstroke", "Sign here", w: 184, h: 40, color: .blue)
         }
+        // Collect the chips' FINAL laid-out frames (a PreferenceKey always reflects
+        // the settled layout — onAppear could fire with a transient pre-layout frame,
+        // which left the centrepiece off to one side).
+        .onPreferenceChange(TargetFrameKey.self) { targets = $0 }
     }
 
     private func targetChip(_ key: String, _ label: String, w: CGFloat, h: CGFloat, color: Color) -> some View {
@@ -120,7 +133,7 @@ struct ContentView: View {
             // Publish this chip's global box so the overlay can target it by effect.
             .background(
                 GeometryReader { geo in
-                    Color.clear.onAppear { targets[key] = geo.frame(in: .global) }
+                    Color.clear.preference(key: TargetFrameKey.self, value: [key: geo.frame(in: .global)])
                 }
             )
     }

@@ -193,8 +193,8 @@ float inkOcclusion(vec2 p){
     float spd = (0.4 + hh.y) * len * 0.9;
     float spread = (hh.x - 0.5) * 1.4;
     vec2 dir = normalize(launchDir + vec2(-launchDir.y, launchDir.x) * spread);
-    vec2 dp = launch + dir * spd * dlife - vec2(0.0, 1.0) * (minDim * 0.9) * dlife * dlife;
-    float dsz = minDim * 0.006 * (0.4 + hh.y * 0.9) * (1.0 - 0.5 * dlife);
+    vec2 dp = launch + dir * spd * dlife - vec2(0.0, 1.0) * (len * 0.9) * dlife * dlife;
+    float dsz = len * 0.006 * (0.4 + hh.y * 0.9) * (1.0 - 0.5 * dlife);
     float dd = length(p - dp);
     occ = max(occ, (1.0 - smoothstep(dsz * 0.5, dsz * 1.2, dd)) * (1.0 - dlife) * 0.7);
   }
@@ -372,8 +372,8 @@ void main(){
     float spread = (hh.x - 0.5) * 1.4;
     vec2 dir = normalize(launchDir + vec2(-launchDir.y, launchDir.x) * spread);
     // Ballistic arc via the shared particle helper (outward + gravity; y is up).
-    vec2 dp = ballisticPos(launch, dir, spd, minDim * 0.9, dlife);
-    float dsz = minDim * 0.006 * (0.4 + hh.y * 0.9) * (1.0 - 0.5 * dlife);
+    vec2 dp = ballisticPos(launch, dir, spd, len * 0.9, dlife);
+    float dsz = len * 0.006 * (0.4 + hh.y * 0.9) * (1.0 - 0.5 * dlife);
     float dd = length(frag - dp);
     float drop = particleSprite(dd, dsz);   // shared soft round sprite
     // toon: crisp the droplet into a hard dot toward the cel end.

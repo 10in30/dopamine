@@ -145,8 +145,8 @@ inline float inkOcclusion(float2 p, constant InkstrokeUniforms &u) {
         float spd = (0.4 + hh.y) * len * 0.9;
         float spread = (hh.x - 0.5) * 1.4;
         float2 dir = normalize(launchDir + float2(-launchDir.y, launchDir.x) * spread);
-        float2 dp = launch + dir * spd * dlife - float2(0.0, 1.0) * (minDim * 0.9) * dlife * dlife;
-        float dsz = minDim * 0.006 * (0.4 + hh.y * 0.9) * (1.0 - 0.5 * dlife);
+        float2 dp = launch + dir * spd * dlife - float2(0.0, 1.0) * (len * 0.9) * dlife * dlife;
+        float dsz = len * 0.006 * (0.4 + hh.y * 0.9) * (1.0 - 0.5 * dlife);
         float dd = length(p - dp);
         occ = max(occ, (1.0 - smoothstep(dsz * 0.5, dsz * 1.2, dd)) * (1.0 - dlife) * 0.7);
     }
@@ -327,8 +327,8 @@ fragment float4 inkstroke_fragment(
         float2 dir = normalize(launchDir + float2(-launchDir.y, launchDir.x) * spread);
         // Ballistic arc (inlined from look/particles `ballisticPos`; outward +
         // gravity; y is up): origin + dir*speed*t - vec2(0,1)*gravity*t*t.
-        float2 dp = launch + dir * spd * dlife - float2(0.0, 1.0) * (minDim * 0.9) * dlife * dlife;
-        float dsz = minDim * 0.006 * (0.4 + hh.y * 0.9) * (1.0 - 0.5 * dlife);
+        float2 dp = launch + dir * spd * dlife - float2(0.0, 1.0) * (len * 0.9) * dlife * dlife;
+        float dsz = len * 0.006 * (0.4 + hh.y * 0.9) * (1.0 - 0.5 * dlife);
         float dd = length(frag - dp);
         float drop = dop_particleSprite(dd, dsz);   // shared soft round sprite
         // toon: crisp the droplet into a hard dot toward the cel end.

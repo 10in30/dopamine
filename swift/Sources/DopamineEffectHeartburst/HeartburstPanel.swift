@@ -30,6 +30,11 @@ import Foundation
 import CoreGraphics
 import DopamineCore
 
+/// How big the hero heart reads relative to the targeted element box. The heart's
+/// extent ≈ 2·heartScale·basis, so this lifts the default heartScale (~0.22) to a
+/// heart ≈ 1.5× the element. Kept in sync with the web renderer.
+private let HEARTBURST_TARGET_FILL: CGFloat = 3.6
+
 extension HeartburstConfig: PanelDrawing {
     public func panelSizePx(canvasPx: CGSize, params: [String: DopeValue]) -> CGSize { canvasPx }
 
@@ -56,7 +61,10 @@ extension HeartburstConfig: PanelDrawing {
         // box, so the centrepiece matches the page element instead of the canvas.
         // Defaults (centre, full canvas) reproduce the old screen-centred pose.
         let cx = frame.centerPx.x, cy = frame.centerPx.y
-        let minDim = min(frame.targetPx.width, frame.targetPx.height)
+        // The centrepiece should read at ~150% of the targeted element (not a small
+        // fraction of it), so scale the sizing basis up. `heartScale` (~0.22) then
+        // gives a hero heart whose extent ≈ 1.5× the element box. TUNABLE.
+        let minDim = min(frame.targetPx.width, frame.targetPx.height) * HEARTBURST_TARGET_FILL
         // The web rng seeds from (heartburstSeed * 1000) >>> 0.
         let rng = mulberry32(UInt32(truncatingIfNeeded: Int((seedParam * 1000).rounded(.towardZero))))
 

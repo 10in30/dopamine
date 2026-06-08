@@ -40,6 +40,11 @@ import DopamineCore
 import CoreText
 #endif
 
+/// How big the starburst + word read relative to the targeted element box (the
+/// burst diameter ≈ 0.88·basis, so this gives a comic ≈ 1.5× the element). Kept in
+/// sync with the web comic renderer.
+private let COMIC_TARGET_FILL: CGFloat = 1.7
+
 extension ComicConfig: PanelDrawing {
     /// The per-fire SLAMMED token pool — the comic.dope `content.pool` (the seven
     /// affirmations + the checkmark sentinel, equal odds). Kept in sync with the
@@ -82,7 +87,9 @@ extension ComicConfig: PanelDrawing {
         // Position + size the word/starburst to the targeted element (defaults to the
         // canvas centre + full canvas, reproducing the old screen-centred pose).
         let cx = frame.centerPx.x, cy = frame.centerPx.y
-        let minDim = min(frame.targetPx.width, frame.targetPx.height)
+        // The word + starburst read at ~150% of the targeted element (not a fraction
+        // of it), so scale the sizing basis up. TUNABLE; kept in sync with the web.
+        let minDim = min(frame.targetPx.width, frame.targetPx.height) * COMIC_TARGET_FILL
         // The web rng seeds the burst jitter from (comicSeed * 1000) >>> 0.
         let rng = mulberry32(UInt32(truncatingIfNeeded: Int((comicSeed * 1000).rounded(.towardZero))))
 
