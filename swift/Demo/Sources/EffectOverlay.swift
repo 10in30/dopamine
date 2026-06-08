@@ -30,6 +30,10 @@ struct EffectOverlay: UIViewRepresentable {
     /// Per-effect target boxes (global points). The overlay aims the matching
     /// effect's centrepiece at the box centre, sized to the box.
     var targets: [String: CGRect] = [:]
+    /// Called (on the main thread) when playback STARTS (true) and when it ends
+    /// and the overlay goes idle (false) — so the host can fade the targeted
+    /// element's content out while the effect plays over it, then back in.
+    var onActiveChange: (Bool) -> Void = { _ in }
 
     func makeUIView(context: Context) -> OverlayUIView { OverlayUIView() }
 
@@ -39,6 +43,7 @@ struct EffectOverlay: UIViewRepresentable {
         view.mood = mood
         view.intensity = intensity
         view.whimsy = whimsy
+        view.onActiveChange = onActiveChange
         // Picker selection: make the chosen effect current (does NOT play it; Fire
         // plays). No-op during autoplay or if it's already current.
         view.switchTo(effectName)
@@ -71,6 +76,8 @@ final class OverlayUIView: UIView {
 
     var anchorPoint2D: CGPoint = .zero
     var targets: [String: CGRect] = [:]
+    var onActiveChange: ((Bool) -> Void)?
+    private var reportedActive = false
     var lastFiredToken: Int = 0
     var mood = "celebratory"
     var intensity = 0.8
@@ -220,6 +227,16 @@ final class OverlayUIView: UIView {
         p.host.play()
         activeUntil = CACurrentMediaTime() + dwellSeconds(p.params, gap: Self.idleTailSeconds)
         displayLink?.isPaused = false
+        notifyActive(true)
+    }
+
+    /// Report play/idle transitions to the host (deferred to the next runloop tick
+    /// so we never mutate SwiftUI state inside an `updateUIView` call chain).
+    private func notifyActive(_ active: Bool) {
+        guard active != reportedActive else { return }
+        reportedActive = active
+        let cb = onActiveChange
+        DispatchQueue.main.async { cb?(active) }
     }
 
     /// Manual Fire: re-prepare the current effect with a fresh feeling, then play.
@@ -278,6 +295,7 @@ final class OverlayUIView: UIView {
         // Autoplay (CI) renders continuously.
         if Autoplay.requestedEffect == nil && now > activeUntil {
             displayLink?.isPaused = true
+            notifyActive(false)
             return
         }
         let scale = Float(renderScale)

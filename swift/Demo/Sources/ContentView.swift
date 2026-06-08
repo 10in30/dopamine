@@ -33,6 +33,9 @@ struct ContentView: View {
     // (comic / heartburst / inkstroke here) land their centrepiece on the matching
     // box at its size; everything else falls back to the card anchor + full canvas.
     @State private var targets: [String: CGRect] = [:]
+    // True while an effect is playing. Used to fade the targeted chip's content
+    // out (so its label doesn't show through the effect) and back in after.
+    @State private var effectActive = false
 
     private let moods = ["serene", "celebratory", "electric"]
 
@@ -57,7 +60,10 @@ struct ContentView: View {
                 effectName: effectName,
                 fireToken: fireToken,
                 mood: mood, intensity: intensity, whimsy: whimsy,
-                anchor: anchor, targets: targets
+                anchor: anchor, targets: targets,
+                onActiveChange: { active in
+                    withAnimation(.easeInOut(duration: 0.28)) { effectActive = active }
+                }
             )
             .allowsHitTesting(false)
             .ignoresSafeArea()
@@ -141,6 +147,10 @@ struct ContentView: View {
                     Color.clear.preference(key: TargetFrameKey.self, value: [key: geo.frame(in: .global)])
                 }
             )
+            // Hide this chip while ITS effect is playing over it (the label/box
+            // showing through the effect is confusing); fades back in after.
+            // Opacity doesn't affect layout, so the published frame stays valid.
+            .opacity(effectActive && effectName == key ? 0 : 1)
     }
 
     private var controls: some View {
