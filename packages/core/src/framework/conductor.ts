@@ -58,6 +58,23 @@ interface Host {
 
 const hosts = new Map<HTMLElement, Host>();
 
+// Cap the overlay's drawing-buffer area so a heavy fullscreen effect (confetti,
+// lightning, solarbloom — large per-fragment loops) doesn't pay for millions of
+// retina pixels on a big viewport. Past the budget the EFFECTIVE dpr is scaled
+// down — the buffer shrinks and the browser upscales the canvas (CSS size
+// unchanged), which is imperceptible for soft glow but a big fill-cost win. Small
+// surfaces (phones) stay at full dpr. The SAME effective dpr drives the effect's
+// coordinate math (ctx.dpr), so origin/resolution stay consistent.
+const MAX_OVERLAY_PIXELS = 2_000_000;
+
+function effectiveDpr(c: HTMLCanvasElement): number {
+  const dpr = deviceDpr();
+  const cw = Math.max(1, c.clientWidth);
+  const ch = Math.max(1, c.clientHeight);
+  const px = cw * ch * dpr * dpr;
+  return px > MAX_OVERLAY_PIXELS ? Math.max(1, dpr * Math.sqrt(MAX_OVERLAY_PIXELS / px)) : dpr;
+}
+
 function syncCanvasSize(c: HTMLCanvasElement, dpr: number): void {
   const w = Math.max(1, Math.round(c.clientWidth * dpr));
   const h = Math.max(1, Math.round(c.clientHeight * dpr));
@@ -96,9 +113,10 @@ function getHost(target: HTMLElement, wantShadow: boolean): Host {
     resize: () => {},
   };
   h.resize = () => {
-    h.dpr = deviceDpr();
+    h.dpr = effectiveDpr(h.light.canvas);
     syncHostSize(h);
   };
+  h.dpr = effectiveDpr(overlay.canvas);
   syncHostSize(h);
   window.addEventListener("resize", h.resize);
   hosts.set(target, h);

@@ -89,19 +89,39 @@ effectGroup?.addEventListener("click", (e) => {
     .forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
 });
 
-// Fire from the button's center so the bloom radiates from the action.
 const fireBtn = $<HTMLButtonElement>("#fire");
+
+// Celebrate ON the "Order complete" card: the effect is centred on, and SIZED to,
+// that element — not the full page. This matters because an effect has two kinds
+// of parts: the panel centrepiece (comic's word, heartburst's heart) is drawn at
+// the origin, while procedural parts (comic's action-line ring, the burst) are
+// sized to the targeted box. If the box defaults to the whole viewport the ring
+// becomes viewport-sized and sweeps the screen center while the word sits at the
+// origin — they look like two different targets. Targeting the card keeps every
+// part coherent on one element. (The full-page overlay still hosts it, so effects
+// that spill past the card aren't clipped.)
+const targetEl = $(".receipt");
+function originTarget(): {
+  origin: { x: number; y: number };
+  targetSize: { width: number; height: number };
+} {
+  const r = targetEl.getBoundingClientRect();
+  return {
+    origin: { x: r.left + r.width / 2, y: r.top + r.height / 2 },
+    targetSize: { width: r.width, height: r.height },
+  };
+}
+
 function fire(overrides: Partial<typeof state> = {}): Promise<void> {
   const mood = overrides.mood ?? state.mood;
   const intensity = overrides.intensity ?? state.intensity;
   const whimsy = overrides.whimsy ?? state.whimsy;
   const effect = (overrides.effect ?? state.effect) as EffectName;
-  const r = fireBtn.getBoundingClientRect();
   return play(effect, {
     mood: moodFor(effect, mood),
     intensity,
     whimsy,
-    origin: { x: r.left + r.width / 2, y: r.top + r.height / 2 },
+    ...originTarget(),
   });
 }
 fireBtn.addEventListener("click", () => void fire());
@@ -114,13 +134,12 @@ function prepare(overrides: Partial<typeof state> & { seed?: number } = {}): Pre
   const whimsy = overrides.whimsy ?? state.whimsy;
   const effect = (overrides.effect ?? state.effect) as EffectName;
   const seed = overrides.seed;
-  const r = fireBtn.getBoundingClientRect();
   return preparePlay(effect, {
     mood: moodFor(effect, mood),
     intensity,
     whimsy,
     seed,
-    origin: { x: r.left + r.width / 2, y: r.top + r.height / 2 },
+    ...originTarget(),
   });
 }
 
