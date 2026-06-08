@@ -51,8 +51,17 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
+      # Retry: ffmpeg-static downloads its binary from GitHub releases at install
+      # time, which intermittently 504s and fails the whole install. Retry a few
+      # times before giving up so a transient blip doesn't red the reel.
       - name: Install deps
-        run: npm install
+        run: |
+          n=0
+          until npm install; do
+            n=$((n+1))
+            if [ "$n" -ge 4 ]; then echo "npm install failed after $n attempts"; exit 1; fi
+            echo "npm install failed (attempt $n) — retrying in 15s…"; sleep 15
+          done
 
       - name: Install Chromium (+ OS deps)
         run: npx playwright install --with-deps chromium
