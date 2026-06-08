@@ -211,17 +211,30 @@ final class OverlayUIView: UIView {
 
     @objc private func tick() {
         let scale = Float(window?.screen.scale ?? UIScreen.main.scale)
-        // If the current effect has a registered target box, aim its centrepiece at
-        // that box (centre + size); otherwise fall back to the card anchor (or the
-        // view centre) with a zero size = "fill the whole canvas".
-        var pt = anchorPoint2D == .zero
-            ? SIMD2<Float>(Float(bounds.midX), Float(bounds.midY))
-            : SIMD2<Float>(Float(anchorPoint2D.x), Float(anchorPoint2D.y))
+        // Resolve the anchor: a registered target box (centre + size) for the
+        // current effect, else the card anchor, else the view centre.
+        // anchorPoint2D and the target rects are in SwiftUI `.global` (window)
+        // coords — convert them into THIS view's local space so the Metal layer
+        // (sized to our bounds) lines up with the on-screen elements. Without this,
+        // a non-zero overlay origin in the window shifts EVERY effect by a constant.
+        var pt: SIMD2<Float>
         var target = SIMD2<Float>(0, 0)
         if let name = current?.name, let r = targets[name] {
-            pt = SIMD2<Float>(Float(r.midX), Float(r.midY))
+            let c = localPoint(CGPoint(x: r.midX, y: r.midY))
+            pt = SIMD2<Float>(Float(c.x), Float(c.y))
             target = SIMD2<Float>(Float(r.width), Float(r.height))
+        } else if anchorPoint2D != .zero {
+            let c = localPoint(anchorPoint2D)
+            pt = SIMD2<Float>(Float(c.x), Float(c.y))
+        } else {
+            pt = SIMD2<Float>(Float(bounds.midX), Float(bounds.midY))  // already local
         }
         current?.host.tick(now: CACurrentMediaTime(), dpr: scale, anchorPx: pt, targetPx: target)
+    }
+
+    /// Map a SwiftUI `.global` (window) point into this view's local coordinates.
+    /// Identity when the overlay already sits at the window origin.
+    private func localPoint(_ global: CGPoint) -> CGPoint {
+        window != nil ? convert(global, from: nil) : global
     }
 }
