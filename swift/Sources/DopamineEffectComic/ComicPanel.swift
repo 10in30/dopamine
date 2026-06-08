@@ -88,8 +88,9 @@ extension ComicConfig: PanelDrawing {
         // canvas centre + full canvas, reproducing the old screen-centred pose).
         let cx = frame.centerPx.x, cy = frame.centerPx.y
         // The word + starburst read at ~150% of the targeted element (not a fraction
-        // of it), so scale the sizing basis up. TUNABLE; kept in sync with the web.
-        let minDim = min(frame.targetPx.width, frame.targetPx.height) * COMIC_TARGET_FILL
+        // of it), so scale the sizing basis up — but clamp to the canvas so a
+        // full-page fire (target == canvas) keeps its original size. Sync w/ the web.
+        let minDim = min(min(frame.targetPx.width, frame.targetPx.height) * COMIC_TARGET_FILL, min(w, h))
         // The web rng seeds the burst jitter from (comicSeed * 1000) >>> 0.
         let rng = mulberry32(UInt32(truncatingIfNeeded: Int((comicSeed * 1000).rounded(.towardZero))))
 

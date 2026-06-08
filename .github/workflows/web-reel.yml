@@ -63,6 +63,12 @@ jobs:
             echo "npm install failed (attempt $n) — retrying in 15s…"; sleep 15
           done
 
+      # ffmpeg-static is an OPTIONAL dep (its GitHub-releases binary download
+      # sometimes 504s); the reel falls back to the system ffmpeg, so make sure one
+      # is present (it usually is on ubuntu-latest).
+      - name: Ensure ffmpeg
+        run: ffmpeg -version >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+
       - name: Install Chromium (+ OS deps)
         run: npx playwright install --with-deps chromium
 

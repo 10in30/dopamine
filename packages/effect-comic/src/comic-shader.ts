@@ -50,6 +50,7 @@ out vec4 fragColor;
 
 uniform sampler2D uPanel;     // R=wordFill G=ink B=burstFill
 uniform vec2  uResolution;    // device pixels
+uniform vec2  uTarget;        // targeted element size (device px); scales the action lines
 uniform vec2  uCenter;        // impact centre, device px
 uniform float uLife;          // whole-effect progress 0..1
 uniform float uTimeS;         // elapsed seconds
@@ -82,6 +83,11 @@ void main(){
   vec2 frag = vUv * uResolution;
   vec2 res = uResolution;
   float minDim = min(res.x, res.y);
+  // The word/burst (panel) are sized to the targeted element box; scale the
+  // radiating action lines to the SAME basis so they streak off the word, not the
+  // whole canvas. Clamped to the canvas so a full-page fire (uTarget == res) is
+  // unchanged. Must match the comic renderer's COMIC_TARGET_FILL (1.7).
+  float comicSpan = min(min(uTarget.x, uTarget.y) * 1.7, minDim);
 
   // ---- SHADOW PASS (multiply layer) ---------------------------------------
   // Cheap occlusion: the panel's solid forms (word fill + burst fill) sampled
@@ -139,10 +145,10 @@ void main(){
   float thick = mix(0.05, 0.14, jr);
   float lineBody = 1.0 - smoothstep(thick * 0.35, thick, wedge);
   // radial extent: lines start OUTSIDE the burst and streak outward to the edge.
-  float innerR = minDim * (0.30 + 0.05 * jr2);
-  float outerR = minDim * (0.46 + 0.30 * jr);
-  float radialMask = smoothstep(innerR, innerR + minDim * 0.015, rad)
-                   * (1.0 - smoothstep(outerR - minDim * 0.10, outerR, rad));
+  float innerR = comicSpan * (0.30 + 0.05 * jr2);
+  float outerR = comicSpan * (0.46 + 0.30 * jr);
+  float radialMask = smoothstep(innerR, innerR + comicSpan * 0.015, rad)
+                   * (1.0 - smoothstep(outerR - comicSpan * 0.10, outerR, rad));
   // fade the lines in fast on impact, hold, then they thin out late.
   float linePresence = smoothstep(0.0, 0.06, uLife) * (1.0 - smoothstep(0.6, 1.0, uLife));
   // taper opacity along the line so the inner end is boldest (ink-streak feel).

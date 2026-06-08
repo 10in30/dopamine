@@ -101,8 +101,9 @@ export function drawHeartburstPanel(
   const cx = center.x;
   const cy = center.y;
   // The hero heart reads at ~150% of the targeted element (heartScale ~0.22 ⇒
-  // heart extent ≈ 1.5× the box). Kept in sync with HeartburstPanel.swift. TUNABLE.
-  const minDim = span * HEARTBURST_TARGET_FILL;
+  // heart extent ≈ 1.5× the box), clamped to the canvas so a full-page fire
+  // (target == canvas) keeps its original size. Sync w/ HeartburstPanel.swift.
+  const minDim = Math.min(span * HEARTBURST_TARGET_FILL, Math.min(w, h));
   const seed = (params.heartburstSeed * 1000) >>> 0;
   const rng = mulberry32(seed);
 

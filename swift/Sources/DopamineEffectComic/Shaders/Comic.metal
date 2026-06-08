@@ -77,6 +77,11 @@ fragment float4 comic_fragment(
     float2 vUv = frag / u.resolution;
     float2 res = u.resolution;
     float minDim = min(res.x, res.y);
+    // The word/burst (panel) are sized to the targeted element box; scale the
+    // radiating action lines to the SAME basis so they streak off the word, not the
+    // whole canvas. Clamped to the canvas so a full-page fire (u.target == res) is
+    // unchanged. Must match ComicPanel's COMIC_TARGET_FILL (1.7).
+    float comicSpan = min(min(u.target.x, u.target.y) * 1.7, minDim);
 
     // ---- SHADOW PASS (multiply layer) ---------------------------------------
     // Cheap occlusion: the panel's solid forms (word fill + burst fill) sampled
@@ -132,10 +137,10 @@ fragment float4 comic_fragment(
     float thick = mix(0.05, 0.14, jr);
     float lineBody = 1.0 - smoothstep(thick * 0.35, thick, wedge);
     // radial extent: lines start OUTSIDE the burst and streak outward to the edge.
-    float innerR = minDim * (0.30 + 0.05 * jr2);
-    float outerR = minDim * (0.46 + 0.30 * jr);
-    float radialMask = smoothstep(innerR, innerR + minDim * 0.015, rad)
-                     * (1.0 - smoothstep(outerR - minDim * 0.10, outerR, rad));
+    float innerR = comicSpan * (0.30 + 0.05 * jr2);
+    float outerR = comicSpan * (0.46 + 0.30 * jr);
+    float radialMask = smoothstep(innerR, innerR + comicSpan * 0.015, rad)
+                     * (1.0 - smoothstep(outerR - comicSpan * 0.10, outerR, rad));
     // fade the lines in fast on impact, hold, then they thin out late.
     float linePresence = smoothstep(0.0, 0.06, u.life) * (1.0 - smoothstep(0.6, 1.0, u.life));
     // taper opacity along the line so the inner end is boldest (ink-streak feel).

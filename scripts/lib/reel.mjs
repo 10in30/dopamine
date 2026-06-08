@@ -49,8 +49,24 @@ export const REEL = [
   { name: "lightning", mood: "electric", intensity: 0.95, whimsy: 0.4 },
 ];
 
+/**
+ * Resolve the ffmpeg binary. Prefer `$FFMPEG_PATH`, then the bundled
+ * `ffmpeg-static` (an OPTIONAL dep — its install downloads a binary from GitHub
+ * releases, which sometimes 504s), then the system `ffmpeg` on PATH (present on
+ * the CI runners). So a flaky/unavailable ffmpeg-static download no longer blocks
+ * the reel.
+ */
+function ffmpegBin() {
+  if (process.env.FFMPEG_PATH) return process.env.FFMPEG_PATH;
+  try {
+    const p = require("ffmpeg-static");
+    if (p) return p;
+  } catch { /* optional dep absent — fall through to system ffmpeg */ }
+  return "ffmpeg";
+}
+
 export function ffmpeg(args) {
-  const bin = require("ffmpeg-static");
+  const bin = ffmpegBin();
   return new Promise((res, reject) => {
     const p = spawn(bin, args, { stdio: "ignore" });
     p.on("error", reject);

@@ -108,9 +108,10 @@ export function drawPanel(
   // canvas centre + full canvas, reproducing the old screen-centred pose).
   const cx = center.x;
   const cy = center.y;
-  // The starburst + word read at ~150% of the targeted element. Kept in sync with
-  // ComicPanel.swift. TUNABLE.
-  const minDim = span * COMIC_TARGET_FILL;
+  // The starburst + word read at ~150% of the targeted element, clamped to the
+  // canvas so a full-page fire (target == canvas) keeps its original size. Kept in
+  // sync with ComicPanel.swift. TUNABLE.
+  const minDim = Math.min(span * COMIC_TARGET_FILL, Math.min(w, h));
   const rng = mulberry32((params.comicSeed * 1000) >>> 0);
 
   // Deterministic per-fire tilt so the panel feels hand-placed (a few degrees).
