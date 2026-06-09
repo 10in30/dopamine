@@ -17,17 +17,18 @@
 
 import { CONFETTI_FRAGMENT_SRC, CONFETTI_VERTEX_SRC, MAX_PIECES } from "./confetti-shader.js";
 import { confettiAmp } from "./confetti-tempo.js";
+import { drawConfettiPanel, type ConfettiRenderParams } from "./confetti-renderer.js";
 import {
   registerEffect,
   registerProgram,
   parseDope,
   resolveDopeParams,
-  createPassInstance,
+  createPanelInstance,
   type EffectContext,
   type EffectFactory,
   type EffectInstance,
   type FeelingInput,
-  type PassConfig,
+  type PanelConfig,
   type PassParams,
 } from "@dopamine/core";
 import doc from "./confetti.dope.json";
@@ -54,24 +55,31 @@ interface ConfettiParams extends PassParams {
 // shadow a moderate occluder "height".
 const SHADOW_HEIGHT_FRAC = 0.5;
 
-const CONFIG: PassConfig = {
+// HYBRID PANEL effect (web): the pieces are rasterized into a Canvas2D panel each
+// frame (poses computed once in JS — O(covered area), not O(pixels × pieces)) and
+// this shader samples + finishes them. The scalar params still auto-bind by name
+// to the shader uniforms it declares (e.g. exposure → uExposure); the rest of the
+// resolved params (spread, gravity, …) are consumed by the panel `draw` instead
+// of uniforms. The `.dope` is unchanged; only the web render path moved.
+const CONFIG: PanelConfig<ConfettiParams> = {
   vertex: CONFETTI_VERTEX_SRC,
   fragment: CONFETTI_FRAGMENT_SRC,
-  uniforms: [
-    "uExposure", "uPieceCount", "uSpread", "uLaunchSpeed", "uGravity",
-    "uFlutter", "uPieceSize", "uSpin", "uPieceSeed",
-  ],
-  usesOrigin: true,
-  // overshoot feeds the envelope, not a uniform; pieceSeed is the scatter offset.
-  bindings: { overshoot: null, pieceSeed: "uPieceSeed" },
+  uniforms: ["uExposure"],
+  // overshoot feeds the envelope; the panel `draw` consumes the motion params, so
+  // they don't bind to uniforms (the shader doesn't declare them).
+  bindings: {
+    overshoot: null, pieceSeed: null, pieceCount: null, spread: null,
+    launchSpeed: null, gravity: null, flutter: null, pieceSize: null, spin: null,
+  },
   shadowHeightFrac: SHADOW_HEIGHT_FRAC,
-  frame: ({ life }, params) => ({
-    amp: confettiAmp(life, (params as ConfettiParams).overshoot),
-  }),
+  draw: (panelCtx, w, h, params, info) => {
+    drawConfettiPanel(panelCtx, w, h, params as unknown as ConfettiRenderParams, info.life, info.centerPx);
+  },
+  frame: ({ life }, params) => ({ amp: confettiAmp(life, params.overshoot) }),
 };
 
 function createInstance(params: ConfettiParams, ctx: EffectContext): EffectInstance {
-  return createPassInstance(CONFIG, params as PassParams, ctx);
+  return createPanelInstance(CONFIG, params, ctx);
 }
 
 export const confetti: EffectFactory<ConfettiParams> = {

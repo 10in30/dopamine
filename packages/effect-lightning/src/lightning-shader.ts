@@ -171,40 +171,58 @@ vec2 boltStart(){
 
 // SHADOW silhouette: just the bolt mass (main + forks), no glow/core/flash — a
 // cheap occlusion field so the extra multiply pass stays light under software GL.
-float boltOcclusion(vec2 p){
+//
+// The penumbra wants a 9-tap ring blur. The bolt's jagged polyline vertices are
+// fragment-INDEPENDENT (a pure function of uStrike/uSeed/time via boltPoint's
+// fbm) — re-walking boltPoint per tap recomputed that fbm 9x, the dominant cost
+// under software/ANGLE WebGL. So we build the polyline ONCE, then each tap does
+// only the cheap segment-distance walk. Mathematically identical to summing 9
+// independent boltOcclusion() calls.
+vec4 lightningShadowColor(vec2 frag){
   float minDim = min(uResolution.x, uResolution.y);
   vec2 A = boltStart();
   vec2 B = uOrigin;
   float rad = minDim * uThickness * 1.6;
-  float occ = 0.0;
-  vec2 prev = boltPoint(A, B, 0.0, 0.0, 0.0);
+
+  // Build the (shadow, un-jittered) bolt polyline once. \`last\` is the index of
+  // the final struck vertex (the strike progress gates how much of the arc exists).
+  vec2 verts[BOLT_SEGS + 1];
+  verts[0] = boltPoint(A, B, 0.0, 0.0, 0.0);
+  int last = 0;
   for (int i = 1; i <= BOLT_SEGS; i++) {
     float t = float(i) / float(BOLT_SEGS);
     if (t - 1.0 / float(BOLT_SEGS) > uStrike) break;
     float tc = min(t, uStrike);
-    vec2 cur = boltPoint(A, B, tc, 0.0, 0.0);
-    float dist = sdSeg(p, prev, cur);
-    occ = max(occ, 1.0 - smoothstep(rad * 0.6, rad, dist));
-    prev = cur;
+    verts[i] = boltPoint(A, B, tc, 0.0, 0.0);
+    last = i;
   }
-  return clamp(occ * uAmp, 0.0, 1.0);
-}
 
-vec4 lightningShadowColor(vec2 frag){
   vec2 sp = frag - uShadowOffset;
-  float occ = boltOcclusion(sp);
   float soft = uShadowSoft;
-  occ += boltOcclusion(sp + vec2( soft, 0.0));
-  occ += boltOcclusion(sp + vec2(-soft, 0.0));
-  occ += boltOcclusion(sp + vec2(0.0,  soft));
-  occ += boltOcclusion(sp + vec2(0.0, -soft));
   float s2 = soft * 0.7071;
-  occ += boltOcclusion(sp + vec2( s2,  s2));
-  occ += boltOcclusion(sp + vec2(-s2,  s2));
-  occ += boltOcclusion(sp + vec2( s2, -s2));
-  occ += boltOcclusion(sp + vec2(-s2, -s2));
-  occ /= 9.0;
-  float dark = clamp(occ, 0.0, 1.0) * uShadowStrength;
+  vec2 taps[9];
+  taps[0] = sp;
+  taps[1] = sp + vec2( soft, 0.0);
+  taps[2] = sp + vec2(-soft, 0.0);
+  taps[3] = sp + vec2(0.0,  soft);
+  taps[4] = sp + vec2(0.0, -soft);
+  taps[5] = sp + vec2( s2,  s2);
+  taps[6] = sp + vec2(-s2,  s2);
+  taps[7] = sp + vec2( s2, -s2);
+  taps[8] = sp + vec2(-s2, -s2);
+
+  float occSum = 0.0;
+  for (int k = 0; k < 9; k++) {
+    float occ = 0.0;
+    for (int i = 1; i <= BOLT_SEGS; i++) {
+      if (i > last) break;
+      float dist = sdSeg(taps[k], verts[i - 1], verts[i]);
+      occ = max(occ, 1.0 - smoothstep(rad * 0.6, rad, dist));
+    }
+    occSum += clamp(occ * uAmp, 0.0, 1.0);
+  }
+  occSum /= 9.0;
+  float dark = clamp(occSum, 0.0, 1.0) * uShadowStrength;
   // Cool the shadow toward the electric blue (NOT the roaming uC1, which the
   // golden-angle palette can push into magenta) so the cast occlusion stays on-hue.
   vec3 tint = mix(vec3(1.0), 0.55 + 0.45 * normalize(elecRamp(0.2) + 1e-3), 0.25);
