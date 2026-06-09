@@ -340,6 +340,34 @@ const EFFECTS = {
     // No sampler uniforms (Ripple is a pure analytic shader — no textures).
     samplers: [],
   },
+  halo: {
+    // Where the `.dope` lives + where to write the generated files.
+    dope: "swift/Sources/DopamineEffectHalo/Resources/halo.dope.json",
+    swiftOut: "swift/Sources/DopamineEffectHalo/HaloUniforms.swift",
+    mslOut: "swift/Sources/DopamineEffectHalo/Shaders/HaloUniforms.metal",
+    // Web name-list kept OUT of the SwiftPM Sources tree (so it isn't an
+    // unhandled resource); it documents the GLSL `u<Name>` superset for the TS.
+    webOut: "swift/Generated/halo.uniforms.json",
+    // `render.params` that are NOT shader uniforms (web `bindings: null` /
+    // standard / tempo). `style` is the standard uStyle. Halo has no `overshoot`
+    // (it is CONTINUOUS — no held-breath envelope) and `durationMs` lives in
+    // tempo, not render.params, so `style` is the only exclusion. `period` IS a
+    // uniform (uPeriod) — the loop period the shader's periodic functions use.
+    excludeParams: ["style"],
+    // The web scatter key is `haloSeed`, but it is null-bound (web
+    // `bindings: { haloSeed: null }`) — the halo shader does NOT read a seed
+    // uniform (the seed only steers the palette) — so it contributes NO struct
+    // field, exactly like fail's `failSeed`. The Swift `resolve()` still passes
+    // `scatterKey: "haloSeed"` to `resolveDopeParams` for RNG parity; that is
+    // independent of this uniform-struct manifest.
+    scatterKey: null,
+    // Halo has no per-frame extras: its global brightness is the STEADY periodic
+    // breathe gate (fed to the shadow geometry as `amp`, a standard uniform), and
+    // it draws no glyph / texture-bound layer. So the struct tail is empty.
+    extras: [],
+    // No sampler uniforms (Halo is a pure analytic shader — no textures).
+    samplers: [],
+  },
 };
 
 // ---------------------------------------------------------------------------

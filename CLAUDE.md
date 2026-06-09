@@ -4,18 +4,26 @@ Guidance for AI agents (and humans) working in this repository.
 
 ## What this is
 
-Dopamine is a cross-platform visual-effects library. There are **nine effects**
+Dopamine is a cross-platform visual-effects library. There are **ten effects**
 today — solarbloom, aurora, comic, confetti, fail, heartburst, inkstroke,
-lightning, ripple — implemented from **one shared data spine** across three
+lightning, ripple, halo — implemented from **one shared data spine** across three
 stacks: a web stack (TypeScript + WebGL2), a Swift stack (Swift + Metal), and an
 **Android stack (Kotlin + OpenGL ES 3.0)**. We will add many more effects and
 expand the mechanisms in existing ones. **The portable `.dope` file matters more
 than any of the code** — the code on every platform is an interpreter for that
 data.
 
+> **`halo` is the first CONTINUOUS effect.** The other nine are one-shot reward
+> moments (`amp = envelope(life)`, a 0→peak→0 fade); `halo` is a calm ambient
+> "loading" ring that LOOPS SEAMLESSLY. It departs from the envelope convention:
+> all motion is periodic in `uTimeS` (period 1.5 s) and `tempo.durationMs` (6000)
+> is an integer number of periods, so the frame at `t == durationMs` matches
+> `t == 0` at every whimsy. See `docs/cross-platform-effects-rfc.md` for a
+> proposal to make looping a first-class format/runner feature.
+
 > **Android status.** The portable core (`android/dopamine-core`,
 > byte-parity-tested), the GL rendering backbone (`android/dopamine-gl`), and **all
-> nine effects** now ship on the same `.dope` spine (each its own
+> ten effects** now ship on the same `.dope` spine (each its own
 > `dopamine-effect-<name>` module + the `dopamine-effects` umbrella). See
 > `android/README.md` for the per-effect porting contract.
 
@@ -165,7 +173,7 @@ are auto-included only when an Android SDK is present (`ANDROID_HOME` /
 - **`.github/workflows/swift.yml`** — two jobs:
   - **macOS** (`macos-15-xlarge`, M2): `swift build`/`test` (Metal compiles + the
     Metal-guarded tests), the **gen-uniforms staleness gate**, then XcodeGen →
-    `xcodebuild` the iOS-Simulator demo, boot a sim, autoplay all nine, and
+    `xcodebuild` the iOS-Simulator demo, boot a sim, autoplay all ten, and
     `simctl recordVideo` a sequence (uploaded as `solarbloom-sim-clip`).
     build+test+gate are MUST-PASS; the record step is best-effort.
   - **linux** (`swift:6.0.3`, no Apple SDK): build + the parity test — proves the

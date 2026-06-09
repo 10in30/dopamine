@@ -27,6 +27,7 @@
     "@dopamine/effect-ripple": "0.1.0",
     "@dopamine/effect-confetti": "0.1.0",
     "@dopamine/effect-heartburst": "0.1.0",
-    "@dopamine/effect-lightning": "0.1.0"
+    "@dopamine/effect-lightning": "0.1.0",
+    "@dopamine/effect-halo": "0.1.0"
   }
 }

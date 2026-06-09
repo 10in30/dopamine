@@ -21,7 +21,7 @@ that doc is the spec.
 >   `index.ts` that **self-registers on import** (`registerEffect` +
 >   `registerProgram`). It self-registers, so importing it is all it takes.
 > - **`packages/effects`** (`@dopamine/effects`) — the batteries-included
->   umbrella: depends on all nine, re-exports them, and hosts the `celebrate*`
+>   umbrella: depends on all ten, re-exports them, and hosts the `celebrate*`
 >   conveniences, `builtinEffectNames`, and the `<dopamine-success>` element.
 >   `import "@dopamine/effects"` registers everything.
 >

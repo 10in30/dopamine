@@ -36,6 +36,7 @@ let package = Package(
         .library(name: "DopamineEffectInkstroke", targets: ["DopamineEffectInkstroke"]),
         .library(name: "DopamineEffectLightning", targets: ["DopamineEffectLightning"]),
         .library(name: "DopamineEffectRipple", targets: ["DopamineEffectRipple"]),
+        .library(name: "DopamineEffectHalo", targets: ["DopamineEffectHalo"]),
     ],
     targets: [
         .target(
@@ -118,6 +119,14 @@ let package = Package(
             dependencies: ["DopamineCore"],
             resources: [
                 .copy("Resources/ripple.dope.json"),
+                .process("Shaders"),
+            ]
+        ),
+        .target(
+            name: "DopamineEffectHalo",
+            dependencies: ["DopamineCore"],
+            resources: [
+                .copy("Resources/halo.dope.json"),
                 .process("Shaders"),
             ]
         ),

@@ -70,9 +70,9 @@ if (androidSdkAvailable) {
 
     // Auto-discover every effect module present in the tree (a `dopamine-effect-*`
     // dir with a build.gradle.kts). New effects slot in with ZERO settings edits —
-    // drop the module and it's part of the build. The canonical nine are:
+    // drop the module and it's part of the build. The canonical ten are:
     // solarbloom, aurora, comic, confetti, fail, heartburst, inkstroke, lightning,
-    // ripple.
+    // ripple, halo.
     val effectModules: List<String> = (rootDir.listFiles() ?: emptyArray())
         .filter { it.isDirectory && it.name.startsWith("dopamine-effect-") && File(it, "build.gradle.kts").exists() }
         .map { it.name }
@@ -80,10 +80,10 @@ if (androidSdkAvailable) {
     for (name in effectModules) include(":$name")
 
     // The umbrella hard-references the effect classes it bundles, so include it ONLY
-    // once every one of them is present (otherwise it can't compile). All nine ship.
+    // once every one of them is present (otherwise it can't compile). All ten ship.
     val umbrellaEffects = listOf(
         "solarbloom", "aurora", "comic", "confetti", "fail",
-        "heartburst", "inkstroke", "lightning", "ripple",
+        "heartburst", "inkstroke", "lightning", "ripple", "halo",
     )
     val haveUmbrellaEffects = umbrellaEffects.all { File(rootDir, "dopamine-effect-$it/build.gradle.kts").exists() }
     if (haveUmbrellaEffects && File(rootDir, "dopamine-effects/build.gradle.kts").exists()) {

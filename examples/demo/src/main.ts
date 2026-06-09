@@ -19,7 +19,7 @@ const $ = <T extends HTMLElement>(sel: string): T => {
 
 type EffectName =
   | "solarbloom" | "inkstroke" | "comic" | "fail"
-  | "aurora" | "ripple" | "confetti" | "heartburst" | "lightning";
+  | "aurora" | "ripple" | "confetti" | "heartburst" | "lightning" | "halo";
 
 // Lazy per-effect chunks. Each module self-registers its effect on import; we
 // await them so the generic `play("name", …)` can find the registered factory.
@@ -33,6 +33,7 @@ const EFFECT_LOADERS: Record<EffectName, () => Promise<unknown>> = {
   confetti: () => import("@dopamine/effect-confetti"),
   heartburst: () => import("@dopamine/effect-heartburst"),
   lightning: () => import("@dopamine/effect-lightning"),
+  halo: () => import("@dopamine/effect-halo"),
 };
 
 // The fail effect speaks failure moods; map the shared success-mood toggle onto
