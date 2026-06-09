@@ -24,18 +24,19 @@ import {
   LIGHTNING_VERTEX_SRC,
   MAX_FORKS,
 } from "./lightning-shader.js";
+import { drawLightningPanel, type LightningRenderParams } from "./lightning-renderer.js";
 import {
   envelope,
   registerEffect,
   registerProgram,
   parseDope,
   resolveDopeParams,
-  createPassInstance,
+  createPanelInstance,
   type EffectContext,
   type EffectFactory,
   type EffectInstance,
   type FeelingInput,
-  type PassConfig,
+  type PanelConfig,
   type PassParams,
 } from "@dopamine/core";
 import doc from "./lightning.dope.json";
@@ -53,34 +54,31 @@ interface LightningParams extends PassParams {
   boltSeed: number;
 }
 
-const CONFIG: PassConfig = {
+// HYBRID PANEL effect (web): the jagged bolt is rasterized into a Canvas2D panel
+// each frame (vertices computed once in JS — no per-pixel fbm) and this shader
+// samples + lights it, adding the full-screen flash/impact/finish. Scalar params
+// the shader still uses (thickness, flashBright, exposure) auto-bind by name; the
+// geometry params (jagged, branches, boltSeed) are consumed by the panel `draw`.
+// The `.dope` is unchanged; only the web render path moved.
+const CONFIG: PanelConfig<LightningParams> = {
   vertex: LIGHTNING_VERTEX_SRC,
   fragment: LIGHTNING_FRAGMENT_SRC,
-  // The shader's own uniforms (the standard ones — uOrigin/uLife/uTimeS/uStyle/
-  // uAmp/uC0..2/shadow — are bound implicitly by the runner).
-  uniforms: [
-    "uStrike", "uFlash", "uThickness", "uJagged", "uBranches",
-    "uFlashBright", "uExposure", "uSeed",
-  ],
-  // Anchored strike: the bolt lands toward uOrigin.
-  usesOrigin: true,
-  // boltSeed binds to uSeed; flicker feeds the strobe shape, overshoot the
-  // envelope — neither is a uniform of its own name.
-  bindings: { boltSeed: "uSeed", flicker: null, overshoot: null },
+  uniforms: ["uStrike", "uFlash", "uThickness", "uFlashBright", "uExposure"],
+  bindings: { boltSeed: null, flicker: null, overshoot: null, jagged: null, branches: null },
   // A bright, fairly tall occluder so the cast shadow reads as a sharp silhouette.
-  shadowHeightFrac: (params) => (params as LightningParams).thickness * 14 + 0.4,
-  frame: ({ animMs, life }, params) => {
-    const p = params as LightningParams;
-    return {
-      amp: envelope(life, p.overshoot),
-      uStrike: strikeProgress(animMs),
-      uFlash: flashStrobe(life, p.flicker),
-    };
+  shadowHeightFrac: (params) => params.thickness * 14 + 0.4,
+  draw: (panelCtx, w, h, params, info) => {
+    drawLightningPanel(panelCtx, w, h, params as unknown as LightningRenderParams, info.elapsedMs, info.centerPx);
   },
+  frame: ({ elapsedMs, life }, params) => ({
+    amp: envelope(life, params.overshoot),
+    uStrike: strikeProgress(elapsedMs),
+    uFlash: flashStrobe(life, params.flicker),
+  }),
 };
 
 function createInstance(params: LightningParams, ctx: EffectContext): EffectInstance {
-  return createPassInstance(CONFIG, params, ctx);
+  return createPanelInstance(CONFIG, params, ctx);
 }
 
 export const lightning: EffectFactory<LightningParams> = {
