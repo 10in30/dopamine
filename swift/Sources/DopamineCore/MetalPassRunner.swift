@@ -89,6 +89,40 @@ public protocol PassConfig {
         params: [String: DopeValue],
         extras: [String: Double]
     ) -> Uniforms
+    /// OPTIONAL per-frame ARRAY uniforms, bound as fragment BUFFERS — the Metal
+    /// analog of the web/android `frameArrays` seam. An effect that CPU-precomputes
+    /// geometry each frame (lightning's bolt polyline → `uVerts`/`uBoltMeta`)
+    /// returns flat `[Float]` arrays + the fragment buffer index each binds at; the
+    /// shader declares `constant float2 *uVerts [[buffer(1)]]` etc. Default: none
+    /// (pure-shader effects don't implement this). `origin` is the strike/anchor
+    /// point in gl_FragCoord space (device px, y-UP) — the same the shader reads.
+    func frameArrays(
+        _ info: FrameInfo,
+        _ params: [String: DopeValue],
+        width: Float, height: Float, origin: SIMD2<Float>
+    ) -> [PassFrameArray]
+}
+
+/// A per-frame array uniform bound as a fragment buffer: flat float `data`
+/// (reinterpreted as the shader's `vecN*`) at fragment `bufferIndex` (≥ 1; 0 is
+/// the uniform struct). Mirrors the web/android `UniformArray` (name+size+data),
+/// but Metal binds by INDEX, so the effect names the buffer slot.
+public struct PassFrameArray {
+    public let bufferIndex: Int
+    public let data: [Float]
+    public init(bufferIndex: Int, data: [Float]) {
+        self.bufferIndex = bufferIndex
+        self.data = data
+    }
+}
+
+public extension PassConfig {
+    /// Default: pure-shader effects bind no extra arrays.
+    func frameArrays(
+        _ info: FrameInfo,
+        _ params: [String: DopeValue],
+        width: Float, height: Float, origin: SIMD2<Float>
+    ) -> [PassFrameArray] { [] }
 }
 
 /// Errors the runner can raise during pipeline build.
@@ -248,10 +282,19 @@ public final class MetalPassRunner<Config: PassConfig> {
     }
 
     /// Encode one full-screen-triangle pass into `encoder`.
-    private func encodePass(_ encoder: MTLRenderCommandEncoder, pipeline: MTLRenderPipelineState, uniforms: Config.Uniforms, panel: MTLTexture?) {
+    private func encodePass(_ encoder: MTLRenderCommandEncoder, pipeline: MTLRenderPipelineState, uniforms: Config.Uniforms, panel: MTLTexture?, arrays: [PassFrameArray]) {
         encoder.setRenderPipelineState(pipeline)
         var u = uniforms
         encoder.setFragmentBytes(&u, length: MemoryLayout<Config.Uniforms>.stride, index: 0)
+        // Per-frame ARRAY uniforms (lightning's precomputed bolt polyline), bound as
+        // fragment buffers at their declared indices. `setFragmentBytes` is fine here
+        // (each array is well under the 4 KB inline limit). No-op for pure-shader
+        // effects (the default `frameArrays` returns []).
+        for a in arrays where !a.data.isEmpty {
+            a.data.withUnsafeBytes { raw in
+                encoder.setFragmentBytes(raw.baseAddress!, length: raw.count, index: a.bufferIndex)
+            }
+        }
         // Panel at texture(0); placeholder at the other slot a shader might declare
         // (e.g. an SDF at texture(1)). Over-binding is harmless for shaders that
         // declare fewer textures.
@@ -280,12 +323,18 @@ public final class MetalPassRunner<Config: PassConfig> {
         let info = FrameInfo(animMs: animMs, life: life, elapsedMs: elapsedMs)
         let (amp, extras) = config.frame(info, params)
 
+        // Per-frame array uniforms (CPU-precomputed geometry). Computed ONCE and
+        // bound to both passes. `origin` is gl_FragCoord space (y-UP), matching the
+        // `standard()` origin flip below, so the precompute lands where the shader reads.
+        let originGl = SIMD2<Float>(anchorPx.x * dpr, height - anchorPx.y * dpr)
+        let arrays = config.frameArrays(info, params, width: width, height: height, origin: originGl)
+
         if let se = shadowEncoder, let sp = shadowPipeline {
             let s = standard(info, amp: amp, width: width, height: height, anchorPx: anchorPx, targetPx: targetPx, dpr: dpr, isShadow: true)
-            encodePass(se, pipeline: sp, uniforms: config.packUniforms(standard: s, params: params, extras: extras), panel: panel)
+            encodePass(se, pipeline: sp, uniforms: config.packUniforms(standard: s, params: params, extras: extras), panel: panel, arrays: arrays)
         }
         let s = standard(info, amp: amp, width: width, height: height, anchorPx: anchorPx, targetPx: targetPx, dpr: dpr, isShadow: false)
-        encodePass(lightEncoder, pipeline: lightPipeline, uniforms: config.packUniforms(standard: s, params: params, extras: extras), panel: panel)
+        encodePass(lightEncoder, pipeline: lightPipeline, uniforms: config.packUniforms(standard: s, params: params, extras: extras), panel: panel, arrays: arrays)
     }
 
     private func standardStyle() -> Float {

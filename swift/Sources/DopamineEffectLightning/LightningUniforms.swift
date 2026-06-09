@@ -28,8 +28,6 @@ public struct LightningUniforms {
     // lightning render.params (auto-bound by name from the resolved bag)
     public var exposure: Float = 0
     public var thickness: Float = 0
-    public var jagged: Float = 0
-    public var branches: Float = 0
     public var flashBright: Float = 0
     // scatter key (seed-keyed)
     public var boltSeed: Float = 0
@@ -67,8 +65,6 @@ public func packLightningUniforms(
     func f(_ k: String) -> Float { if case let .number(v)? = params[k] { return Float(v) }; return 0 }
     u.exposure = f("exposure")
     u.thickness = f("thickness")
-    u.jagged = f("jagged")
-    u.branches = f("branches")
     u.flashBright = f("flashBright")
     u.boltSeed = f("boltSeed")
     // frame extras + plumbing

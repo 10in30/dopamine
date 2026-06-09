@@ -75,14 +75,33 @@ public struct LightningConfig: PassConfig {
         var flicker = 1.0
         if case let .number(v)? = params["flicker"] { flicker = v }
         let amp = envelope(info.life, overshoot: overshoot)
-        // The bolt cracks in on its OWN ~130ms clock (bespoke tempo) using the
-        // REAL elapsed time, and the flash/strobe is keyed off normalized life
-        // (peaks on contact + the flicker beats) — both composed on top of the
-        // resolved bag, mirroring the web `frame()` hook.
+        // The bolt cracks in on its ~130ms clock and the flash/strobe is keyed off
+        // normalized life — both on the "on twos"-snapped `animMs` clock, matching
+        // the reworked web `frame()` (so the strike + the precomputed bolt step in
+        // lockstep at high whimsy). Composed on top of the resolved bag.
         return (amp, [
-            "strike": strikeProgress(info.elapsedMs),
+            "strike": strikeProgress(info.animMs),
             "flash": flashStrobe(info.life, flicker: flicker),
         ])
+    }
+
+    /// CPU-precompute the bolt polyline (trunk + forks) once per frame and feed it
+    /// to the shader as the `uVerts` (buffer 1) / `uBoltMeta` (buffer 2) arrays via
+    /// the backbone's `frameArrays` seam — the Metal analog of the web/android
+    /// precompute. `jagged`/`branches` drive the geometry here (not uniforms);
+    /// `thickness` becomes each bolt's `radFrac` in the meta. `origin` is the strike
+    /// point in gl coords (y-up), supplied by the runner. Uses the stepped `animMs`.
+    public func frameArrays(_ info: FrameInfo, _ params: [String: DopeValue],
+                            width: Float, height: Float, origin: SIMD2<Float>) -> [PassFrameArray] {
+        func num(_ k: String, _ d: Double) -> Double { if case let .number(v)? = params[k] { return v }; return d }
+        let (verts, meta) = computeLightningArrays(
+            style: num("style", 0), thickness: num("thickness", 0.05), jagged: num("jagged", 1),
+            branches: num("branches", 0), boltSeed: num("boltSeed", 0),
+            width: Double(width), height: Double(height),
+            originX: Double(origin.x), originY: Double(origin.y),
+            elapsedMs: info.animMs, life: info.life
+        )
+        return [PassFrameArray(bufferIndex: 1, data: verts), PassFrameArray(bufferIndex: 2, data: meta)]
     }
 
     /// Pack the resolved bag → the struct via the GENERATED packer

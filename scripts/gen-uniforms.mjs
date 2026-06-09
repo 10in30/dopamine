@@ -300,8 +300,10 @@ const EFFECTS = {
     // `render.params` that are NOT shader uniforms (web `bindings: null` /
     // standard / tempo). `style` is the standard uStyle; `overshoot` feeds the
     // envelope; `flicker` feeds the flash/strobe shape (web `bindings: null`);
-    // `durationMs` is tempo. Excluded from the per-effect struct half.
-    excludeParams: ["style", "overshoot", "flicker", "durationMs"],
+    // `durationMs` is tempo. `jagged`/`branches` drive the CPU bolt PRECOMPUTE
+    // (the `frameArrays` seam → uVerts/uBoltMeta), not uniforms — so all three
+    // platforms now precompute the polyline. Excluded from the per-effect struct.
+    excludeParams: ["style", "overshoot", "flicker", "durationMs", "jagged", "branches"],
     // A resolved param the shader reads, keyed off the seed (web: scatterKey,
     // bound via `bindings: { boltSeed: "uSeed" }`). Appended after the
     // .dope render.params, before the frame/plumbing extras.

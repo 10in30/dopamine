@@ -3,9 +3,9 @@
 //
 // A PURE-SHADER pass whose bolt polyline is CPU-precomputed (LightningRenderer.kt)
 // and fed to the shader as the uVerts/uBoltMeta uniform ARRAYS via the backbone's
-// `frameArrays` seam. Numeric/palette bag from the byte-identical `.dope`. (The
-// swift port predates this rework and keeps its own analytic pass; Android follows
-// the current web architecture — the `.dope` is unchanged across all platforms.)
+// `frameArrays` seam. Numeric/palette bag from the byte-identical `.dope`. All
+// three platforms precompute the polyline this way now (the swift/Metal port feeds
+// it via DopamineCore's `frameArrays` buffer seam); the `.dope` is unchanged.
 
 package ai.dopamine.effect.lightning
 

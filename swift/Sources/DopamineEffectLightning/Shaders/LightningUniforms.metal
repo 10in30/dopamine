@@ -26,8 +26,6 @@ struct LightningUniforms {
     // --- lightning render.params (auto-bound by name) ---
     float  exposure;
     float  thickness;
-    float  jagged;
-    float  branches;
     float  flashBright;
     // --- scatter key (seed-keyed; read by name) ---
     float  boltSeed;
