@@ -89,6 +89,8 @@ targets:
         product: DopamineEffectLightning
       - package: Dopamine
         product: DopamineEffectRipple
+      - package: Dopamine
+        product: DopamineEffectHalo
 
 schemes:
   DopamineDemo:

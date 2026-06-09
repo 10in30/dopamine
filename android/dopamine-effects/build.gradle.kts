@@ -1,4 +1,4 @@
-// dopamine-effects — the umbrella that bundles + registers all nine effects.
+// dopamine-effects — the umbrella that bundles + registers all ten effects.
 //
 // Mirrors the web `@dopamine/effects` package: depends on every effect module and
 // exposes a single `Dopamine.registerAll(context)` so an app lights up the whole
@@ -36,4 +36,5 @@ dependencies {
     api(project(":dopamine-effect-inkstroke"))
     api(project(":dopamine-effect-lightning"))
     api(project(":dopamine-effect-ripple"))
+    api(project(":dopamine-effect-halo"))
 }

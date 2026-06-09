@@ -14,7 +14,7 @@ by the *same bytes* — each effect's [`.dope`](docs/effect-format.md) document.
 > cross-platform description of an effect (its mood→params mapping, content
 > pool, typography, icon). The code on either side is an interpreter for it.
 
-## The nine effects
+## The ten effects
 
 | Effect | Feeling | What it does |
 |---|---|---|
@@ -27,9 +27,10 @@ by the *same bytes* — each effect's [`.dope`](docs/effect-format.md) document.
 | **inkstroke** | success | a calligraphic ink-stroke "verdict" signature |
 | **lightning** | power-up | a high-energy lightning strike |
 | **ripple** | success | concentric water ripples |
+| **halo** | loading | a calm ambient ring of light that breathes + sweeps — the first CONTINUOUS effect, loops seamlessly |
 
 We plan to add many more and expand the mechanisms in every effect. **Android
-support ships all nine effects** — the shared portable core (byte-parity-tested
+support ships all ten effects** — the shared portable core (byte-parity-tested
 against the web) + the OpenGL ES 3.0 rendering backbone + every effect on the
 same `.dope` spine (see [`android/`](android/README.md)). The effects are grounded
 in research on dopamine reward responses, modern aesthetics, and a sense of whimsy.
@@ -57,7 +58,7 @@ in research on dopamine reward responses, modern aesthetics, and a sense of whim
 │  ├─ dopamine-core/          # PURE-Kotlin/JVM spine (mirrors packages/core) + the 192-case parity test — no Android SDK needed
 │  ├─ dopamine-gl/            # OpenGL ES 3.0 backbone: GLSurfaceView overlay host + generic pass/panel runners
 │  ├─ dopamine-effect-<name>/ # per-effect: GLSL shader + tempo + .dope (asset) + panel draw + factory (self-registers)
-│  ├─ dopamine-effects/       # umbrella that registers all nine (activates once all are present)
+│  ├─ dopamine-effects/       # umbrella that registers all ten (activates once all are present)
 │  └─ demo/                   # Android demo app
 └─ .github/workflows/         # swift.yml (Metal/iOS CI) + web-reel.yml (reel CI) + android.yml (GL/JVM CI)
 ```
@@ -152,7 +153,7 @@ an effect.
 
 ## Reels & recordings
 
-Both stacks render a full nine-effect showcase in CI.
+Both stacks render a full ten-effect showcase in CI.
 
 - **Web reel** — renders every effect in headless Chromium (WebGL via
   SwiftShader, no GPU needed) at a fixed timestep and stitches them into one
@@ -168,7 +169,7 @@ Both stacks render a full nine-effect showcase in CI.
 | Workflow | Runner(s) | What it does | Artifact |
 |---|---|---|---|
 | [`web-reel.yml`](.github/workflows/web-reel.yml) | ubuntu | build web packages → render + stitch the reel | `dopamine-web-reel` → `e2e/output/dopamine-suite.mp4` |
-| [`swift.yml`](.github/workflows/swift.yml) | macOS (`macos-15-xlarge`, M2) + ubuntu (`swift:6.0.3`) | macOS: `swift build`/`test` (Metal), the **gen-uniforms staleness gate**, XcodeGen → build the iOS demo, boot a sim, autoplay all nine, screen-record. Linux: portability build + the 192-case parity suite with no Apple SDK | `solarbloom-sim-clip` (the recorded sequence) |
+| [`swift.yml`](.github/workflows/swift.yml) | macOS (`macos-15-xlarge`, M2) + ubuntu (`swift:6.0.3`) | macOS: `swift build`/`test` (Metal), the **gen-uniforms staleness gate**, XcodeGen → build the iOS demo, boot a sim, autoplay all ten, screen-record. Linux: portability build + the 192-case parity suite with no Apple SDK | `solarbloom-sim-clip` (the recorded sequence) |
 | [`android.yml`](.github/workflows/android.yml) | ubuntu ×3 | **jvm**: the 192-case parity grid + `.dope` byte-parity check on a free runner (no SDK). **build**: install the SDK + `assembleDebug` the GL backbone + effects + demo. **emulator** (best-effort): boot an emulator, autoplay, `screenrecord` a clip | `dopamine-demo-apk`, `dopamine-android-clip` |
 
 > **Note:** the macOS job needs the `macos-15-xlarge` (M2) larger runner and a

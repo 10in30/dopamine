@@ -24,6 +24,7 @@ import DopamineEffectHeartburst
 import DopamineEffectInkstroke
 import DopamineEffectLightning
 import DopamineEffectRipple
+import DopamineEffectHalo
 
 /// Type-erased overlay host. All members below are already public on
 /// `MetalOverlayHost<Config>`, so the conformance is empty.
@@ -112,6 +113,13 @@ enum EffectRegistry {
                   let host = try? MetalOverlayHost(config: RippleConfig(), device: device,
                                                    library: lib, wantsShadow: false),
                   let fx = try? Ripple() else { return nil }
+            return (host, { (try? fx.resolve($0)) ?? [:] })
+        },
+        DemoEffect(name: "halo") { device in
+            guard let lib = try? device.makeDefaultLibrary(bundle: HaloResources.bundle),
+                  let host = try? MetalOverlayHost(config: HaloConfig(), device: device,
+                                                   library: lib, wantsShadow: false),
+                  let fx = try? Halo() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
     ]

@@ -1,8 +1,8 @@
-# Dopamine — Swift / Metal port (vertical slice)
+# Dopamine — Swift / Metal port
 
 A SwiftPM package that mirrors the web monorepo's architecture for iOS/macOS and
-**reuses the web `.dope` data verbatim**. This is ONE vertical slice (the
-Solarbloom effect), not all nine effects.
+**reuses the web `.dope` data verbatim**. All ten effects are ported — each its
+own `DopamineEffect<Name>` library on the shared `DopamineCore` runtime.
 
 ## Layout
 

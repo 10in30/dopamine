@@ -1,7 +1,7 @@
 /**
  * @dopamine/effects — the batteries-included UMBRELLA.
  *
- * Importing this registers ALL nine built-in effects (each `@dopamine/effect-*`
+ * Importing this registers ALL ten built-in effects (each `@dopamine/effect-*`
  * package self-registers on import) and re-exports the whole `@dopamine/core`
  * runtime/API surface, plus the `celebrate*` convenience wrappers and the
  * `<dopamine-success>` custom element.
@@ -30,6 +30,7 @@ import { ripple } from "@dopamine/effect-ripple";
 import { confetti } from "@dopamine/effect-confetti";
 import { heartburst } from "@dopamine/effect-heartburst";
 import { lightning } from "@dopamine/effect-lightning";
+import { halo } from "@dopamine/effect-halo";
 
 // The bundled-face preloaders live with their effects; re-export for convenience.
 export { ensureComicFonts } from "@dopamine/effect-comic";
@@ -41,13 +42,13 @@ export { registerElement, DopamineSuccessElement } from "./element.js";
 /** Force-retain the registrations against tree-shaking; also the built-in set. */
 const BUILTINS = [
   solarbloom, inkstroke, comic, failEffect,
-  aurora, ripple, confetti, heartburst, lightning,
+  aurora, ripple, confetti, heartburst, lightning, halo,
 ] as const;
 
 /** Built-in effect names usable with the convenience API + the demo/scripts. */
 export type EffectName =
   | "solarbloom" | "inkstroke" | "comic" | "fail"
-  | "aurora" | "ripple" | "confetti" | "heartburst" | "lightning";
+  | "aurora" | "ripple" | "confetti" | "heartburst" | "lightning" | "halo";
 
 /** The names of every effect registered by `@dopamine/effects` on import. */
 export const builtinEffectNames: readonly EffectName[] = BUILTINS.map(

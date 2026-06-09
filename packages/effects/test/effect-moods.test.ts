@@ -18,7 +18,7 @@
 
 import { describe, expect, it } from "vitest";
 
-// Importing the umbrella registers all nine built-in effects + their moods.
+// Importing the umbrella registers all ten built-in effects + their moods.
 import { builtinEffectNames, getEffect, resolveMood, type FeelingInput } from "../src/index.js";
 
 import solarbloomDoc from "../../effect-solarbloom/src/solarbloom.dope.json";
@@ -30,6 +30,7 @@ import rippleDoc from "../../effect-ripple/src/ripple.dope.json";
 import confettiDoc from "../../effect-confetti/src/confetti.dope.json";
 import heartburstDoc from "../../effect-heartburst/src/heartburst.dope.json";
 import lightningDoc from "../../effect-lightning/src/lightning.dope.json";
+import haloDoc from "../../effect-halo/src/halo.dope.json";
 
 const DOCS: Record<string, { controls?: { mood?: { options?: string[] } } }> = {
   solarbloom: solarbloomDoc as never,
@@ -41,6 +42,7 @@ const DOCS: Record<string, { controls?: { mood?: { options?: string[] } } }> = {
   confetti: confettiDoc as never,
   heartburst: heartburstDoc as never,
   lightning: lightningDoc as never,
+  halo: haloDoc as never,
 };
 
 const SUCCESS_MOODS = ["serene", "celebratory", "electric"];

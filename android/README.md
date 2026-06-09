@@ -4,10 +4,11 @@ The Android port of Dopamine. Like the web (TypeScript + WebGL2) and Swift
 (Swift + Metal) stacks, it is an **interpreter for the shared `.dope` files** —
 the same bytes drive all three platforms. This directory mirrors `swift/`.
 
-> **Status: all nine effects ship.** The portable core, the GL rendering
+> **Status: all ten effects ship.** The portable core, the GL rendering
 > backbone, and every effect — solarbloom, aurora, comic, confetti, fail,
-> heartburst, inkstroke, lightning, ripple — are ported on the same `.dope` spine
-> (each its own `dopamine-effect-<name>` module). See
+> heartburst, inkstroke, lightning, ripple, halo — are ported on the same `.dope`
+> spine (each its own `dopamine-effect-<name>` module). `halo` is the first
+> CONTINUOUS effect (a calm looping "loading" ring); see
 > [Porting an effect](#porting-an-effect) for the per-effect contract.
 
 ## Why OpenGL ES 3.0
@@ -45,7 +46,7 @@ android/
 │                           #   GlPanelRunner + PassConfig/PanelConfig + DrawableEffect.
 ├─ dopamine-effect-<name>/  # Android lib per effect — shader + tempo + .dope (asset) +
 │                           #   panel draw (hybrids) + factory (self-registers via register()).
-├─ dopamine-effects/        # umbrella — registers all nine (activates once all are present).
+├─ dopamine-effects/        # umbrella — registers all ten (activates once all are present).
 └─ demo/                    # Android app — translucent overlay, tap / autoplay.
 ```
 
