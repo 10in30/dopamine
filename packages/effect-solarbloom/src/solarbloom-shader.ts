@@ -355,6 +355,10 @@ void main(){
     float hardCore = 1.0 - smoothstep(sw2 * 0.85, sw2, distPx);
     ccore = mix(softCore, hardCore, uStyle) * wipe;
     cglow = exp(-distPx / (sw2 * 2.0)) * 0.6 * (1.0 - 0.7 * uStyle) * wipe;
+    // The baked SDF saturates beyond its encoded range, so this soft glow's exp()
+    // never reaches zero inside the glyph box — a faint ghost BOX. Fade it out at
+    // the range edge so the glow hugs the stroke, not the box.
+    cglow *= 1.0 - smoothstep(uSdfRangePx * 0.55, uSdfRangePx * 0.9, distPx);
     float frontier = clamp(uCheck * 1.12, 0.0, 1.0);
     vec2 boxUVtoPx = vec2(2.0 * uCheckBox);
     vec2 frontUV = vec2(frontier, 0.30 + frontier * 0.55);
