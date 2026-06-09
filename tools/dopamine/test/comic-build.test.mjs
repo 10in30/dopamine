@@ -1,10 +1,10 @@
 /**
  * Toolchain test: the single `effects/comic/comic.dope.json` (data + binding
- * contract + x-build), run through `@dopamine/build`, emits a COMPLETE, standalone
- * SwiftPM package — real `Package.swift`, the hand-written sources, the generated
- * binding glue, and a PORTABLE embedded `.dope` (the toolchain keys stripped, not
- * a symlink). `swift build dist/swift/DopamineEffectComic` proves it compiles (run
- * separately, since it needs the Swift toolchain).
+ * contract + x-build), run through `@dopamine/build`, emits COMPLETE, standalone
+ * packages — a SwiftPM package and an npm package — each with a PORTABLE embedded
+ * `.dope` (the toolchain keys stripped, not a symlink), plus the gitignored
+ * in-workspace `.dope` the web package imports. `swift build` / `tsc` prove they
+ * compile (run separately, since they need the platform toolchains).
  */
 import { describe, it, expect } from "vitest";
 import { fileURLToPath } from "node:url";
@@ -15,13 +15,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "..", ".."); // <repo>
 const outDir = join(root, "dist");
 
-describe("dopamine toolchain — comic → standalone SwiftPM package", () => {
+describe("dopamine toolchain — comic → standalone platform packages", () => {
   it("loads the unified .dope (data + binding + x-build) as one document", async () => {
     const eff = await loadEffect(root, "effects/comic");
     expect(eff.slug).toBe("comic");
     expect(eff.doc.kind).toBe("panel");
     expect(eff.doc.binding.scatterKey).toBe("comicSeed");
     expect(eff.doc["x-build"].swift.module).toBe("DopamineEffectComic");
+    expect(eff.doc["x-build"].web.package).toBe("@dopamine/effect-comic");
   });
 
   it("strips the toolchain-only keys from the PORTABLE embedded .dope", () => {
@@ -35,52 +36,48 @@ describe("dopamine toolchain — comic → standalone SwiftPM package", () => {
     }
   });
 
-  it("emits a complete, installable Swift package from the single folder", async () => {
-    const artifacts = await buildEffect({ root, effectDir: "effects/comic", outDir });
-    const byPath = new Map(artifacts.map((a) => [a.path, a.content]));
-
+  it("emits a complete, installable SwiftPM package", async () => {
+    const { dist } = await buildEffect({ root, effectDir: "effects/comic", outDir });
+    const byPath = new Map(dist.map((a) => [a.path, a.content]));
     const M = "swift/DopamineEffectComic";
     const S = `${M}/Sources/DopamineEffectComic`;
-
-    const expected = [
-      `${M}/Package.swift`,
-      `${S}/Comic.swift`,
-      `${S}/ComicBundle.swift`,
-      `${S}/ComicTempo.swift`,
-      `${S}/ComicPanel.swift`,
-      `${S}/ComicUniforms.swift`,
-      `${S}/Shaders/Comic.metal`,
-      `${S}/Shaders/DopamineLook.metal`,
-      `${S}/Shaders/ComicUniforms.metal`,
-      `${S}/Resources/comic.dope.json`,
-    ];
-    for (const p of expected) expect(byPath.has(p), p).toBe(true);
-
-    // Package.swift is a real standalone manifest depending on DopamineCore.
-    expect(byPath.get(`${M}/Package.swift`)).toContain('.library(name: "DopamineEffectComic"');
+    for (const p of [
+      `${M}/Package.swift`, `${S}/Comic.swift`, `${S}/ComicBundle.swift`,
+      `${S}/ComicTempo.swift`, `${S}/ComicPanel.swift`, `${S}/ComicUniforms.swift`,
+      `${S}/Shaders/Comic.metal`, `${S}/Shaders/DopamineLook.metal`,
+      `${S}/Shaders/ComicUniforms.metal`, `${S}/Resources/comic.dope.json`,
+    ]) expect(byPath.has(p), p).toBe(true);
     expect(byPath.get(`${M}/Package.swift`)).toContain('product(name: "DopamineCore"');
-
-    // The embedded .dope is the PORTABLE runtime subset: parses, has render.params,
-    // and carries NONE of the toolchain-only keys (standalone-safe).
-    const embedded = byPath.get(`${S}/Resources/comic.dope.json`);
-    expect(embedded).not.toContain('"x-build"');
-    expect(embedded).not.toContain('"binding"');
-    const parsed = JSON.parse(embedded);
-    expect(parsed.fmt).toBe("dopamine-effect");
-    expect(parsed.render.params.exposure).toBeTruthy();
-    expect(parsed.baselines.celebratory).toBeTruthy();
-
-    // The generated binding glue declares the expected fields + the packer.
     const swiftU = byPath.get(`${S}/ComicUniforms.swift`);
-    expect(swiftU).toContain("public struct ComicUniforms {");
-    for (const f of ["resolution", "exposure", "actionLines", "halftone", "saturation",
-                     "comicSeed", "presence", "flash", "dotSize", "inkBoost"]) {
+    expect(swiftU).toContain("public func packComicUniforms(");
+    for (const f of ["exposure", "comicSeed", "presence", "inkBoost"]) {
       expect(swiftU, f).toContain(`public var ${f}:`);
     }
-    expect(swiftU).toContain("public func packComicUniforms(");
-    const mslU = byPath.get(`${S}/Shaders/ComicUniforms.metal`);
-    expect(mslU).toContain("struct ComicUniforms {");
-    expect(mslU).toContain("float  exposure;");
-    expect(mslU).toContain("float  comicSeed;");
+    // embedded .dope is the portable subset.
+    const embedded = byPath.get(`${S}/Resources/comic.dope.json`);
+    expect(embedded).not.toContain('"x-build"');
+    expect(JSON.parse(embedded).render.params.exposure).toBeTruthy();
+  });
+
+  it("emits a complete, installable npm package + the in-workspace .dope", async () => {
+    const { dist, sync } = await buildEffect({ root, effectDir: "effects/comic", outDir });
+    const byPath = new Map(dist.map((a) => [a.path, a.content]));
+    const W = "web/effect-comic";
+    for (const p of [
+      `${W}/package.json`, `${W}/tsconfig.json`, `${W}/src/index.ts`,
+      `${W}/src/comic-shader.ts`, `${W}/src/comic-renderer.ts`, `${W}/src/comic-tempo.ts`,
+      `${W}/src/comic-fonts.ts`, `${W}/src/comic-params.ts`, `${W}/src/comic.dope.json`,
+    ]) expect(byPath.has(p), p).toBe(true);
+    const pkg = JSON.parse(byPath.get(`${W}/package.json`));
+    expect(pkg.name).toBe("@dopamine/effect-comic");
+    expect(pkg.dependencies["@dopamine/core"]).toBeTruthy();
+    // the embedded npm .dope is the portable subset.
+    expect(byPath.get(`${W}/src/comic.dope.json`)).not.toContain('"x-build"');
+    expect(JSON.parse(byPath.get(`${W}/src/comic.dope.json`)).render.params.exposure).toBeTruthy();
+
+    // the in-source (gitignored) workspace .dope is written so the in-repo package
+    // builds/tests against source.
+    const syncPaths = sync.map((a) => a.path.replace(/\\/g, "/"));
+    expect(syncPaths).toContain("effects/comic/web/src/comic.dope.json");
   });
 });

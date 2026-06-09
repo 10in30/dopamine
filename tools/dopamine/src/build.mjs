@@ -3,20 +3,23 @@
  *
  * The single file `effects/<id>/<slug>.dope.json` is the source of truth: the
  * portable runtime data + the cross-platform `binding` contract + the `x-build`
- * per-platform config, in ONE document. This loads it, and produces the artifacts
- * for every configured platform — each a `{ path, content }` relative to the
- * `dist/` output root. The CLI writes them; the test inspects them (no disk
- * writes), so building is pure + testable.
+ * per-platform config, in ONE document. This loads it and produces:
  *
- * Crucially, the `.dope` the toolchain EMBEDS in each platform package is the
- * PORTABLE subset (`portableDope`): the source minus the toolchain-only keys, so
- * the shipped runtime doc stays standalone-safe (no build URLs/paths trip the
- * `assertStandalone` guard) and identical across platforms.
+ *   • dist artifacts  — the standalone, installable platform packages under
+ *     `dist/<platform>/` (a SwiftPM package, an npm package; Android next).
+ *   • sync artifacts  — files written back INTO the source tree (gitignored) that
+ *     the in-repo workspace packages need to build/test against source — today
+ *     just the portable `.dope` the web workspace package imports (`./<slug>.dope.json`).
+ *
+ * The `.dope` EMBEDDED everywhere is the PORTABLE subset (`portableDope`): the
+ * source minus the toolchain-only keys, so the shipped runtime doc is
+ * standalone-safe and identical across platforms.
  */
 
-import { join, isAbsolute } from "node:path";
+import { join, isAbsolute, relative } from "node:path";
 import { readFile, readdir } from "node:fs/promises";
 import { generateSwiftPackage } from "./swift.mjs";
+import { generateNpmPackage } from "./web.mjs";
 
 /** Top-level `.dope` keys that are TOOLCHAIN-only — consumed here, never shipped. */
 export const TOOLCHAIN_KEYS = ["slug", "kind", "binding", "x-build"];
@@ -47,18 +50,30 @@ export async function loadEffect(root, effectDir) {
 
 /**
  * Build every configured platform package for one effect folder.
- * @returns {Promise<Array<{ path: string, content: string }>>} dist-relative paths.
+ * @returns {Promise<{ dist: Array<{path,content}>, sync: Array<{path,content}> }>}
+ *          `dist` paths are relative to the dist output root; `sync` paths are
+ *          relative to the repo root (in-source generated files, gitignored).
  */
 export async function buildEffect({ root, effectDir, outDir }) {
   const eff = await loadEffect(root, effectDir);
   const build = eff.doc["x-build"] ?? {};
-  const artifacts = [];
+  const dist = [];
+  const sync = [];
 
   if (build.swift) {
-    artifacts.push(...(await generateSwiftPackage({ root, eff, outDir })));
+    dist.push(...(await generateSwiftPackage({ root, eff, outDir })));
+  }
+  if (build.web) {
+    dist.push(...(await generateNpmPackage({ eff })));
+    // The in-repo workspace package imports `./<slug>.dope.json`; write the portable
+    // copy into its src (gitignored) so it builds/tests against source.
+    const webSrc = build.web.sources ?? "web";
+    sync.push({
+      path: join(relative(root, eff.dir), webSrc, "src", `${eff.slug}.dope.json`),
+      content: eff.dope,
+    });
   }
   // TODO: build.android → generateAndroidLibrary(...)
-  // TODO: build.web     → generateNpmPackage(...)
 
-  return artifacts;
+  return { dist, sync };
 }

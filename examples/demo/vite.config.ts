@@ -16,6 +16,9 @@ export default defineConfig({
     alias: [
       { find: /^@dopamine\/core$/, replacement: pkg("core/src/index.ts") },
       { find: /^@dopamine\/effects$/, replacement: pkg("effects/src/index.ts") },
+      // comic moved to the single-folder model (effects/comic/web) — resolve it
+      // there, BEFORE the generic packages/effect-* alias below.
+      { find: /^@dopamine\/effect-comic$/, replacement: fileURLToPath(new URL("../../effects/comic/web/src/index.ts", import.meta.url)) },
       { find: /^@dopamine\/effect-(.*)$/, replacement: pkg("effect-$1/src/index.ts") },
     ],
   },

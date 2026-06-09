@@ -149,6 +149,10 @@
       "sources": "swift",
       "platforms": ["iOS(.v15)", "macOS(.v12)"],
       "core": { "mode": "path", "package": "Dopamine", "product": "DopamineCore", "path": "swift" }
+    },
+    "web": {
+      "package": "@dopamine/effect-comic",
+      "sources": "web"
     }
   }
 }

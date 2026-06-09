@@ -4,10 +4,10 @@
  *
  *   dopamine build [effectDir ...] [--out <dir>] [--check] [--root <path>]
  *
- * Reads each effect folder and writes its standalone, installable platform
- * packages into the output dir (default `dist/`, which is gitignored). With
- * `--check` it diffs against what's on disk and exits non-zero if stale (a CI
- * gate) instead of writing. Default target is `effects/comic` for now.
+ * Writes each effect's standalone, installable platform packages into the output
+ * dir (default `dist/`, gitignored), plus any in-source generated files (the web
+ * workspace's portable `.dope`, also gitignored). With `--check` it diffs against
+ * disk and exits non-zero if stale (a CI gate) instead of writing.
  */
 
 import { writeFile, readFile, mkdir } from "node:fs/promises";
@@ -31,6 +31,23 @@ function parseArgs(argv) {
   return { check, out, root, positionals };
 }
 
+async function emit(label, absPath, content, check, state) {
+  let prev = null;
+  try { prev = await readFile(absPath, "utf8"); } catch { /* new */ }
+  if (prev !== content) {
+    state.stale = true;
+    if (check) {
+      console.error(`STALE: ${label}`);
+    } else {
+      await mkdir(dirname(absPath), { recursive: true });
+      await writeFile(absPath, content);
+      console.log(`${prev === null ? "created" : "wrote  "} ${label}`);
+    }
+  } else if (!check) {
+    console.log(`ok     ${label}`);
+  }
+}
+
 async function main() {
   const { check, out, root, positionals } = parseArgs(process.argv.slice(2));
   const cmd = positionals[0] ?? "build";
@@ -41,33 +58,18 @@ async function main() {
   const outDir = out ? (isAbsolute(out) ? out : join(root, out)) : join(root, "dist");
   const targets = positionals.slice(1).length ? positionals.slice(1) : ["effects/comic"];
 
-  let anyStale = false;
+  const state = { stale: false };
   for (const effectDir of targets) {
-    const artifacts = await buildEffect({ root, effectDir, outDir });
-    for (const a of artifacts) {
-      const path = join(outDir, a.path);
-      let prev = null;
-      try { prev = await readFile(path, "utf8"); } catch { /* new */ }
-      if (prev !== a.content) {
-        anyStale = true;
-        if (check) {
-          console.error(`STALE: ${a.path}`);
-        } else {
-          await mkdir(dirname(path), { recursive: true });
-          await writeFile(path, a.content);
-          console.log(`${prev === null ? "created" : "wrote  "} dist/${a.path}`);
-        }
-      } else if (!check) {
-        console.log(`ok     dist/${a.path}`);
-      }
-    }
+    const { dist, sync } = await buildEffect({ root, effectDir, outDir });
+    for (const a of dist) await emit(`dist/${a.path}`, join(outDir, a.path), a.content, check, state);
+    for (const a of sync) await emit(a.path, join(root, a.path), a.content, check, state);
   }
 
-  if (check && anyStale) {
-    console.error("\ndopamine: dist artifacts are stale. Run `npm run dopamine -- build`.");
+  if (check && state.stale) {
+    console.error("\ndopamine: artifacts are stale. Run `npm run dopamine -- build`.");
     process.exit(1);
   }
-  if (check) console.log("dopamine: dist up to date.");
+  if (check) console.log("dopamine: all artifacts up to date.");
 }
 
 main().catch((err) => {
