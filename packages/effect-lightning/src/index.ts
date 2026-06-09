@@ -24,19 +24,19 @@ import {
   LIGHTNING_VERTEX_SRC,
   MAX_FORKS,
 } from "./lightning-shader.js";
-import { drawLightningPanel, type LightningRenderParams } from "./lightning-renderer.js";
+import { computeLightningArrays, type LightningRenderParams } from "./lightning-renderer.js";
 import {
   envelope,
   registerEffect,
   registerProgram,
   parseDope,
   resolveDopeParams,
-  createPanelInstance,
+  createPassInstance,
   type EffectContext,
   type EffectFactory,
   type EffectInstance,
   type FeelingInput,
-  type PanelConfig,
+  type PassConfig,
   type PassParams,
 } from "@dopamine/core";
 import doc from "./lightning.dope.json";
@@ -54,31 +54,46 @@ interface LightningParams extends PassParams {
   boltSeed: number;
 }
 
-// HYBRID PANEL effect (web): the jagged bolt is rasterized into a Canvas2D panel
-// each frame (vertices computed once in JS — no per-pixel fbm) and this shader
-// samples + lights it, adding the full-screen flash/impact/finish. Scalar params
-// the shader still uses (thickness, flashBright, exposure) auto-bind by name; the
-// geometry params (jagged, branches, boltSeed) are consumed by the panel `draw`.
-// The `.dope` is unchanged; only the web render path moved.
-const CONFIG: PanelConfig<LightningParams> = {
+// Pure-shader pass effect, but the jagged bolt polyline (the part that used to
+// cost ~220 fbm/pixel) is PRECOMPUTED on the CPU once per frame and fed to the
+// shader as the uVerts/uBoltMeta array uniforms (frameArrays). The shader keeps
+// the original inverse-distance plasma glow — same look, far cheaper. The .dope
+// is unchanged; only the web render path moved.
+const CONFIG: PassConfig = {
   vertex: LIGHTNING_VERTEX_SRC,
   fragment: LIGHTNING_FRAGMENT_SRC,
-  uniforms: ["uStrike", "uFlash", "uThickness", "uFlashBright", "uExposure"],
-  bindings: { boltSeed: null, flicker: null, overshoot: null, jagged: null, branches: null },
-  // A bright, fairly tall occluder so the cast shadow reads as a sharp silhouette.
-  shadowHeightFrac: (params) => params.thickness * 14 + 0.4,
-  draw: (panelCtx, w, h, params, info) => {
-    drawLightningPanel(panelCtx, w, h, params as unknown as LightningRenderParams, info.elapsedMs, info.centerPx);
+  uniforms: [
+    "uStrike", "uFlash", "uThickness", "uFlashBright", "uExposure", "uSeed",
+    "uVerts", "uBoltMeta",
+  ],
+  usesOrigin: true,
+  // boltSeed binds to uSeed (halo variation); the geometry params drive the CPU
+  // precompute (frameArrays), not uniforms; flicker/overshoot feed the timing.
+  bindings: {
+    boltSeed: "uSeed", flicker: null, overshoot: null, jagged: null, branches: null,
   },
-  frame: ({ elapsedMs, life }, params) => ({
-    amp: envelope(life, params.overshoot),
-    uStrike: strikeProgress(elapsedMs),
-    uFlash: flashStrobe(life, params.flicker),
-  }),
+  // A bright, fairly tall occluder so the cast shadow reads as a sharp silhouette.
+  shadowHeightFrac: (params) => (params as LightningParams).thickness * 14 + 0.4,
+  frame: ({ animMs, life }, params) => {
+    const p = params as LightningParams;
+    return {
+      amp: envelope(life, p.overshoot),
+      uStrike: strikeProgress(animMs),
+      uFlash: flashStrobe(life, p.flicker),
+    };
+  },
+  frameArrays: ({ animMs, life }, params, geom) => {
+    const p = params as unknown as LightningRenderParams;
+    const { verts, meta } = computeLightningArrays(p, geom.width, geom.height, geom.origin, animMs, life);
+    return [
+      { name: "uVerts", size: 2, data: verts },
+      { name: "uBoltMeta", size: 4, data: meta },
+    ];
+  },
 };
 
 function createInstance(params: LightningParams, ctx: EffectContext): EffectInstance {
-  return createPanelInstance(CONFIG, params, ctx);
+  return createPassInstance(CONFIG, params, ctx);
 }
 
 export const lightning: EffectFactory<LightningParams> = {

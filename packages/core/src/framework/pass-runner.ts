@@ -152,6 +152,19 @@ export interface PassConfig {
       info: FrameInfo & { centerPx: { x: number; y: number }; dpr: number },
     ): void;
   };
+  /**
+   * OPTIONAL per-frame ARRAY uniforms (vec2/3/4 arrays). For effects that
+   * precompute geometry on the CPU each frame and feed it to the shader as a
+   * uniform array — e.g. lightning's bolt polyline, far cheaper than re-deriving
+   * it with `fbm` at every pixel. Computed ONCE per frame and bound (uniformNfv)
+   * in both passes. `geom` carries the live canvas size + the gl-coords strike
+   * origin (anchor). Each returned `name` must also appear in `uniforms`.
+   */
+  frameArrays?(
+    info: FrameInfo,
+    params: PassParams,
+    geom: { width: number; height: number; dpr: number; origin: { x: number; y: number } },
+  ): ReadonlyArray<{ name: string; size: 2 | 3 | 4; data: Float32Array }>;
 }
 
 // The pure-shader runner adds `uOrigin` (anchored radial effects) to the shared
@@ -217,7 +230,28 @@ export function createPassInstance(
   const heightFrac = (): number =>
     typeof config.shadowHeightFrac === "function" ? config.shadowHeightFrac(params) : config.shadowHeightFrac;
 
-  const drawPass = (glc: GLContext, info: FrameInfo, frameUniforms: { amp: number } & Record<string, number>, isShadow: boolean): void => {
+  const bindFrameArrays = (
+    gl: WebGL2RenderingContext,
+    u: Record<string, WebGLUniformLocation | null>,
+    arrays: ReadonlyArray<{ name: string; size: 2 | 3 | 4; data: Float32Array }> | undefined,
+  ): void => {
+    if (!arrays) return;
+    for (const a of arrays) {
+      const loc = u[a.name];
+      if (!loc) continue;
+      if (a.size === 2) gl.uniform2fv(loc, a.data);
+      else if (a.size === 3) gl.uniform3fv(loc, a.data);
+      else gl.uniform4fv(loc, a.data);
+    }
+  };
+
+  const drawPass = (
+    glc: GLContext,
+    info: FrameInfo,
+    frameUniforms: { amp: number } & Record<string, number>,
+    isShadow: boolean,
+    frameArrs?: ReadonlyArray<{ name: string; size: 2 | 3 | 4; data: Float32Array }>,
+  ): void => {
     const { gl } = glc;
     const c = glc.canvas;
     const { u } = beginProgram(glc, config.vertex, config.fragment, allUniforms);
@@ -272,6 +306,7 @@ export function createPassInstance(
     bindPalette(gl, u, pal);
     bindScalars(gl, u, params, scalarBinds);
     bindFrameUniforms(gl, u, frameUniforms);
+    bindFrameArrays(gl, u, frameArrs);
 
     gl.uniform1f(u.uShadow, isShadow ? 1 : 0);
     if (isShadow) bindShadowGeometry(gl, u, c, heightFrac(), frameUniforms.amp, params.style);
@@ -299,8 +334,12 @@ export function createPassInstance(
         const centerPx = { x: ctx.anchor.x * dpr, y: ctx.anchor.y * dpr };
         panelCfg.draw(panelCtx2d, c.width, c.height, params, { ...info, centerPx, dpr });
       }
-      if (ctx.shadow) drawPass(ctx.shadow, info, frameUniforms, true);
-      drawPass(ctx.light, info, frameUniforms, false);
+      // Per-frame array uniforms (CPU-precomputed geometry), computed once.
+      const c = ctx.light.canvas;
+      const origin = { x: ctx.anchor.x * dpr, y: c.height - ctx.anchor.y * dpr };
+      const frameArrs = config.frameArrays?.(info, params, { width: c.width, height: c.height, dpr, origin });
+      if (ctx.shadow) drawPass(ctx.shadow, info, frameUniforms, true, frameArrs);
+      drawPass(ctx.light, info, frameUniforms, false, frameArrs);
     },
     dispose(): void {
       if (disposed) return;

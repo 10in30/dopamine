@@ -1,31 +1,25 @@
 /**
- * Lightning Canvas2D PANEL drawing (web).
+ * Lightning bolt geometry precompute (web).
  *
- * PERFORMANCE: the original web lightning was a single full-screen fragment pass
- * that, at EVERY pixel, walked the main bolt + every fork (8 × 14 segments) and
- * evaluated `boltPoint` — which calls 4-octave `fbm` TWICE — per segment: ~220
- * fbm (~3.5K hash) evaluations PER PIXEL, plus the shadow pass re-walking it 9×.
- * Fine on a GPU; ~1.1 s/frame under software/ANGLE WebGL. The bolt is a thin
- * polyline whose vertices are fragment-INDEPENDENT, so it belongs in a panel: we
- * compute the jagged polyline ONCE per frame in JS (a faithful port of the
- * shader's fbm/hash + boltPoint) and stroke it — soft halo into R, hot core into
- * G — into an offscreen Canvas2D. The fragment shader then just samples that and
- * adds the (cheap, full-screen) flash + impact glow + finish.
+ * PERFORMANCE: the original web lightning re-derived every bolt vertex with TWO
+ * 4-octave `fbm` calls per segment AT EVERY PIXEL (~220 fbm/pixel), plus a 9-tap
+ * shadow re-walk — ~1.1 s/frame under software/ANGLE WebGL. The bolt polyline is
+ * fragment-INDEPENDENT, so we compute it ONCE per frame here (a faithful JS port
+ * of the shared fbm/hash + the original `boltPoint`) and feed it to the shader as
+ * the `uVerts` / `uBoltMeta` uniform arrays. The shader keeps the exact original
+ * inverse-distance plasma glow; only the cost moved off the per-pixel path.
  *
- * Swift/Metal lightning is untouched; lightning.dope.json is unchanged across
- * platforms — only the web render path moved.
- *
- * Panel channel encoding consumed by lightning-shader.ts:
- *   R = soft electric HALO (glow)   ·   G = hot white CORE
+ * Output (gl_FragCoord space — device px, y-UP, to match the shader):
+ *   verts: Float32Array(MAX_BOLTS * VERTS_PER_BOLT * 2) — vertex i of bolt b at
+ *          [(b*VPB + i) * 2].
+ *   meta:  Float32Array(MAX_BOLTS * 4) — per bolt (segCount, radFrac, fadeMul, isMain).
  */
 
-import { MAX_FORKS, BOLT_SEGS } from "./lightning-shader.js";
+import { MAX_FORKS, BOLT_SEGS, MAX_BOLTS, VERTS_PER_BOLT } from "./lightning-shader.js";
 import { strikeProgress } from "./lightning-tempo.js";
 
-/** Resolved render params the lightning panel consumes. */
 export interface LightningRenderParams {
-  durationMs: number;
-  style: number;       // = whimsy (photoreal plasma 0 -> cel comic bolt 1)
+  style: number;       // = whimsy (drives the on-twos cel jitter)
   thickness: number;   // bolt half-width as fraction of min dim
   jagged: number;      // fbm perturbation amount of the bolt vertices
   branches: number;    // number of secondary forks
@@ -33,8 +27,13 @@ export interface LightningRenderParams {
 }
 
 const clamp = (x: number, lo: number, hi: number): number => (x < lo ? lo : x > hi ? hi : x);
-const mix = (a: number, b: number, t: number): number => a + (b - a) * t;
+const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
+const smoothstep = (e0: number, e1: number, x: number): number => {
+  const t = clamp01((x - e0) / (e1 - e0));
+  return t * t * (3 - 2 * t);
+};
 const fract = (x: number): number => x - Math.floor(x);
+const mix = (a: number, b: number, t: number): number => a + (b - a) * t;
 
 // --- Faithful JS port of the shared look/glsl hash + value-noise fbm ---------
 function hash11(p: number): number {
@@ -42,6 +41,13 @@ function hash11(p: number): number {
   p *= p + 33.33;
   p *= p + p;
   return fract(p);
+}
+function hash21x(p: number): number {
+  // Just the .x channel of the shared hash21 (used for the start jog).
+  let x = fract(p * 0.1031), y = fract(p * 0.103), z = fract(p * 0.0973);
+  const d = x * (y + 33.33) + y * (z + 33.33) + z * (x + 33.33);
+  x += d; y += d; z += d;
+  return fract((x + y) * z);
 }
 function hash21(p: number): { x: number; y: number } {
   let x = fract(p * 0.1031), y = fract(p * 0.103), z = fract(p * 0.0973);
@@ -72,124 +78,100 @@ function fbm(x: number, y: number): number {
 
 interface Vec2 { x: number; y: number }
 
-/** A jagged bolt vertex at parameter t along A→B (port of the shader boltPoint). */
-function boltPoint(
-  A: Vec2, B: Vec2, t: number, seedOff: number, jitterScale: number,
-  seed: number, jagged: number, beat: number,
-): Vec2 {
+/** Port of the shader boltPoint: a jagged vertex at t along A→B. */
+function boltPoint(A: Vec2, B: Vec2, t: number, seedOff: number, seed: number, jagged: number, beat: number): Vec2 {
   const dx = B.x - A.x, dy = B.y - A.y;
   const len = Math.max(Math.hypot(dx, dy), 1);
   const dirx = dx / len, diry = dy / len;
   const nrmx = -diry, nrmy = dirx;
-  const bt = beat * jitterScale;
-  const n = fbm(t * 6 + seedOff + seed, bt * 0.5) - 0.5;
-  const fine = fbm(t * 22 + seedOff * 3.1 + seed, bt) - 0.5;
+  const n = fbm(t * 6 + seedOff + seed, beat * 0.5) - 0.5;
+  const fine = fbm(t * 22 + seedOff * 3.1 + seed, beat) - 0.5;
   const taper = Math.sin(t * Math.PI);
   const off = (n * 1.6 + fine * 0.5) * jagged * len * 0.16 * taper;
   return { x: A.x + dirx * (t * len) + nrmx * off, y: A.y + diry * (t * len) + nrmy * off };
 }
 
-/** Build the drawn portion (0..`drawn`) of a jagged polyline A→B. */
-function boltPolyline(
-  A: Vec2, B: Vec2, drawn: number, seedOff: number, jitterScale: number,
-  seed: number, jagged: number, beat: number,
-): Vec2[] {
-  const pts: Vec2[] = [boltPoint(A, B, 0, seedOff, jitterScale, seed, jagged, beat)];
+/** Write up to BOLT_SEGS+1 vertices of the drawn (0..drawn) polyline A→B into
+ *  `verts` at bolt slot `b`; returns the segment count (points-1). */
+function writeBolt(
+  verts: Float32Array, b: number, A: Vec2, B: Vec2, drawn: number,
+  seedOff: number, seed: number, jagged: number, beat: number,
+): number {
+  const base = b * VERTS_PER_BOLT;
+  let last = 0;
+  const v0 = boltPoint(A, B, 0, seedOff, seed, jagged, beat);
+  verts[(base + 0) * 2] = v0.x;
+  verts[(base + 0) * 2 + 1] = v0.y;
   for (let i = 1; i <= BOLT_SEGS; i++) {
     const t = i / BOLT_SEGS;
     if (t - 1 / BOLT_SEGS > drawn) break;
     const tc = Math.min(t, drawn);
-    pts.push(boltPoint(A, B, tc, seedOff, jitterScale, seed, jagged, beat));
+    const v = boltPoint(A, B, tc, seedOff, seed, jagged, beat);
+    verts[(base + i) * 2] = v.x;
+    verts[(base + i) * 2 + 1] = v.y;
+    last = i;
   }
-  return pts;
+  return last;
+}
+
+export interface LightningArrays {
+  verts: Float32Array; // MAX_BOLTS * VERTS_PER_BOLT * 2
+  meta: Float32Array;  // MAX_BOLTS * 4 = (segCount, radFrac, fadeMul, isMain)
 }
 
 /**
- * Stroke a polyline as a tight soft HALO (red channel) + hot CORE (green),
- * additively. The halo is a thin bright stroke with a `shadowBlur` gaussian
- * falloff — a real bright-spine→transparent-edge glow, NOT a wide flat band (the
- * latter reads as a fuzzy translucent slab once the screen blend + gain amplify
- * its low-alpha tail).
+ * Compute the bolt polyline (trunk + forks) for this frame, in gl_FragCoord
+ * space (device px, y-up). `origin` is the strike point (gl coords); `width`/
+ * `height` the canvas device px; `elapsedMs`/`life` the timing.
  */
-function strokeBolt(ctx: CanvasRenderingContext2D, pts: Vec2[], rad: number): void {
-  if (pts.length < 2) return;
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-
-  // HALO -> R: a few TIGHT widening strokes approximate the plasma glow falloff
-  // (bright spine, quick fade). Kept narrow (≤~1.6× rad) so it reads as a halo,
-  // not a slab — and cheap (no shadowBlur gaussian, which is costly per frame).
-  const halo: Array<[number, number]> = [[1.6, 0.16], [1.0, 0.3], [0.55, 0.6]];
-  for (const [wmul, alpha] of halo) {
-    ctx.lineWidth = Math.max(rad * wmul, 1);
-    ctx.strokeStyle = `rgba(255,0,0,${alpha})`;
-    ctx.stroke();
-  }
-
-  // CORE -> G: a crisp thin white-hot centre line.
-  ctx.strokeStyle = "rgba(0,255,0,1)";
-  ctx.lineWidth = Math.max(rad * 0.28, 1.5);
-  ctx.stroke();
-}
-
-/**
- * Draw one frame of the bolt (main trunk + forks) into the offscreen panel.
- * `center` is the strike point (anchor, device px); the bolt descends from the
- * top edge to it. Geometry is a pure function of elapsedMs + seed.
- */
-export function drawLightningPanel(
-  ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
+export function computeLightningArrays(
   params: LightningRenderParams,
+  width: number,
+  height: number,
+  origin: { x: number; y: number },
   elapsedMs: number,
-  center: { x: number; y: number },
-): void {
-  ctx.clearRect(0, 0, w, h);
+  life: number,
+): LightningArrays {
+  const verts = new Float32Array(MAX_BOLTS * VERTS_PER_BOLT * 2);
+  const meta = new Float32Array(MAX_BOLTS * 4);
   const strike = strikeProgress(elapsedMs);
-  if (strike <= 0) return;
+  if (strike <= 0) return { verts, meta };
 
-  const minDim = Math.min(w, h);
   const seed = params.boltSeed;
   const jagged = params.jagged;
-  const timeS = elapsedMs / 1000;
-  const beat = Math.floor(timeS * 12) * params.style;
+  const beat = Math.floor((elapsedMs / 1000) * 12) * params.style;
 
   // Strike geometry: from near the top edge (biased toward the strike x) down to
-  // the strike point (anchor). Canvas y-down: top is y≈0.
-  const jx = (hash21(seed * 1.7).x - 0.5) * w * 0.5;
-  const A: Vec2 = { x: clamp(center.x + jx, w * 0.12, w * 0.88), y: -0.02 * h };
-  const B: Vec2 = { x: center.x, y: center.y };
+  // the strike point. gl coords y-up: top edge is y ≈ height.
+  const jx = (hash21x(seed * 1.7) - 0.5) * width * 0.5;
+  const A: Vec2 = { x: clamp(origin.x + jx, width * 0.12, width * 0.88), y: height * 1.02 };
+  const B: Vec2 = { x: origin.x, y: origin.y };
 
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
+  // MAIN BOLT (slot 0).
+  const mainSegs = writeBolt(verts, 0, A, B, strike, 0, seed, jagged, beat);
+  meta[0] = mainSegs; meta[1] = params.thickness; meta[2] = 1.0; meta[3] = 1.0;
 
-  // MAIN BOLT.
-  const radMain = minDim * params.thickness;
-  strokeBolt(ctx, boltPolyline(A, B, strike, 0, 1, seed, jagged, beat), radMain);
-
-  // SECONDARY FORKS.
+  // FORKS (slots 1..).
   const forks = Math.max(0, Math.min(MAX_FORKS, Math.round(params.branches)));
   const dlen = Math.hypot(B.x - A.x, B.y - A.y) || 1;
   const dirx = (B.x - A.x) / dlen, diry = (B.y - A.y) / dlen;
   const nrmx = -diry, nrmy = dirx;
-  const radFork = minDim * params.thickness * 0.6;
+  const forkFade = 0.6 + 0.4 * (1 - smoothstep(0.5, 1.0, life));
   for (let i = 0; i < forks; i++) {
+    const b = 1 + i;
     const hh = hash21(i * 9.7 + seed + 3);
     const launchT = 0.18 + hh.x * 0.62;
-    if (strike < launchT) continue;
-    const forkA = boltPoint(A, B, launchT, 0, 1, seed, jagged, beat);
+    if (strike < launchT) { meta[b * 4] = 0; continue; }
+    const forkA = boltPoint(A, B, launchT, 0, seed, jagged, beat);
     const ang = (hh.y - 0.5) * 2.2;
     const reach = (0.18 + hh.x * 0.22) * dlen;
     const ex = dirx * (0.5 + hh.y) + nrmx * ang;
     const ey = diry * (0.5 + hh.y) + nrmy * ang;
     const forkB: Vec2 = { x: forkA.x + ex * reach, y: forkA.y + ey * reach };
     const forkDrawn = clamp((strike - launchT) / Math.max(1 - launchT, 0.05), 0, 1);
-    strokeBolt(ctx, boltPolyline(forkA, forkB, forkDrawn, i * 17 + 5, 1, seed, jagged, beat), radFork);
+    const segs = writeBolt(verts, b, forkA, forkB, forkDrawn, i * 17 + 5, seed, jagged, beat);
+    meta[b * 4] = segs; meta[b * 4 + 1] = params.thickness * 0.6; meta[b * 4 + 2] = forkFade; meta[b * 4 + 3] = 0;
   }
 
-  ctx.restore();
+  return { verts, meta };
 }
