@@ -29,11 +29,10 @@ by the *same bytes* — each effect's [`.dope`](docs/effect-format.md) document.
 | **ripple** | success | concentric water ripples |
 
 We plan to add many more and expand the mechanisms in every effect. **Android
-support has begun** — the shared portable core (byte-parity-tested against the
-web) + the GL rendering backbone + the **heartburst** reference effect ship today
-(see [`android/`](android/README.md)); the remaining eight effects are being
-ported on the same `.dope` spine. The effects are grounded in research on
-dopamine reward responses, modern aesthetics, and a sense of whimsy.
+support ships all nine effects** — the shared portable core (byte-parity-tested
+against the web) + the OpenGL ES 3.0 rendering backbone + every effect on the
+same `.dope` spine (see [`android/`](android/README.md)). The effects are grounded
+in research on dopamine reward responses, modern aesthetics, and a sense of whimsy.
 
 ## Repository layout
 

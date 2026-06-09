@@ -9,8 +9,10 @@
 // single-surface host.
 //
 // What stays per-effect: the GLSL + a tiny `frame()` hook computing the genuinely
-// time-varying uniforms. Everything else — standard uniforms, the `name →
-// u<Name>` scalar auto-binding, the "animate on twos" stepping — is generic.
+// time-varying uniforms, and (optionally) a `frameArrays` hook that CPU-precomputes
+// geometry into uniform ARRAYS (lightning's bolt polyline → uVerts/uBoltMeta) —
+// far cheaper than re-deriving it per pixel. Everything else — standard uniforms,
+// the `name → u<Name>` scalar auto-binding, the "animate on twos" stepping — is generic.
 
 package ai.dopamine.gl
 
@@ -19,6 +21,19 @@ import ai.dopamine.core.RGB
 import ai.dopamine.core.number
 import ai.dopamine.core.steppedAnimMs
 import android.opengl.GLES30
+
+/** A per-frame ARRAY uniform (vec2/3/4 array): `name`, component `size` (2/3/4), flat `data`. */
+class UniformArray(val name: String, val size: Int, val data: FloatArray)
+
+/** Live geometry handed to a `frameArrays` hook: canvas px + the gl-coords strike origin. */
+data class FrameGeom(
+    val widthPx: Int,
+    val heightPx: Int,
+    val density: Float,
+    /** Strike/anchor origin in gl_FragCoord space (device px, y-UP). */
+    val originX: Float,
+    val originY: Float,
+)
 
 /** Config for one pure-shader effect. The genuinely code-shaped bits live here. */
 class PassConfig(
@@ -41,12 +56,33 @@ class PassConfig(
      * well-known key `amp` feeds the (portable) shadow geometry.
      */
     val frame: (FrameInfo, Map<String, DopeValue>) -> Map<String, Float>,
+    /**
+     * OPTIONAL per-frame ARRAY uniforms (vec2/3/4 arrays) for effects that
+     * CPU-precompute geometry each frame and feed it to the shader as a uniform
+     * array (lightning's bolt polyline). Computed once per frame; each returned
+     * `name` must also be declared `uniform vecN name[...]` in the shader.
+     */
+    val frameArrays: ((FrameInfo, Map<String, DopeValue>, FrameGeom) -> List<UniformArray>)? = null,
 )
 
 private val STANDARD_PASS = listOf(
     "uOrigin", "uResolution", "uTarget", "uLife", "uTimeS", "uStyle", "uAmp",
     "uC0", "uC1", "uC2", "uShadow", "uShadowOffset", "uShadowSoft", "uShadowStrength",
 )
+
+private fun bindArrays(prog: GlProgram, arrays: List<UniformArray>?) {
+    if (arrays == null) return
+    for (a in arrays) {
+        val loc = prog.uniform(a.name)
+        if (loc < 0) continue
+        val count = a.data.size / a.size
+        when (a.size) {
+            2 -> GLES30.glUniform2fv(loc, count, a.data, 0)
+            3 -> GLES30.glUniform3fv(loc, count, a.data, 0)
+            4 -> GLES30.glUniform4fv(loc, count, a.data, 0)
+        }
+    }
+}
 
 /** Build a drawable `EffectInstance` for a pure-shader effect. */
 fun createPassInstance(config: PassConfig, params: Map<String, DopeValue>, ctx: EffectContext): EffectInstance {
@@ -57,7 +93,7 @@ fun createPassInstance(config: PassConfig, params: Map<String, DopeValue>, ctx: 
 
     var disposed = false
 
-    fun drawPass(isShadow: Boolean, info: FrameInfo, frameUniforms: Map<String, Float>) {
+    fun drawPass(isShadow: Boolean, info: FrameInfo, frameUniforms: Map<String, Float>, frameArrs: List<UniformArray>?) {
         val gl = ctx.gl
         val prog = gl.program(config.vertex, config.fragment)
         prog.resolve(STANDARD_PASS)
@@ -79,6 +115,7 @@ fun createPassInstance(config: PassConfig, params: Map<String, DopeValue>, ctx: 
         bindPalette(prog, pal)
         bindScalars(prog, params, scalarBinds)
         bindFrameUniforms(prog, frameUniforms)
+        bindArrays(prog, frameArrs)
 
         setF(prog, "uShadow", if (isShadow) 1f else 0f)
         if (isShadow) {
@@ -93,13 +130,19 @@ fun createPassInstance(config: PassConfig, params: Map<String, DopeValue>, ctx: 
 
         override fun renderAt(elapsedMs: Double) {
             if (disposed) return
+            val gl = ctx.gl
             val animMs = steppedAnimMs(elapsedMs, style)
             val life = minOf(maxOf(animMs, 0.0) / durationMs, 1.0)
             val info = FrameInfo(animMs = animMs, life = life, elapsedMs = elapsedMs)
             val frameUniforms = config.frame(info, params)
+            // CPU-precomputed array uniforms (origin in gl coords, y-up — matching web).
+            val frameArrs = config.frameArrays?.invoke(
+                info, params,
+                FrameGeom(gl.width, gl.height, ctx.density, ctx.anchorX, gl.height - ctx.anchorY),
+            )
             // Self-contained overlay: light pass only (the shadow pass needs a
             // backdrop the GL surface can't read — see Look.kt / MetalOverlayHost).
-            drawPass(isShadow = false, info = info, frameUniforms = frameUniforms)
+            drawPass(isShadow = false, info = info, frameUniforms = frameUniforms, frameArrs = frameArrs)
         }
 
         override fun dispose() { disposed = true }

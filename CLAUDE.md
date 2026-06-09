@@ -13,11 +13,11 @@ expand the mechanisms in existing ones. **The portable `.dope` file matters more
 than any of the code** — the code on every platform is an interpreter for that
 data.
 
-> **Android status (in progress).** The portable core (`android/dopamine-core`,
-> byte-parity-tested), the GL rendering backbone (`android/dopamine-gl`), and the
-> **heartburst** reference effect ship today. The other eight effects are being
-> ported on the same `.dope` spine — see `android/README.md` for the per-effect
-> porting contract.
+> **Android status.** The portable core (`android/dopamine-core`,
+> byte-parity-tested), the GL rendering backbone (`android/dopamine-gl`), and **all
+> nine effects** now ship on the same `.dope` spine (each its own
+> `dopamine-effect-<name>` module + the `dopamine-effects` umbrella). See
+> `android/README.md` for the per-effect porting contract.
 
 ## The shared `.dope` spine
 

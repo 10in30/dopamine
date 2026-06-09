@@ -80,12 +80,10 @@ if (androidSdkAvailable) {
     for (name in effectModules) include(":$name")
 
     // The umbrella hard-references the effect classes it bundles, so include it ONLY
-    // once every one of them is present (otherwise it can't compile). It ships EIGHT
-    // today; LIGHTNING is pending a rework on another branch — when its module lands,
-    // add "lightning" here (and re-enable it in the umbrella's Dopamine.kt + build).
+    // once every one of them is present (otherwise it can't compile). All nine ship.
     val umbrellaEffects = listOf(
         "solarbloom", "aurora", "comic", "confetti", "fail",
-        "heartburst", "inkstroke", "ripple",
+        "heartburst", "inkstroke", "lightning", "ripple",
     )
     val haveUmbrellaEffects = umbrellaEffects.all { File(rootDir, "dopamine-effect-$it/build.gradle.kts").exists() }
     if (haveUmbrellaEffects && File(rootDir, "dopamine-effects/build.gradle.kts").exists()) {

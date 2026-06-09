@@ -34,6 +34,6 @@ dependencies {
     api(project(":dopamine-effect-fail"))
     api(project(":dopamine-effect-heartburst"))
     api(project(":dopamine-effect-inkstroke"))
+    api(project(":dopamine-effect-lightning"))
     api(project(":dopamine-effect-ripple"))
-    // api(project(":dopamine-effect-lightning")) // pending rework — re-enable with the module
 }

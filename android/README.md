@@ -4,10 +4,11 @@ The Android port of Dopamine. Like the web (TypeScript + WebGL2) and Swift
 (Swift + Metal) stacks, it is an **interpreter for the shared `.dope` files** —
 the same bytes drive all three platforms. This directory mirrors `swift/`.
 
-> **Status: foundation + one reference effect.** The portable core, the GL
-> rendering backbone, and the **heartburst** hybrid effect ship today. The other
-> eight effects are ported on the same spine — see
-> [Porting an effect](#porting-an-effect) (the per-effect contract).
+> **Status: all nine effects ship.** The portable core, the GL rendering
+> backbone, and every effect — solarbloom, aurora, comic, confetti, fail,
+> heartburst, inkstroke, lightning, ripple — are ported on the same `.dope` spine
+> (each its own `dopamine-effect-<name>` module). See
+> [Porting an effect](#porting-an-effect) for the per-effect contract.
 
 ## Why OpenGL ES 3.0
 
