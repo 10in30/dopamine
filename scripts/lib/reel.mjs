@@ -108,9 +108,15 @@ export async function renderClip(page, seg) {
     return window.__cap.durationMs;
   }, seg);
 
-  const n = Math.ceil((durationMs / 1000) * FPS) + TAIL;
+  // FAST TEST MODE: `REEL_FRAMES=N` renders just N frames evenly spaced across
+  // the effect's life — enough to validate that each effect renders correctly
+  // without producing the full ~FPS×duration frame count (much quicker). Unset =
+  // the real reel (real-time FPS sampling for a smooth clip).
+  const fast = Number(process.env.REEL_FRAMES) || 0;
+  const fullN = Math.ceil((durationMs / 1000) * FPS) + TAIL;
+  const n = fast > 0 ? Math.min(fast, fullN) : fullN;
   for (let i = 0; i < n; i++) {
-    const t = (i / FPS) * 1000;
+    const t = fast > 0 ? (i / Math.max(n - 1, 1)) * durationMs : (i / FPS) * 1000;
     await page.evaluate(
       (ms) => new Promise((r) => {
         requestAnimationFrame(() => { window.__cap.renderAt(ms); requestAnimationFrame(() => r()); });
