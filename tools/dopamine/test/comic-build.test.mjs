@@ -80,4 +80,27 @@ describe("dopamine toolchain — comic → standalone platform packages", () => 
     const syncPaths = sync.map((a) => a.path.replace(/\\/g, "/"));
     expect(syncPaths).toContain("effects/comic/web/src/comic.dope.json");
   });
+
+  it("emits a complete Android library + identical portable .dope across platforms", async () => {
+    const { dist } = await buildEffect({ root, effectDir: "effects/comic", outDir });
+    const byPath = new Map(dist.map((a) => [a.path, a.content]));
+    const A = "android/dopamine-effect-comic";
+    for (const p of [
+      `${A}/build.gradle.kts`, `${A}/src/main/AndroidManifest.xml`,
+      `${A}/src/main/assets/comic.dope.json`,
+      `${A}/src/main/kotlin/ai/dopamine/effect/comic/Comic.kt`,
+      `${A}/src/main/kotlin/ai/dopamine/effect/comic/ComicShader.kt`,
+      `${A}/src/main/kotlin/ai/dopamine/effect/comic/ComicPanel.kt`,
+      `${A}/src/main/kotlin/ai/dopamine/effect/comic/ComicTempo.kt`,
+    ]) expect(byPath.has(p), p).toBe(true);
+    expect(byPath.get(`${A}/build.gradle.kts`)).toContain('namespace = "ai.dopamine.effect.comic"');
+
+    // The data spine embedded in ALL THREE packages is byte-identical (the portable
+    // subset) — the cross-platform .dope parity invariant, now a build property.
+    const swiftDope = byPath.get("swift/DopamineEffectComic/Sources/DopamineEffectComic/Resources/comic.dope.json");
+    const webDope = byPath.get("web/effect-comic/src/comic.dope.json");
+    const androidDope = byPath.get(`${A}/src/main/assets/comic.dope.json`);
+    expect(webDope).toBe(swiftDope);
+    expect(androidDope).toBe(swiftDope);
+  });
 });

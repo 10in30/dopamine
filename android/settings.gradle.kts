@@ -79,13 +79,31 @@ if (androidSdkAvailable) {
         .sorted()
     for (name in effectModules) include(":$name")
 
+    // Effects migrated to the single-folder model (effects/<id>/) are built into
+    // standalone Gradle modules under dist/android/ by the @dopamine/build toolchain
+    // (run `node tools/dopamine/src/cli.mjs build <effect>` first). Include any that
+    // are present there, pointing the project at its dist location — the demo +
+    // umbrella consume them exactly like the in-tree modules. (comic is the first.)
+    val distAndroid = File(rootDir, "../dist/android")
+    val distEffects: List<String> = (distAndroid.listFiles() ?: emptyArray())
+        .filter { it.isDirectory && it.name.startsWith("dopamine-effect-") && File(it, "build.gradle.kts").exists() }
+        .map { it.name }
+        .sorted()
+    for (name in distEffects) {
+        include(":$name")
+        project(":$name").projectDir = File(distAndroid, name)
+    }
+
     // The umbrella hard-references the effect classes it bundles, so include it ONLY
     // once every one of them is present (otherwise it can't compile). All ten ship.
     val umbrellaEffects = listOf(
         "solarbloom", "aurora", "comic", "confetti", "fail",
         "heartburst", "inkstroke", "lightning", "ripple", "halo",
     )
-    val haveUmbrellaEffects = umbrellaEffects.all { File(rootDir, "dopamine-effect-$it/build.gradle.kts").exists() }
+    val haveUmbrellaEffects = umbrellaEffects.all {
+        File(rootDir, "dopamine-effect-$it/build.gradle.kts").exists() ||
+            File(rootDir, "../dist/android/dopamine-effect-$it/build.gradle.kts").exists()
+    }
     if (haveUmbrellaEffects && File(rootDir, "dopamine-effects/build.gradle.kts").exists()) {
         include(":dopamine-effects")
     }

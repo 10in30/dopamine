@@ -20,6 +20,7 @@ import { join, isAbsolute, relative } from "node:path";
 import { readFile, readdir } from "node:fs/promises";
 import { generateSwiftPackage } from "./swift.mjs";
 import { generateNpmPackage } from "./web.mjs";
+import { generateAndroidLibrary } from "./android.mjs";
 
 /** Top-level `.dope` keys that are TOOLCHAIN-only — consumed here, never shipped. */
 export const TOOLCHAIN_KEYS = ["slug", "kind", "binding", "x-build"];
@@ -73,7 +74,9 @@ export async function buildEffect({ root, effectDir, outDir }) {
       content: eff.dope,
     });
   }
-  // TODO: build.android → generateAndroidLibrary(...)
+  if (build.android) {
+    dist.push(...(await generateAndroidLibrary({ eff })));
+  }
 
   return { dist, sync };
 }
