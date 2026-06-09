@@ -31,12 +31,17 @@ sleep 2
 adb pull /sdcard/dopamine-slowmo.mp4 "$OUT/dopamine-slowmo.mp4" || true
 
 # Speed the clip back to real time (setpts * slowmo keeps every captured frame),
-# mirroring swift.yml. Force even dimensions (libx264 yuv420p rejects odd). Keep the
-# slow-mo original if the re-encode fails. ffmpeg is preinstalled on the ubuntu runner.
+# mirroring swift.yml. Force even dimensions (libx264 yuv420p rejects odd). ffmpeg
+# is installed by the workflow step before this; if it's somehow unavailable, or the
+# re-encode fails, fall back to shipping the slow-mo clip as dopamine.mp4 so the
+# artifact always exists.
 if [ -s "$OUT/dopamine-slowmo.mp4" ]; then
-  ffmpeg -y -hide_banner -i "$OUT/dopamine-slowmo.mp4" \
-    -vf "setpts=0.25*PTS,scale=trunc(iw/2)*2:trunc(ih/2)*2" \
-    -an -c:v libx264 -pix_fmt yuv420p "$OUT/dopamine.mp4" 2>&1 | tail -8 || true
+  if command -v ffmpeg >/dev/null 2>&1; then
+    ffmpeg -y -hide_banner -i "$OUT/dopamine-slowmo.mp4" \
+      -vf "setpts=0.25*PTS,scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+      -an -c:v libx264 -pix_fmt yuv420p "$OUT/dopamine.mp4" 2>&1 | tail -8 || true
+  fi
+  [ -s "$OUT/dopamine.mp4" ] || cp "$OUT/dopamine-slowmo.mp4" "$OUT/dopamine.mp4"
 fi
 
 # Diagnostics: prove the shaders compiled + the effects fired.

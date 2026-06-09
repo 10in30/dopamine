@@ -140,6 +140,11 @@ jobs:
         working-directory: android
         run: ./gradlew :demo:assembleDebug --no-daemon --stacktrace
 
+      # ffmpeg is NOT preinstalled on the ubuntu-24.04 runner image — install it so
+      # the recording script can speed the slow-mo capture back to real time.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Boot emulator, autoplay all nine, record + speed to real time
         uses: reactivecircus/android-emulator-runner@v2
         with:
