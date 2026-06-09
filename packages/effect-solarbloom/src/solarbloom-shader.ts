@@ -171,17 +171,77 @@ float sdfCoverage(vec2 frag, out float axisHere, out float distPx){
 // deliberately a fraction of the cost of the light pass (no FBM, no per-mote
 // streak/twinkle), so the extra pass stays cheap under software WebGL.
 // p is a device-pixel sample point. Returns 0..~1 coverage.
-float solarOcclusion(vec2 p){
+
+// Bloom mass: the focused core casts the bulk of the shadow; the halo only a
+// faint ambient occlusion. Matches bloomProfile's shape but flatter. Cheap +
+// fragment-local, so it's fine to re-evaluate per blur tap.
+float bloomOcc(vec2 p, float r){
+  float dn = length(p - uOrigin) / r;
+  return exp(-dn * dn * 2.0) * 0.9 + exp(-dn * 1.4) * 0.18;
+}
+
+// Checkmark mass — cast from the SAME source as the light pass so the
+// silhouette matches: the real font glyph when present, else the analytic SDF.
+// Fragment-local (a texture sample / segment SDF), so re-evaluated per tap.
+float checkOcc(vec2 p, float minDim){
+  float cr = minDim * 0.11;
+  float sw = cr * 0.12;
+  if (uSdfOn > 0.5) {
+    float axisHere; float distPx;
+    float wipe = sdfCoverage(p, axisHere, distPx);
+    return (1.0 - smoothstep(uSdfStrokePx * 0.6, uSdfStrokePx * 1.4, distPx)) * wipe * 0.8;
+  } else if (uCheckTexOn > 0.5) {
+    float axisHere;
+    return glyphCoverage(p, axisHere) * 0.8;
+  }
+  vec2 A = uOrigin + cr * vec2(-0.9, 0.15);
+  vec2 B = uOrigin + cr * vec2(-0.25, -0.55);
+  vec2 C = uOrigin + cr * vec2(1.0, 0.78);
+  float l1 = length(B - A), l2 = length(C - B);
+  float drawn = uCheck * (l1 + l2);
+  float vis1 = clamp(drawn, 0.0, l1);
+  vec2 tip = A + (B - A) * (vis1 / l1);
+  float dseg = sdSeg(p, A, tip);
+  if (drawn > l1) {
+    float d2 = clamp(drawn - l1, 0.0, l2);
+    vec2 tip2 = B + (C - B) * (d2 / l2);
+    dseg = min(dseg, sdSeg(p, B, tip2));
+  }
+  return (1.0 - smoothstep(sw * 0.6, sw * 1.4, dseg)) * 0.8;
+}
+
+// Soft, offset cast silhouette → multiply colour. An 8-tap ring blur (+centre)
+// gives the penumbra. The expensive part is the MAX_MOTES loop, whose per-mote
+// pose (hash-driven position/size/fade) is fragment-INDEPENDENT — re-walking it
+// per tap recomputed those poses 9x (the dominant cost under software/ANGLE
+// WebGL). Instead we walk the motes ONCE, computing each pose a single time, and
+// fold its soft-dot contribution into all 9 tap accumulators. The cheap, frag-
+// local bloom + checkmark terms are still evaluated per tap. Mathematically
+// identical to summing 9 independent solarOcclusion() calls.
+vec4 shadowColor(vec2 frag){
   float minDim = min(uResolution.x, uResolution.y);
   float r = uBloomRadius * minDim;
-  vec2 rel = p - uOrigin;
-  float d = length(rel);
-  float dn = d / r;
-  // Bloom mass: the focused core casts the bulk of the shadow; the halo only a
-  // faint ambient occlusion. Matches bloomProfile's shape but flatter.
-  float occ = exp(-dn * dn * 2.0) * 0.9 + exp(-dn * 1.4) * 0.18;
+  // Sample point is pushed AGAINST the shadow offset, so the resulting dark
+  // silhouette lands offset away from the bright core (toward uShadowOffset).
+  vec2 sp = frag - uShadowOffset;
+  float soft = uShadowSoft;
+  float s2 = soft * 0.7071;
+  vec2 taps[9];
+  taps[0] = sp;
+  taps[1] = sp + vec2( soft, 0.0);
+  taps[2] = sp + vec2(-soft, 0.0);
+  taps[3] = sp + vec2(0.0,  soft);
+  taps[4] = sp + vec2(0.0, -soft);
+  taps[5] = sp + vec2( s2,  s2);
+  taps[6] = sp + vec2(-s2,  s2);
+  taps[7] = sp + vec2( s2, -s2);
+  taps[8] = sp + vec2(-s2, -s2);
 
-  // Motes: a sparse set of soft dots (no streaks/twinkle — just mass).
+  // Frag-local terms (bloom + checkmark) per tap.
+  float occ[9];
+  for (int k = 0; k < 9; k++) occ[k] = bloomOcc(taps[k], r) + checkOcc(taps[k], minDim);
+
+  // Motes: pose computed ONCE per mote, soft-dot folded into every tap.
   for (int i = 0; i < MAX_MOTES; i++) {
     if (float(i) >= uMoteCount) break;
     vec2 h = hash21(float(i) * 13.17 + uMoteSeed);
@@ -198,67 +258,20 @@ float solarOcclusion(vec2 p){
     vec2 buoy = vec2(0.0, life * life * r * 0.5);
     vec2 pos = uOrigin + dir * travel + buoy;
     float size = minDim * 0.006 * (0.6 + h.x * 0.8) * depth;
-    float dd = length(p - pos);
-    float dot = size / (dd + size * 0.6); dot *= dot;
-    float fade = (1.0 - pow(life, 1.3)) * smoothstep(0.0, 0.08, life);
-    occ += dot * fade * 0.5;
-  }
-
-  // Checkmark mass — cast from the SAME source as the light pass so the
-  // silhouette matches: the real font glyph when present, else the analytic SDF.
-  float cr = minDim * 0.11;
-  float sw = cr * 0.12;
-  if (uSdfOn > 0.5) {
-    float axisHere; float distPx;
-    float wipe = sdfCoverage(p, axisHere, distPx);
-    occ += (1.0 - smoothstep(uSdfStrokePx * 0.6, uSdfStrokePx * 1.4, distPx)) * wipe * 0.8;
-  } else if (uCheckTexOn > 0.5) {
-    float axisHere;
-    float cov = glyphCoverage(p, axisHere);
-    occ += cov * 0.8;
-  } else {
-    vec2 A = uOrigin + cr * vec2(-0.9, 0.15);
-    vec2 B = uOrigin + cr * vec2(-0.25, -0.55);
-    vec2 C = uOrigin + cr * vec2(1.0, 0.78);
-    float l1 = length(B - A), l2 = length(C - B);
-    float total = l1 + l2;
-    float drawn = uCheck * total;
-    float vis1 = clamp(drawn, 0.0, l1);
-    vec2 tip = A + (B - A) * (vis1 / l1);
-    float dseg = sdSeg(p, A, tip);
-    if (drawn > l1) {
-      float d2 = clamp(drawn - l1, 0.0, l2);
-      vec2 tip2 = B + (C - B) * (d2 / l2);
-      dseg = min(dseg, sdSeg(p, B, tip2));
+    float fade = (1.0 - pow(life, 1.3)) * smoothstep(0.0, 0.08, life) * 0.5;
+    for (int k = 0; k < 9; k++) {
+      float dd = length(taps[k] - pos);
+      float dot = size / (dd + size * 0.6); dot *= dot;
+      occ[k] += dot * fade;
     }
-    occ += (1.0 - smoothstep(sw * 0.6, sw * 1.4, dseg)) * 0.8;
   }
 
-  return clamp(occ * uAmp, 0.0, 1.0);
-}
-
-// Soft, offset cast silhouette → multiply colour. Samples the occlusion field
-// at a small ring of taps around the offset point (a cheap separable-ish blur)
-// for a penumbra, then maps coverage to a darkening factor.
-vec4 shadowColor(vec2 frag){
-  // Sample point is pushed AGAINST the shadow offset, so the resulting dark
-  // silhouette lands offset away from the bright core (toward uShadowOffset).
-  vec2 sp = frag - uShadowOffset;
-  float occ = solarOcclusion(sp);
-  // 8-tap ring blur for a soft penumbra; cheap and isotropic enough.
-  float soft = uShadowSoft;
-  occ += solarOcclusion(sp + vec2( soft, 0.0));
-  occ += solarOcclusion(sp + vec2(-soft, 0.0));
-  occ += solarOcclusion(sp + vec2(0.0,  soft));
-  occ += solarOcclusion(sp + vec2(0.0, -soft));
-  float s2 = soft * 0.7071;
-  occ += solarOcclusion(sp + vec2( s2,  s2));
-  occ += solarOcclusion(sp + vec2(-s2,  s2));
-  occ += solarOcclusion(sp + vec2( s2, -s2));
-  occ += solarOcclusion(sp + vec2(-s2, -s2));
-  occ /= 9.0;
+  // Match the original: clamp each tap's mass*uAmp, then average the 9 taps.
+  float blurred = 0.0;
+  for (int k = 0; k < 9; k++) blurred += clamp(occ[k] * uAmp, 0.0, 1.0);
+  blurred /= 9.0;
   // Soften and gate by strength. multiply layer: 1.0 = no change, lower = darker.
-  float dark = clamp(occ, 0.0, 1.0) * uShadowStrength;
+  float dark = clamp(blurred, 0.0, 1.0) * uShadowStrength;
   // Slightly warm/cool tint via palette so the shadow isn't pure neutral grey —
   // it reads as the effect's own coloured occlusion. Keep it subtle.
   vec3 tint = mix(vec3(1.0), 0.6 + 0.4 * normalize(uC0 + 1e-3), 0.25);
