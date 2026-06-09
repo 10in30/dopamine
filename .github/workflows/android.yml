@@ -152,39 +152,10 @@ jobs:
           # build can't give.
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
-          script: |
-            set -x
-            mkdir -p /tmp/out
-            adb install -r android/demo/build/outputs/apk/debug/demo-debug.apk
-
-            # Autoplay EVERY registered effect in sequence at quarter speed, exactly
-            # like swift.yml's `-autoplay all -slowmo 0.25`, so the emulator's low frame
-            # rate still samples each effect's motion smoothly. The demo cycles all nine
-            # (~11 s each at slow-mo); record one full sequence (~100 s) + margin.
-            adb shell am start -n ai.dopamine.demo/.MainActivity \
-              --es autoplay all --ef slowmo 0.25
-            sleep 3
-            # screenrecord captures SurfaceFlinger's composited output, so it sees the
-            # z-ordered translucent GLSurfaceView overlay. Auto-finalizes at --time-limit.
-            timeout 130 adb shell screenrecord --bit-rate 8000000 --time-limit 105 \
-              /sdcard/dopamine-slowmo.mp4 || true
-            sleep 2
-            adb pull /sdcard/dopamine-slowmo.mp4 /tmp/out/dopamine-slowmo.mp4 || true
-
-            # Speed the clip back to real time (setpts * slowmo keeps every captured
-            # frame), mirroring swift.yml. ffmpeg is preinstalled on the ubuntu runner.
-            # Force even dimensions (libx264 yuv420p rejects odd). Keep the slow-mo
-            # original if the re-encode fails.
-            if [ -s /tmp/out/dopamine-slowmo.mp4 ]; then
-              ffmpeg -y -hide_banner -i /tmp/out/dopamine-slowmo.mp4 \
-                -vf "setpts=0.25*PTS,scale=trunc(iw/2)*2:trunc(ih/2)*2" \
-                -an -c:v libx264 -pix_fmt yuv420p /tmp/out/dopamine.mp4 2>&1 | tail -8 || true
-            fi
-
-            # Diagnostics: prove the shaders compiled + the effects fired.
-            adb logcat -d | grep -iE 'Dopamine|GLES|shader|fired|create failed' | tail -80 \
-              > /tmp/out/app.log || true
-            echo "--- recorded files ---"; ls -la /tmp/out || true
+          # NOTE: android-emulator-runner runs `script` LINE BY LINE (each line its own
+          # `sh -c`), which breaks backslash continuations + multi-line blocks — so the
+          # real logic lives in a committed bash file invoked here in ONE line.
+          script: bash android/ci/emulator-record.sh
 
       - name: Upload emulator clip
         if: always()
