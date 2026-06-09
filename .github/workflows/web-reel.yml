@@ -28,12 +28,16 @@ on:
     branches: ["main"]
     paths:
       - "packages/**"
+      - "effects/**"          # single-folder effect sources (comic + future effects)
+      - "tools/dopamine/**"   # the cross-platform build toolchain
       - "examples/**"
       - "scripts/**"
       - ".github/workflows/web-reel.yml"
   pull_request:
     paths:
       - "packages/**"
+      - "effects/**"          # single-folder effect sources (comic + future effects)
+      - "tools/dopamine/**"   # the cross-platform build toolchain
       - "examples/**"
       - "scripts/**"
       - ".github/workflows/web-reel.yml"
