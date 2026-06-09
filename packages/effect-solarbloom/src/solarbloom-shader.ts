@@ -152,12 +152,17 @@ float glyphCoverage(vec2 frag, out float axisHere){
 // ---------------------------------------------------------------------------
 float sdfCoverage(vec2 frag, out float axisHere, out float distPx){
   vec2 uv = glyphUV(frag);
-  axisHere = glyphDrawAxis(uv);
-  distPx = 1e9;
-  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
-  // SDF texel = normalized distance; *uSdfRangePx → device px to the stroke.
-  float nd = texture(uSdfTex, uv).r;
-  distPx = nd * uSdfRangePx;
+  // The baked checkmark fills its viewBox edge-to-edge, so the glyph box is tight
+  // around the strokes. Rather than HARD-cutting outside [0,1] (which crops the
+  // soft glow into a rectangle at the corners), sample the SDF CLAMPED to the box
+  // edge and ADD the extra device-px distance beyond it — so the glow keeps fading
+  // radially and vanishes smoothly. Stroke coverage is unaffected (it only reads
+  // sub-stroke distances, always well inside the box).
+  vec2 cl = clamp(uv, 0.0, 1.0);
+  axisHere = glyphDrawAxis(cl);
+  float nd = texture(uSdfTex, cl).r;
+  float outsidePx = length((uv - cl) * 2.0 * uCheckBox);
+  distPx = nd * uSdfRangePx + outsidePx;
   float frontier = uCheck * 1.12;
   float wipe = smoothstep(frontier, frontier - 0.07, axisHere);
   return wipe;
