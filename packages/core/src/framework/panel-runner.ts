@@ -166,7 +166,13 @@ export function createPanelInstance<P extends PassParams>(
     // Standard uniforms.
     gl.uniform2f(u.uResolution, c.width, c.height);
     bindTarget(gl, u, c, ctx.targetSize, dpr);
-    gl.uniform2f(u.uCenter, c.width * 0.5, c.height * 0.5);
+    // uCenter is the impact/heart centre the PROCEDURAL parts radiate from (comic's
+    // action lines, heartburst's bloom). It must match where the panel centrepiece
+    // lands — the anchor — NOT the canvas centre, or they split (centrepiece on the
+    // target, lines/glow stuck at screen centre). `frag` here is vUv*uResolution
+    // (y-up, matching the flipped panel texture), so flip the anchor's y exactly as
+    // the pure-shader runner does for uOrigin.
+    gl.uniform2f(u.uCenter, ctx.anchor.x * dpr, c.height - ctx.anchor.y * dpr);
     gl.uniform1f(u.uLife, info.life);
     gl.uniform1f(u.uTimeS, info.elapsedMs / 1000);
     gl.uniform1f(u.uStyle, params.style);
