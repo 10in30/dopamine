@@ -79,15 +79,16 @@ if (androidSdkAvailable) {
         .sorted()
     for (name in effectModules) include(":$name")
 
-    // The umbrella hard-references all nine effect classes, so include it ONLY once
-    // every one of them is present (otherwise it can't compile). Until then the demo
-    // registers the available effect(s) directly.
-    val canonicalNine = listOf(
+    // The umbrella hard-references the effect classes it bundles, so include it ONLY
+    // once every one of them is present (otherwise it can't compile). It ships EIGHT
+    // today; LIGHTNING is pending a rework on another branch — when its module lands,
+    // add "lightning" here (and re-enable it in the umbrella's Dopamine.kt + build).
+    val umbrellaEffects = listOf(
         "solarbloom", "aurora", "comic", "confetti", "fail",
-        "heartburst", "inkstroke", "lightning", "ripple",
+        "heartburst", "inkstroke", "ripple",
     )
-    val haveAllNine = canonicalNine.all { File(rootDir, "dopamine-effect-$it/build.gradle.kts").exists() }
-    if (haveAllNine && File(rootDir, "dopamine-effects/build.gradle.kts").exists()) {
+    val haveUmbrellaEffects = umbrellaEffects.all { File(rootDir, "dopamine-effect-$it/build.gradle.kts").exists() }
+    if (haveUmbrellaEffects && File(rootDir, "dopamine-effects/build.gradle.kts").exists()) {
         include(":dopamine-effects")
     }
 

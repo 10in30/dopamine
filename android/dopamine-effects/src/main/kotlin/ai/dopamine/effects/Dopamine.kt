@@ -2,15 +2,13 @@
 //
 // Each effect module is self-contained and exposes `<Name>.register(context)`
 // (it needs a Context to read its byte-identical `.dope` from the merged assets).
-// `registerAll` lights up the whole set in one call. The canonical NINE effects:
-// solarbloom, aurora, comic, confetti, fail, heartburst, inkstroke, lightning,
-// ripple — each ported on the SAME shared `.dope` spine the web + swift use.
+// `registerAll` lights up the whole set in one call.
 //
-// NOTE: this module references all nine effect classes, so `settings.gradle.kts`
-// includes it (and thus compiles this file) ONLY once all nine effect modules are
-// present. Today only `heartburst` ships, so the umbrella is DORMANT — the imports
-// below resolve when the remaining eight modules land, with no edit here. Until
-// then the demo registers the available effect(s) directly.
+// SHIPS EIGHT TODAY: solarbloom, aurora, comic, confetti, fail, heartburst,
+// inkstroke, ripple. The ninth — LIGHTNING — is pending a rework on another
+// branch; when its `dopamine-effect-lightning` module lands, re-enable it in THREE
+// places: the import + `Lightning.register(app)` call below, the `api(project(...))`
+// in this module's build.gradle.kts, and the effect list in settings.gradle.kts.
 
 package ai.dopamine.effects
 
@@ -21,13 +19,12 @@ import ai.dopamine.effect.confetti.Confetti
 import ai.dopamine.effect.fail.Fail
 import ai.dopamine.effect.heartburst.Heartburst
 import ai.dopamine.effect.inkstroke.Inkstroke
-import ai.dopamine.effect.lightning.Lightning
 import ai.dopamine.effect.ripple.Ripple
 import ai.dopamine.effect.solarbloom.Solarbloom
 import android.content.Context
 
 object Dopamine {
-    /** Register all nine built-in effects. Returns the registered effect names. */
+    /** Register all built-in effects (eight today). Returns the registered names. */
     fun registerAll(context: Context): List<String> {
         val app = context.applicationContext
         Solarbloom.register(app)
@@ -37,8 +34,8 @@ object Dopamine {
         Fail.register(app)
         Heartburst.register(app)
         Inkstroke.register(app)
-        Lightning.register(app)
         Ripple.register(app)
+        // Lightning.register(app)  // pending rework — see header.
         return EffectRegistry.names()
     }
 }
