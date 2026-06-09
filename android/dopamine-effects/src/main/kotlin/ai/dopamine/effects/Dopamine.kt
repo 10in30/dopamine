@@ -1,0 +1,44 @@
+// The umbrella registration — the Android analog of `@dopamine/effects`.
+//
+// Each effect module is self-contained and exposes `<Name>.register(context)`
+// (it needs a Context to read its byte-identical `.dope` from the merged assets).
+// `registerAll` lights up the whole set in one call. The canonical NINE effects:
+// solarbloom, aurora, comic, confetti, fail, heartburst, inkstroke, lightning,
+// ripple — each ported on the SAME shared `.dope` spine the web + swift use.
+//
+// NOTE: this module references all nine effect classes, so `settings.gradle.kts`
+// includes it (and thus compiles this file) ONLY once all nine effect modules are
+// present. Today only `heartburst` ships, so the umbrella is DORMANT — the imports
+// below resolve when the remaining eight modules land, with no edit here. Until
+// then the demo registers the available effect(s) directly.
+
+package ai.dopamine.effects
+
+import ai.dopamine.core.EffectRegistry
+import ai.dopamine.effect.aurora.Aurora
+import ai.dopamine.effect.comic.Comic
+import ai.dopamine.effect.confetti.Confetti
+import ai.dopamine.effect.fail.Fail
+import ai.dopamine.effect.heartburst.Heartburst
+import ai.dopamine.effect.inkstroke.Inkstroke
+import ai.dopamine.effect.lightning.Lightning
+import ai.dopamine.effect.ripple.Ripple
+import ai.dopamine.effect.solarbloom.Solarbloom
+import android.content.Context
+
+object Dopamine {
+    /** Register all nine built-in effects. Returns the registered effect names. */
+    fun registerAll(context: Context): List<String> {
+        val app = context.applicationContext
+        Solarbloom.register(app)
+        Aurora.register(app)
+        Comic.register(app)
+        Confetti.register(app)
+        Fail.register(app)
+        Heartburst.register(app)
+        Inkstroke.register(app)
+        Lightning.register(app)
+        Ripple.register(app)
+        return EffectRegistry.names()
+    }
+}

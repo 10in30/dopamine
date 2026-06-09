@@ -28,6 +28,13 @@ that doc is the spec.
 > Adding an effect means **scaffolding a new `packages/effect-<name>` package** —
 > NO core edits, NO shared-file edits, NO touching another package.
 
+> **Other platforms.** This guide is the **web** how-to. The same effect also runs
+> from the *same `.dope` bytes* on Swift/Metal (`swift/`) and Android/OpenGL ES
+> (`android/`). Porting an effect there is its own per-package scaffold — see
+> `swift/README.md` and [`android/README.md`](../android/README.md). (The Android
+> shaders are this effect's GLSL near-verbatim, since OpenGL ES 3.0 is the same
+> GLSL ES 3.00 as WebGL2.)
+
 By the end you will be able to add either kind of effect — a **pure-shader**
 effect or a **Canvas2D-hybrid** effect — by scaffolding a small package: a `.dope`
 data file, a fragment shader (and, for hybrids, a `draw()` function), and ~30

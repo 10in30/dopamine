@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A dark fullscreen backdrop so the additive-light overlay reads as cast
+         light (the same reason the web demo uses a dark page). No AppCompat /
+         Material dependency — a plain platform theme keeps the demo deps tiny. -->
+    <style name="Theme.Dopamine" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:statusBarColor">@android:color/black</item>
+        <item name="android:navigationBarColor">@android:color/black</item>
+    </style>
+</resources>

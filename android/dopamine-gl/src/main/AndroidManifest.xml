@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The GL backbone requires OpenGL ES 3.0 (GLSL ES 3.00 — the same shading
+     language as the web's WebGL2). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-feature android:glEsVersion="0x00030000" android:required="true" />
+</manifest>

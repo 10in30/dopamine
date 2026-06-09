@@ -1,0 +1,173 @@
+# Dopamine — Android / OpenGL ES CI.
+#
+# Three jobs, structured to mirror swift.yml (a free portability gate + an
+# SDK-backed build + a best-effort device recording):
+#   • jvm      — the portability + correctness gate on a FREE ubuntu runner with
+#                NO Android SDK: builds the pure-Kotlin `dopamine-core` and runs
+#                the 192-case byte-parity grid against the SAME web fixture swift
+#                asserts. The analog of swift's Linux job. MUST-PASS.
+#   • build    — installs the Android SDK and `assembleDebug`s the GL backbone +
+#                the effect packages + the demo APK (proving the `android.*` half
+#                compiles). MUST-PASS.
+#   • emulator — boots an emulator, installs the demo, autoplays every registered
+#                effect at slow-mo, and screen-records a clip (proves the GLSL
+#                actually compiles + runs on a real GL ES driver). BEST-EFFORT.
+#
+# COST NOTE: the `jvm` gate runs on free runners; the SDK build + emulator are
+# heavier. The paths filter keeps this off web/swift-only changes.
+
+name: android
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "android/**"
+      - "packages/effect-*/src/*.dope.json" # canonical .dope (byte-parity check)
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - "packages/effect-*/src/*.dope.json"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+jobs:
+  # ===========================================================================
+  # JVM — the free correctness gate. No Android SDK, so settings configures only
+  # the pure-Kotlin dopamine-core; the parity grid runs on a plain JVM.
+  # ===========================================================================
+  jvm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # The headline data-spine invariant: the `.dope` bundled into the Android
+      # packages must be the SAME bytes as the canonical web file (and swift's
+      # copy). Compare md5s for every effect that has an Android module.
+      - name: .dope byte-parity (android copies == canonical web)
+        run: |
+          set -e
+          status=0
+          for web in packages/effect-*/src/*.dope.json; do
+            name=$(basename "$web")                  # e.g. heartburst.dope.json
+            # The matching android asset (effect modules) or core test resource.
+            for android in android/dopamine-effect-*/src/main/assets/"$name" \
+                           android/dopamine-core/src/test/resources/"$name"; do
+              [ -f "$android" ] || continue
+              if [ "$(md5sum < "$web" | cut -d' ' -f1)" != "$(md5sum < "$android" | cut -d' ' -f1)" ]; then
+                echo "DRIFT: $android != $web"
+                status=1
+              else
+                echo "ok: $android == $web"
+              fi
+            done
+          done
+          exit $status
+
+      - name: parity gate (dopamine-core, 192-case grid)
+        working-directory: android
+        run: ./gradlew :dopamine-core:test --no-daemon --stacktrace
+
+  # ===========================================================================
+  # build — the Android build. Installs the SDK so settings includes the GL +
+  # effect + demo modules, then assembles the debug APK + libraries.
+  # ===========================================================================
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: Install SDK packages
+        run: |
+          set -x
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
+      - name: assembleDebug (GL backbone + effects + demo APK)
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload demo APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dopamine-demo-apk
+          path: android/demo/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+
+  # ===========================================================================
+  # emulator — BEST-EFFORT. Boots an emulator with a real GL ES driver, installs
+  # the demo, autoplays every effect at slow-mo, and screen-records a clip. This
+  # is what actually proves the GLSL compiles + runs (a build can't).
+  # ===========================================================================
+  emulator:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Build the demo APK
+        working-directory: android
+        run: ./gradlew :demo:assembleDebug --no-daemon --stacktrace
+
+      - name: Boot emulator, autoplay, record
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            set -x
+            adb install -r android/demo/build/outputs/apk/debug/demo-debug.apk
+            # Autoplay every registered effect at quarter speed so the recording
+            # samples the motion smoothly (mirrors swift's -autoplay all -slowmo).
+            adb shell am start -n ai.dopamine.demo/.MainActivity \
+              --es autoplay all --ef slowmo 0.25
+            sleep 3
+            timeout 30 adb shell screenrecord --time-limit 28 /sdcard/dopamine.mp4 || true
+            sleep 2
+            adb pull /sdcard/dopamine.mp4 /tmp/dopamine.mp4 || true
+            mkdir -p /tmp/out && cp /tmp/dopamine.mp4 /tmp/out/ 2>/dev/null || true
+            adb logcat -d | grep -iE 'Dopamine|GLES|shader' | tail -50 > /tmp/out/app.log || true
+            ls -la /tmp/out || true
+
+      - name: Upload emulator clip
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dopamine-android-clip
+          path: /tmp/out
+          if-no-files-found: warn
