@@ -17,8 +17,9 @@ export default defineConfig({
   test: {
     // Pure-logic units across every package (core runtime + each effect package
     // + the umbrella). The WebGL renderer and DOM overlay are validated by the
-    // Playwright recording, not unit tests.
-    include: ["packages/*/test/**/*.test.ts"],
+    // Playwright recording, not unit tests. `tools/*/test` covers the
+    // cross-platform build toolchain (single-folder → platform artifacts).
+    include: ["packages/*/test/**/*.test.ts", "tools/*/test/**/*.test.mjs"],
     environment: "node",
   },
 });

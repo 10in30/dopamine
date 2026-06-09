@@ -1,0 +1,10 @@
+{
+  "name": "@dopamine/build",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Dopamine cross-platform effect build toolchain — generates the web / SwiftPM / Android artifacts from a single effect folder (the expanded .dope package).",
+  "bin": { "dopamine": "src/cli.mjs" },
+  "main": "src/index.mjs",
+  "exports": { ".": "./src/index.mjs" }
+}

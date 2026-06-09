@@ -29,7 +29,6 @@ let package = Package(
         .library(name: "DopamineCore", targets: ["DopamineCore"]),
         .library(name: "DopamineEffectSolarbloom", targets: ["DopamineEffectSolarbloom"]),
         .library(name: "DopamineEffectAurora", targets: ["DopamineEffectAurora"]),
-        .library(name: "DopamineEffectComic", targets: ["DopamineEffectComic"]),
         .library(name: "DopamineEffectConfetti", targets: ["DopamineEffectConfetti"]),
         .library(name: "DopamineEffectFail", targets: ["DopamineEffectFail"]),
         .library(name: "DopamineEffectHeartburst", targets: ["DopamineEffectHeartburst"]),
@@ -66,14 +65,10 @@ let package = Package(
                 .process("Shaders"),
             ]
         ),
-        .target(
-            name: "DopamineEffectComic",
-            dependencies: ["DopamineCore"],
-            resources: [
-                .copy("Resources/comic.dope.json"),
-                .process("Shaders"),
-            ]
-        ),
+        // DopamineEffectComic has MOVED to the single-folder model: it now lives in
+        // effects/comic/ and is built into a STANDALONE SwiftPM package under
+        // dist/swift/DopamineEffectComic by the @dopamine/build toolchain. The demo
+        // consumes it from there (swift/Demo/project.yml), like any external app.
         .target(
             name: "DopamineEffectConfetti",
             dependencies: ["DopamineCore"],
