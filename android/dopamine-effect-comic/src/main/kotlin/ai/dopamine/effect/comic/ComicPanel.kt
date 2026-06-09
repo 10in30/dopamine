@@ -220,14 +220,14 @@ fun drawComicPanel(
         strokeWidth = inkLine
     }
 
-    // The runner flipped the Canvas to a y-up store; glyph rasters would render
-    // upside-down, so flip y back LOCALLY for the text block (swift's local
-    // `scaleBy(1,-1)`) — then glyphs draw right-side-up. Vertical-centre via the
-    // font metrics: the standard centred-baseline offset places the line's visual
-    // middle at the local origin regardless of the flip (a centred block mirrored
-    // about its own centre stays centred).
-    canvas.save()
-    canvas.scale(1f, -1f)
+    // NO local y-flip here (unlike swift's `scaleBy(1,-1)`): Android's
+    // `Canvas.drawText` honors the canvas matrix, so under the runner's global
+    // pre-flip the glyphs already land upright — exactly like the starburst/check
+    // PATHS. Swift/CoreText needed the manual counter-flip because its glyph
+    // rasterization doesn't mirror under the flipped context; doing it here too
+    // flipped the text TWICE and rendered the word upside-down. Vertical-centre via
+    // the font metrics (the standard centred-baseline offset puts the line's visual
+    // middle at the origin).
     val fm = textFill.fontMetrics
     val baselineY = -(fm.ascent + fm.descent) / 2f
 
@@ -236,7 +236,6 @@ fun drawComicPanel(
     canvas.drawText(word, 0f, baselineY, textInk)
     textFill.color = fillColor
     canvas.drawText(word, 0f, baselineY, textFill)
-    canvas.restore() // undo the local y-flip for the text block.
 
     canvas.restore()
 }
