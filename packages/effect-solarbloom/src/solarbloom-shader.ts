@@ -59,9 +59,8 @@ uniform float uTimeS;        // elapsed seconds
 uniform float uExposure;
 uniform float uBloomRadius;  // fraction of min viewport dim
 uniform float uTurbulence;
-uniform float uMoteSpeed;
-uniform float uMoteCount;
-uniform float uMoteSeed;
+uniform sampler2D uMotePanel; // RGB = pre-rasterized drifting motes (lit colour × fade × twinkle)
+uniform float uMoteSeed;     // still seeds the bloom's domain-warp offset
 uniform float uIridescence;  // 0..1 thin-film shimmer strength
 uniform float uDispersion;   // 0..1 spectral split strength at the bloom edge
 uniform float uStyle;        // 0..1 photoreal -> non-photoreal (cel-shaded / hand-drawn)
@@ -241,29 +240,11 @@ vec4 shadowColor(vec2 frag){
   float occ[9];
   for (int k = 0; k < 9; k++) occ[k] = bloomOcc(taps[k], r) + checkOcc(taps[k], minDim);
 
-  // Motes: pose computed ONCE per mote, soft-dot folded into every tap.
-  for (int i = 0; i < MAX_MOTES; i++) {
-    if (float(i) >= uMoteCount) break;
-    vec2 h = hash21(float(i) * 13.17 + uMoteSeed);
-    vec2 h2 = hash21(float(i) * 7.91 + uMoteSeed + 1.3);
-    float a0 = h.x * TAU;
-    float spd = 0.5 + h.y;
-    float delay = hash11(float(i) * 7.7 + uMoteSeed) * 0.15;
-    float life = clamp((uLife - delay) / (1.0 - delay), 0.0, 1.0);
-    if (life <= 0.0) continue;
-    float near = step(0.66, h2.x);
-    float depth = mix(0.7, 1.4, near);
-    vec2 dir = vec2(cos(a0), sin(a0));
-    float travel = life * spd * uMoteSpeed * r * 1.3 * depth;
-    vec2 buoy = vec2(0.0, life * life * r * 0.5);
-    vec2 pos = uOrigin + dir * travel + buoy;
-    float size = minDim * 0.006 * (0.6 + h.x * 0.8) * depth;
-    float fade = (1.0 - pow(life, 1.3)) * smoothstep(0.0, 0.08, life) * 0.5;
-    for (int k = 0; k < 9; k++) {
-      float dd = length(taps[k] - pos);
-      float dot = size / (dd + size * 0.6); dot *= dot;
-      occ[k] += dot * fade;
-    }
+  // Motes: sample the pre-rasterized mote panel (its luma = mote mass) per tap,
+  // instead of re-deriving every mote's pose here.
+  for (int k = 0; k < 9; k++) {
+    vec3 m = texture(uMotePanel, taps[k] / uResolution).rgb;
+    occ[k] += max(max(m.r, m.g), m.b) * 0.6;
   }
 
   // Match the original: clamp each tap's mass*uAmp, then average the 9 taps.
@@ -339,58 +320,13 @@ void main(){
   col += irid * irMask * 0.18 * bloomGain;                // faint additive sheen
 
   // ---- Drifting light motes (depth-layered, streaked, twinkling) ----
-  for (int i = 0; i < MAX_MOTES; i++) {
-    if (float(i) >= uMoteCount) break;
-    vec2 h = hash21(float(i) * 13.17 + uMoteSeed);
-    vec2 h2 = hash21(float(i) * 7.91 + uMoteSeed + 1.3);
-    float a0 = h.x * TAU;
-    float spd = 0.5 + h.y;
-    float delay = hash11(float(i) * 7.7 + uMoteSeed) * 0.15;
-    float life = clamp((uLife - delay) / (1.0 - delay), 0.0, 1.0);
-    if (life <= 0.0) continue;
-
-    // Depth tier: ~1/3 of motes sit "closer" (bigger, brighter, slower-ish),
-    // the rest are far sparks. Gives parallax-like layering.
-    float near = step(0.66, h2.x);
-    float depth = mix(0.7, 1.4, near);
-
-    vec2 dir = vec2(cos(a0), sin(a0));
-    float travel = life * spd * uMoteSpeed * r * 1.3 * depth;
-    vec2 buoy = vec2(0.0, life * life * r * 0.5);              // float upward
-    float t1 = a0 * 3.0 + life * TAU * spd;
-    vec2 curl = vec2(sin(t1), cos(t1 * 0.8 + a0)) * uTurbulence * r * 0.3 * life;
-    vec2 pos = uOrigin + dir * travel + buoy + curl;
-
-    // Velocity (analytic-ish): outward drift + buoyancy + curl tangent. Used to
-    // stretch each spark into a motion-blur streak along its direction of travel.
-    vec2 vel = dir * spd * uMoteSpeed * 1.3 * depth
-             + vec2(0.0, 2.0 * life * 0.5)
-             + vec2(cos(t1), -sin(t1 * 0.8 + a0)) * uTurbulence * 0.3;
-    vec2 vdir = normalize(vel + 1e-4);
-    vec2 q = frag - pos;
-    // Anisotropic distance: compress along travel dir => a streak. Faster motes
-    // streak more (capped). Slows to a round point as the mote settles.
-    float streak = clamp(length(vel) * 0.12, 0.0, 0.65) * smoothstep(0.0, 0.25, life);
-    float along = dot(q, vdir);
-    float across = dot(q, vec2(-vdir.y, vdir.x));
-    float dist = length(vec2(along * (1.0 - streak), across));
-
-    float size = minDim * 0.006 * (0.6 + h.x * 0.8) * depth;
-    float spark = particleSprite(dist, size);   // shared soft round sprite
-    // Toward the NPR end, crisp the spark and add a screen-aligned 4-point
-    // sparkle "star" so motes read as hand-drawn twinkles, not soft photons.
-    if (uStyle > 0.001) {
-      float crisp = smoothstep(size * 1.5, 0.0, dist);
-      vec2 star = abs(q);
-      float spikes = exp(-star.x / (size * 0.45)) * exp(-star.y * star.y / (size * size * 0.5))
-                   + exp(-star.y / (size * 0.45)) * exp(-star.x * star.x / (size * size * 0.5));
-      spark = mix(spark, crisp + spikes * 0.6, uStyle * 0.9);
-    }
-    // Twinkle: a fast, per-mote shimmer so the field scintillates.
-    float twinkle = 0.75 + 0.25 * sin(uTimeS * (6.0 + h2.y * 10.0) + h.x * TAU);
-    float fade = (1.0 - pow(life, 1.3)) * smoothstep(0.0, 0.08, life);
-    col += paletteMix(h.y) * spark * fade * twinkle * bloomGain * 1.2 * mix(0.9, 1.3, near);
-  }
+  // PERF: the motes used to be an 80-iteration per-pixel loop (O(pixels × motes),
+  // the dominant software-WebGL cost — the bloom itself is cheap). They're now
+  // rasterized into an offscreen panel each frame (pose + palette colour + streak
+  // + twinkle computed ONCE in JS — see solarbloom-renderer.ts); here we just
+  // sample that panel and apply the shared bloom gain. The volumetric bloom,
+  // iridescence, dispersion, shafts and the checkmark all stay procedural above.
+  col += texture(uMotePanel, gl_FragCoord.xy / uResolution).rgb * bloomGain;
 
   // ---- Checkmark drawn in light, with leading spark + afterglow ----
   // The checkmark is a REAL font glyph (✓ / ✔ chosen by whimsy) sampled from
