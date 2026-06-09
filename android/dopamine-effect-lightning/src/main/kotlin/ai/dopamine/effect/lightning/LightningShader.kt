@@ -64,6 +64,7 @@ ${GLSL_FBM}
 ${GLSL_TONEMAP_ACES}
 ${GLSL_DITHER}
 ${GLSL_SD_SEG}
+${GLSL_LIGHT_OUT}
 
 // Electric channel colour ramp: a tight blue/violet -> hot white anchored on uC0
 // (so the bolt stays monochromatic electric, not the roaming golden-angle palette).

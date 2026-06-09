@@ -72,6 +72,7 @@ ${GLSL_TONEMAP_ACES}
 ${GLSL_DITHER}
 ${GLSL_SD_SEG}
 ${GLSL_PARTICLES}
+${GLSL_LIGHT_OUT}
 
 // Length-aware pen progress. The bespoke draw window (STROKE_DRAW_MS = 360 ms) is
 // calibrated for a full-canvas stroke; shrunk to a targeted element the gesture
