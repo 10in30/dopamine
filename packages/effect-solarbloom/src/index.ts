@@ -16,6 +16,8 @@ import { FRAGMENT_SRC, MAX_MOTES, VERTEX_SRC } from "./solarbloom-shader.js";
 import { checkProgress } from "./solarbloom-tempo.js";
 import type { CheckGlyph, RenderParams } from "./solarbloom-params.js";
 import { drawCheckGlyph } from "./check-renderer.js";
+import { drawMotePanel } from "./solarbloom-renderer.js";
+import type { RGB } from "@dopamine/core";
 import {
   envelope,
   registerEffect,
@@ -87,14 +89,36 @@ const CONFIG: PassConfig = {
   vertex: VERTEX_SRC,
   fragment: FRAGMENT_SRC,
   uniforms: [
-    "uCheck", "uExposure", "uBloomRadius", "uTurbulence", "uMoteSpeed",
-    "uMoteCount", "uMoteSeed", "uIridescence", "uDispersion",
+    "uCheck", "uExposure", "uBloomRadius", "uTurbulence", "uMoteSeed",
+    "uIridescence", "uDispersion", "uMotePanel",
     "uCheckTex", "uCheckTexOn", "uCheckBox",
     "uSdfTex", "uSdfOn", "uSdfRangePx", "uSdfStrokePx",
   ],
   usesOrigin: true,
-  // overshoot feeds the envelope, not a uniform; the picked glyph isn't numeric.
-  bindings: { overshoot: null, moteSeed: "uMoteSeed" },
+  // overshoot feeds the envelope; moteSpeed/moteCount now drive the JS mote panel
+  // (not shader uniforms); moteSeed still seeds the bloom's domain warp.
+  bindings: { overshoot: null, moteSeed: "uMoteSeed", moteSpeed: null, moteCount: null },
+  // The drifting motes are rasterized into a per-frame Canvas2D panel (sampled by
+  // the shader) instead of looped per-pixel; the bloom + checkmark stay procedural.
+  panel: {
+    unit: 3,
+    sampler: "uMotePanel",
+    draw: (pctx, w, h, params, info) => {
+      const p = params as unknown as RenderParams;
+      drawMotePanel(
+        pctx, w, h,
+        {
+          palette: p.palette as RGB[],
+          bloomRadius: p.bloomRadius,
+          turbulence: p.turbulence,
+          moteSpeed: p.moteSpeed,
+          moteCount: p.moteCount,
+          moteSeed: p.moteSeed,
+        },
+        info.life, info.animMs / 1000, info.centerPx,
+      );
+    },
+  },
   shadowHeightFrac: (params) => (params as unknown as RenderParams).bloomRadius,
   // The checkmark box + SDF stroke px (needed by the SDF path AND the analytic).
   passUniforms: (canvas) => {
