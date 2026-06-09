@@ -1,0 +1,263 @@
+// GLSL ES 3.00 source for Aurora — the web `aurora-shader.ts` reused VERBATIM
+// (Android OpenGL ES 3.0 speaks the same GLSL ES 3.00 as WebGL2). The shared
+// "look" chunks come from `dopamine-core` (one canonical copy). The ONLY change
+// from the web body is the final emit: `dopLightOut(col)` (premultiplied alpha =
+// brightness) instead of `vec4(max(col, 0.0), 1.0)`, because the Android overlay
+// is self-contained (no CSS screen-blend against the page — see Look.kt). The RGB
+// look is byte-identical to web.
+//
+// Aurora is DIRECTIONAL/curtain: a horizontal band of vertical light ribbons that
+// drape across the upper field, sway and sweep sideways, then brighten and fade.
+// It reads `gl_FragCoord.xy` directly (not `vUv`), so the vertex is the web's
+// bespoke fullscreen-triangle shader (no `vUv` output) ported verbatim — NOT the
+// shared GLSL_FULLSCREEN_VERTEX.
+
+package ai.dopamine.effect.aurora
+
+import ai.dopamine.core.GLSL_CONSTANTS
+import ai.dopamine.core.GLSL_DITHER
+import ai.dopamine.core.GLSL_FBM
+import ai.dopamine.core.GLSL_HASH
+import ai.dopamine.core.GLSL_LIGHT_OUT
+import ai.dopamine.core.GLSL_PALETTE_MIX
+import ai.dopamine.core.GLSL_TONEMAP_ACES
+
+// Aurora's vertex is bespoke (no `vUv` out — the fragment uses gl_FragCoord),
+// so it is the web AURORA_VERTEX_SRC verbatim rather than GLSL_FULLSCREEN_VERTEX.
+val AURORA_VERTEX_SRC: String = """#version 300 es
+void main() {
+  vec2 pos = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
+}"""
+
+val AURORA_FRAGMENT_SRC: String = """#version 300 es
+precision highp float;
+out vec4 fragColor;
+
+uniform vec2  uResolution;   // device pixels
+uniform float uLife;         // whole-effect progress 0..1
+uniform float uTimeS;        // elapsed seconds
+uniform float uAmp;          // envelope amplitude (brighten -> fade; peaks > 1)
+uniform float uExposure;     // overall light gain
+uniform float uCoverage;     // 0..1 band height + ribbon count fraction (intensity)
+uniform float uBandY;        // band vertical centre as fraction of height (0=bottom,1=top)
+uniform float uBandHeight;   // band half-height as fraction of height
+uniform float uSway;         // horizontal drift amplitude (fraction of width)
+uniform float uSweep;        // global sideways sweep offset (fraction of width)
+uniform float uStriation;    // 0..1 vertical fluting strength
+uniform float uRays;         // 0..1 searchlight-pillar strength
+uniform float uSeed;         // per-fire hash offset
+uniform float uStyle;        // 0..1 photoreal volumetric -> cel posterized (whimsy)
+uniform float uShadow;       // 0 = light pass (screen), 1 = shadow pass (multiply)
+uniform vec2  uShadowOffset; // device-px offset of the cast silhouette (away from light)
+uniform float uShadowSoft;   // penumbra softness in device px (blur tap radius)
+uniform float uShadowStrength;// 0..1 max darkening of the multiply layer
+uniform vec3  uC0;           // curtain core color
+uniform vec3  uC1;           // mid
+uniform vec3  uC2;           // crown / accent
+
+#define CURTAINS 7
+${GLSL_CONSTANTS}
+${GLSL_HASH}
+${GLSL_FBM}
+${GLSL_PALETTE_MIX}
+${GLSL_TONEMAP_ACES}
+${GLSL_DITHER}
+${GLSL_LIGHT_OUT}
+
+// Vertical envelope of the curtain band: bright high in the band, feathering to
+// nothing at the draped hem below and to a soft top above. ny is the normalized
+// vertical position WITHIN the band (0 = hem/bottom, 1 = top), so the curtains
+// hang from the top and fade downward like real sheets of light.
+float bandProfile(float ny){
+  // Feather the bottom hem (long, soft) and the top (soft, generous) so the
+  // curtain reads as a hanging SHEET — no hard edges top or bottom.
+  float hem = smoothstep(0.0, 0.45, ny);          // long fade up from the hem
+  float top = 1.0 - smoothstep(0.7, 1.0, ny);      // soft, early top falloff
+  // Bias brightness upward (the top of a curtain glows hardest).
+  float bias = mix(0.6, 1.0, smoothstep(0.1, 0.85, ny));
+  return clamp(hem * top * bias, 0.0, 1.0);
+}
+
+// One curtain ribbon's coverage at horizontal position x (fraction 0..1) for a
+// given band-vertical ny. Each ribbon has its OWN base x, sway phase and width;
+// its centre is displaced by slow layered fbm (the living drift) + the global
+// sweep, and is bowed slightly with height so the sheet drapes rather than
+// standing dead-vertical. Returns 0..1 soft horizontal coverage.
+float curtain(int i, float x, float ny, out float along){
+  float fi = float(i);
+  vec2 h = hash21(fi * 3.17 + uSeed);
+  // Base horizontal slot, spread across the frame with a little jitter.
+  float base = (fi + 0.5) / float(CURTAINS) + (h.x - 0.5) * 0.10;
+  // Slow nature-informed drift: two fbm samples at different rates, scrolled by
+  // time, so the ribbon wanders organically rather than oscillating mechanically.
+  float n1 = fbm(vec2(fi * 1.7 + uSeed, ny * 1.3 + uTimeS * 0.13)) - 0.5;
+  float n2 = fbm(vec2(fi * 0.9 + uSeed + 7.0, ny * 2.6 - uTimeS * 0.07)) - 0.5;
+  float drift = (n1 * 0.7 + n2 * 0.3) * uSway;
+  // Drape bow: the hem swings further than the top (parallax of a hanging sheet).
+  float bow = (h.y - 0.5) * uSway * 0.6 * (1.0 - ny);
+  float cx = base + drift + bow + uSweep;
+  along = x - cx;
+  // Ribbon width breathes a touch per-ribbon; soft horizontal lobe.
+  float w = mix(0.045, 0.085, h.y) * (0.85 + 0.3 * uCoverage);
+  float cov = exp(-pow(along / w, 2.0));
+  return cov;
+}
+
+// The full curtain field at fragment uv (0..1, y up): sum the ribbons (capped by
+// coverage so low intensity shows fewer sheets), shaped vertically by the band
+// profile, with vertical striations + searchlight rays riding the light. Outputs
+// total coverage 'cov' and a 0..1 hue coordinate 'hue' (left->right across the
+// band, wandering with the crown shimmer) for the palette.
+float auroraField(vec2 uv, out float cov, out float hue){
+  // Vertical position within the band.
+  float top = uBandY + uBandHeight;
+  float bot = uBandY - uBandHeight;
+  float ny = (uv.y - bot) / max(top - bot, 1e-3);     // 0 at hem, 1 at top
+  float vprof = bandProfile(ny);
+  cov = 0.0;
+  hue = 0.0;
+  if (vprof <= 0.0) return 0.0;
+
+  // How many ribbons are "lit" scales with coverage (intensity): low intensity
+  // shows a few calm sheets, high shows the full curtain.
+  float lit = mix(2.5, float(CURTAINS), clamp(uCoverage, 0.0, 1.0));
+
+  float total = 0.0;
+  float hueAccum = 0.0;
+  for (int i = 0; i < CURTAINS; i++) {
+    float gate = clamp(lit - float(i), 0.0, 1.0);       // soft last-ribbon fade-in
+    if (gate <= 0.0) break;
+    float along;
+    float c = curtain(i, uv.x, ny, along) * gate;
+    if (c <= 0.001) continue;
+    total += c;
+    // Hue coordinate: ribbon's place across the band, nudged by its own offset.
+    float hi = (float(i) + 0.5) / float(CURTAINS);
+    hueAccum += c * hi;
+  }
+  cov = total * vprof;
+  hue = total > 1e-3 ? hueAccum / total : 0.5;
+
+  // Vertical STRIATIONS: fine fluting along the curtains (the characteristic
+  // ribbon texture). A medium-frequency noise in x that gently darkens/brightens
+  // narrow vertical lanes, only inside the lit region so the background stays
+  // clean. Kept bounded so it textures the sheet without shredding its edge.
+  float flute = fbm(vec2(uv.x * 55.0 + uSeed, uv.y * 4.0 - uTimeS * 0.2));
+  float striate = 1.0 + uStriation * (flute - 0.5) * 0.7;
+  cov *= striate;
+
+  // SEARCHLIGHT RAYS: a few brighter vertical pillars that twinkle — soft, fairly
+  // wide bands in x gated by a slow noise so they come and go. Scaled by the
+  // existing coverage so rays live INSIDE the curtains, never as bare spikes.
+  float rayBand = pow(max(0.0, sin(uv.x * 60.0 + fbm(vec2(uv.x * 5.0, uTimeS * 0.3)) * 5.0)), 3.0);
+  float rayGate = smoothstep(0.5, 0.95, fbm(vec2(uv.x * 9.0 + uSeed, uTimeS * 0.25)));
+  cov += rayBand * rayGate * uRays * smoothstep(0.05, 0.5, cov) * 0.5;
+
+  return cov;
+}
+
+// SHADOW silhouette — a cheap occlusion field for the curtain mass (no striation
+// detail / rays), so the faint cast shadow tracks the hanging sheets without an
+// extra heavy pass under software WebGL.
+float auroraOcclusion(vec2 frag){
+  vec2 uv = frag / uResolution;
+  float top = uBandY + uBandHeight;
+  float bot = uBandY - uBandHeight;
+  float ny = (uv.y - bot) / max(top - bot, 1e-3);
+  float vprof = bandProfile(ny);
+  if (vprof <= 0.0) return 0.0;
+  float lit = mix(2.5, float(CURTAINS), clamp(uCoverage, 0.0, 1.0));
+  float total = 0.0;
+  for (int i = 0; i < CURTAINS; i++) {
+    float gate = clamp(lit - float(i), 0.0, 1.0);
+    if (gate <= 0.0) break;
+    float along;
+    total += curtain(i, uv.x, ny, along) * gate;
+  }
+  return clamp(total * vprof * uAmp, 0.0, 1.0);
+}
+
+vec4 auroraShadowColor(vec2 frag){
+  vec2 sp = frag - uShadowOffset;
+  float occ = auroraOcclusion(sp);
+  float soft = uShadowSoft;
+  occ += auroraOcclusion(sp + vec2( soft, 0.0));
+  occ += auroraOcclusion(sp + vec2(-soft, 0.0));
+  occ += auroraOcclusion(sp + vec2(0.0,  soft));
+  occ += auroraOcclusion(sp + vec2(0.0, -soft));
+  occ /= 5.0;
+  // A real aurora casts almost no shadow; keep it very faint.
+  float dark = clamp(occ, 0.0, 1.0) * uShadowStrength * 0.35;
+  vec3 tint = mix(vec3(1.0), 0.6 + 0.4 * normalize(uC0 + 1e-3), 0.2);
+  vec3 mul = mix(vec3(1.0), tint, dark);
+  return vec4(mul, 1.0);
+}
+
+void main(){
+  vec2 frag = gl_FragCoord.xy;
+  vec2 res = uResolution;
+
+  if (uShadow > 0.5) {
+    fragColor = auroraShadowColor(frag);
+    return;
+  }
+
+  vec2 uv = frag / res;
+  vec3 col = vec3(0.0);
+  float gain = uAmp * uExposure;
+
+  // ---- SKY WASH: a faint cool glow the curtains hang from. ----
+  // A soft horizontal band centred near the top of the curtain band, so there is
+  // a gentle ground for the light without a radial core.
+  float washY = exp(-pow((uv.y - (uBandY + uBandHeight * 0.45)) / max(uBandHeight, 1e-3), 2.0));
+  col += mix(uC0, uC2, 0.5) * washY * 0.06 * gain;
+
+  // ---- THE CURTAINS ----
+  float cov, hue;
+  auroraField(uv, cov, hue);
+
+  // CROWN SHIMMER: the aurora pulses — a slow drift of the hue coordinate and a
+  // gentle global breathing of intensity, so the colour wanders as it settles.
+  float pulse = 0.85 + 0.15 * sin(uTimeS * 0.9 + hue * 4.0 + uSeed);
+  float hueShift = hue + 0.15 * sin(uTimeS * 0.4 + uSeed * 6.28) + 0.1 * (fbm(vec2(uv.x * 3.0, uTimeS * 0.2)) - 0.5);
+
+  vec3 curtainCol = paletteMix(clamp(hueShift, 0.0, 1.0));
+  col += curtainCol * clamp(cov, 0.0, 4.0) * pulse * gain;
+
+  // A subtle brighter crown along the very top edge of each lit column (where a
+  // real curtain glows hottest), tinted toward the accent.
+  float crown = smoothstep(0.0, 0.5, cov) * smoothstep(uBandY + uBandHeight * 0.2, uBandY + uBandHeight, uv.y);
+  col += uC2 * crown * 0.4 * gain;
+
+  // ---- Tone + finishing (ACES filmic, shared look/glsl) ----
+  col = tonemapACES(col * 0.9);
+
+  // ---- Non-photoreal pass: hard CEL posterized ribbons (whimsy) ----
+  // Toward the cel end the soft volumetric curtains snap into flat posterized
+  // bands with crisp edges + a bright rim — a stylized stained-glass aurora.
+  if (uStyle > 0.001) {
+    // Posterize the curtain luminance into a few hard tones (don't quantize the
+    // dark background — that shatters the wash into camouflage blocks).
+    float lum = clamp(cov * pulse * uExposure * uAmp, 0.0, 1.5);
+    float steps = mix(6.0, 3.0, uStyle);              // fewer bands at full cel
+    float q = floor(lum * steps) / steps;
+    vec3 celCol = paletteMix(clamp(hueShift, 0.0, 1.0)) * (q * 1.15 + 0.05);
+    // Bright crisp rim at each posterized step edge.
+    float band = lum * steps;
+    float edge = abs(fract(band) - 0.5);
+    float rim = (1.0 - smoothstep(0.0, 0.12, edge)) * smoothstep(0.06, 0.2, lum);
+    celCol += clamp(uC2 * 1.5 + 0.1, 0.0, 1.4) * rim * 0.6;
+    float mask = smoothstep(0.04, 0.14, lum);          // only inside the curtains
+    vec3 styled = mix(col, celCol, mask);
+    col = mix(col, styled, uStyle);
+  }
+
+  // Ordered dither (~1/255, shared look/glsl) to kill banding the screen blend
+  // would reveal on the page beneath; faded out toward the cel end.
+  col = ditherAdd(col, frag, uTimeS, 1.0 - uStyle);
+
+  // ANDROID self-contained overlay: emit premultiplied light (alpha = brightness)
+  // instead of the web's opaque `vec4(max(col, 0.0), 1.0)`. See Look.kt.
+  fragColor = dopLightOut(col);
+}"""

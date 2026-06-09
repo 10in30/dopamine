@@ -6,11 +6,18 @@ Guidance for AI agents (and humans) working in this repository.
 
 Dopamine is a cross-platform visual-effects library. There are **nine effects**
 today — solarbloom, aurora, comic, confetti, fail, heartburst, inkstroke,
-lightning, ripple — and each is implemented **twice** from **one shared data
-spine**: a web stack (TypeScript + WebGL2) and a Swift stack (Swift + Metal).
-We will add many more effects, expand the mechanisms in existing ones, and add
-Android. **The portable `.dope` file matters more than any of the code** — the
-code on either platform is an interpreter for that data.
+lightning, ripple — implemented from **one shared data spine** across three
+stacks: a web stack (TypeScript + WebGL2), a Swift stack (Swift + Metal), and an
+**Android stack (Kotlin + OpenGL ES 3.0)**. We will add many more effects and
+expand the mechanisms in existing ones. **The portable `.dope` file matters more
+than any of the code** — the code on every platform is an interpreter for that
+data.
+
+> **Android status.** The portable core (`android/dopamine-core`,
+> byte-parity-tested), the GL rendering backbone (`android/dopamine-gl`), and **all
+> nine effects** now ship on the same `.dope` spine (each its own
+> `dopamine-effect-<name>` module + the `dopamine-effects` umbrella). See
+> `android/README.md` for the per-effect porting contract.
 
 ## The shared `.dope` spine
 
@@ -67,6 +74,32 @@ No core edits.
   effects (comic + heartburst)**. New simple effects need none of this; hybrids
   implement `PanelDrawing`.
 
+**Android key architecture** (`android/`, a Gradle multi-module build; full
+detail in `android/README.md`):
+- `dopamine-core` — the portable spine as a **pure Kotlin/JVM** library (no
+  Android deps), so the **192-case byte-parity grid runs on a plain JVM with no
+  Android SDK** (the analog of swift's Linux job). It also holds the shared GLSL
+  "look" chunks **once** (`Look.kt`) — an improvement on the Swift port, which had
+  to copy `DopamineLook.metal` into every package.
+- `dopamine-gl` — the OpenGL ES 3.0 backbone: `DopamineView` (the `GLSurfaceView`
+  overlay host + conductor) and the generic `GlPassRunner` / `GlPanelRunner` (+
+  `PanelConfig`'s `Canvas` `draw` hook for hybrids — the analog of swift's
+  `PanelDrawing`).
+- `dopamine-effect-<name>` — one Android library per effect: its GLSL shader
+  (Kotlin string), bespoke tempo, `.dope` (in `assets/`, byte-identical), panel
+  draw (hybrids), config + registration. `dopamine-effects` is the umbrella.
+
+Two simplifications the Android port surfaces (Kotlin has no `#if canImport`, so
+the Metal/portable split is by MODULE instead):
+1. **The shaders are the web's GLSL, near-verbatim** — Android OpenGL ES 3.0 is
+   GLSL ES 3.00, *the same language as WebGL2*. The only per-shader change is the
+   final emit (`dopLightOut(col)` — premultiplied light) for the self-contained
+   overlay; the RGB look is byte-identical.
+2. **No `gen-uniforms` is needed.** GL ES sets uniforms one-by-one **by name**
+   (like WebGL), so the web's `name → u<Name>` auto-bind ports verbatim. The
+   Metal struct-packing codegen exists only because a `.metal` reads one packed
+   `Uniforms` struct; Android (like web) has no such struct.
+
 ## gen-uniforms — the web↔Swift uniform generator (STALENESS-GATED)
 
 WebGL sets uniforms one-by-one by name at runtime; Metal reads one
@@ -114,6 +147,16 @@ cd Demo && xcodegen generate && xcodebuild -project DopamineDemo.xcodeproj \
   -scheme DopamineDemo -destination 'platform=iOS Simulator,name=iPhone 16' build
 ```
 
+**Android** (from `android/`):
+```bash
+./gradlew :dopamine-core:test   # the 192-case byte-parity grid — NO Android SDK needed
+./gradlew assembleDebug         # GL backbone + effects + demo APK (needs the Android SDK)
+```
+`dopamine-core` builds + tests on a plain JVM (no SDK); the GL/effect/demo modules
+are auto-included only when an Android SDK is present (`ANDROID_HOME` /
+`local.properties`). Adding an effect = a new `dopamine-effect-<name>` module
+(auto-discovered by `settings.gradle.kts`); no backbone edits.
+
 ## CI layout
 
 - **`.github/workflows/web-reel.yml`** (ubuntu) — builds the web packages and
@@ -128,6 +171,14 @@ cd Demo && xcodegen generate && xcodebuild -project DopamineDemo.xcodeproj \
   - **linux** (`swift:6.0.3`, no Apple SDK): build + the parity test — proves the
     `canImport` guards keep the portable core compiling.
   Triggers on `swift/**`, `scripts/gen-uniforms.mjs`, and the workflow file.
+- **`.github/workflows/android.yml`** — three ubuntu jobs:
+  - **jvm** (free runner, no SDK): the 192-case parity grid (`:dopamine-core:test`)
+    + a `.dope` byte-parity check (Android copies == canonical web). MUST-PASS.
+  - **build**: install the Android SDK + `assembleDebug` (GL backbone + effects +
+    demo APK). MUST-PASS.
+  - **emulator** (best-effort): boot an emulator, autoplay every effect at slow-mo,
+    `screenrecord` a clip (proves the GLSL compiles + runs on a real GL ES driver).
+  Triggers on `android/**`, the canonical `.dope` files, and the workflow file.
 
 Both workflows trigger on pushes to **`main`** (plus `workflow_dispatch`). The
 macOS job requires the `macos-15-xlarge` larger runner and a **non-zero Actions
@@ -142,7 +193,16 @@ spending limit** on the owning account; the Linux jobs run on free runners.
 - **Never hand-edit generated uniform files** (`swift/Generated/*`,
   `swift/Sources/**/*Uniforms.{swift,metal}`). Edit the `.dope` + manifest and
   re-run `gen-uniforms`.
-- **Keep each effect's `.dope` byte-identical across web and Swift copies.**
+- **Keep each effect's `.dope` byte-identical across web, Swift, AND Android
+  copies.** The Android copy lives in `android/dopamine-effect-<name>/src/main/
+  assets/<name>.dope.json`; `android.yml`'s jvm job md5-checks it against the
+  canonical web file.
+- **Android: keep the Metal/portable split by MODULE** (Kotlin has no
+  `canImport`). Nothing in `dopamine-core` may import `android.*` — it must stay a
+  pure-JVM library so the parity grid runs with no SDK. Android code touching
+  `android.*` lives in `dopamine-gl` or an effect module. **Do NOT hand-port
+  shaders to a new dialect or add uniform codegen for Android** — reuse the web
+  GLSL (same GLSL ES 3.00) and bind uniforms by name (see `android/README.md`).
 - **Don't special-case the backbone for one effect** — generalize, or use the
   existing per-effect seams (shader / tempo / uniform config / `PanelDrawing`).
 - **Don't break the gates:** the vitest parity suite, the gen-uniforms staleness

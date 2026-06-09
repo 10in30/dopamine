@@ -1,0 +1,12 @@
+# Android / Gradle build artifacts.
+.gradle/
+build/
+*/build/
+**/build/
+local.properties
+.idea/
+*.iml
+captures/
+.cxx/
+# Keep the committed Gradle wrapper jar (pins the build version for CI + users).
+!gradle/wrapper/gradle-wrapper.jar
