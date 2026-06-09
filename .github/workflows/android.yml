@@ -140,29 +140,51 @@ jobs:
         working-directory: android
         run: ./gradlew :demo:assembleDebug --no-daemon --stacktrace
 
-      - name: Boot emulator, autoplay, record
+      - name: Boot emulator, autoplay all nine, record + speed to real time
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
           target: google_apis
           arch: x86_64
           force-avd-creation: true
+          # swiftshader_indirect = a software GL ES driver (no host GPU needed on the
+          # CI runner) that still compiles + runs our GLSL ES 3.00 — the proof a
+          # build can't give.
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
           script: |
             set -x
+            mkdir -p /tmp/out
             adb install -r android/demo/build/outputs/apk/debug/demo-debug.apk
-            # Autoplay every registered effect at quarter speed so the recording
-            # samples the motion smoothly (mirrors swift's -autoplay all -slowmo).
+
+            # Autoplay EVERY registered effect in sequence at quarter speed, exactly
+            # like swift.yml's `-autoplay all -slowmo 0.25`, so the emulator's low frame
+            # rate still samples each effect's motion smoothly. The demo cycles all nine
+            # (~11 s each at slow-mo); record one full sequence (~100 s) + margin.
             adb shell am start -n ai.dopamine.demo/.MainActivity \
               --es autoplay all --ef slowmo 0.25
             sleep 3
-            timeout 30 adb shell screenrecord --time-limit 28 /sdcard/dopamine.mp4 || true
+            # screenrecord captures SurfaceFlinger's composited output, so it sees the
+            # z-ordered translucent GLSurfaceView overlay. Auto-finalizes at --time-limit.
+            timeout 130 adb shell screenrecord --bit-rate 8000000 --time-limit 105 \
+              /sdcard/dopamine-slowmo.mp4 || true
             sleep 2
-            adb pull /sdcard/dopamine.mp4 /tmp/dopamine.mp4 || true
-            mkdir -p /tmp/out && cp /tmp/dopamine.mp4 /tmp/out/ 2>/dev/null || true
-            adb logcat -d | grep -iE 'Dopamine|GLES|shader' | tail -50 > /tmp/out/app.log || true
-            ls -la /tmp/out || true
+            adb pull /sdcard/dopamine-slowmo.mp4 /tmp/out/dopamine-slowmo.mp4 || true
+
+            # Speed the clip back to real time (setpts * slowmo keeps every captured
+            # frame), mirroring swift.yml. ffmpeg is preinstalled on the ubuntu runner.
+            # Force even dimensions (libx264 yuv420p rejects odd). Keep the slow-mo
+            # original if the re-encode fails.
+            if [ -s /tmp/out/dopamine-slowmo.mp4 ]; then
+              ffmpeg -y -hide_banner -i /tmp/out/dopamine-slowmo.mp4 \
+                -vf "setpts=0.25*PTS,scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+                -an -c:v libx264 -pix_fmt yuv420p /tmp/out/dopamine.mp4 2>&1 | tail -8 || true
+            fi
+
+            # Diagnostics: prove the shaders compiled + the effects fired.
+            adb logcat -d | grep -iE 'Dopamine|GLES|shader|fired|create failed' | tail -80 \
+              > /tmp/out/app.log || true
+            echo "--- recorded files ---"; ls -la /tmp/out || true
 
       - name: Upload emulator clip
         if: always()
