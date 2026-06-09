@@ -109,9 +109,12 @@ void main(){
   float gain = uExposure * uAmp;
 
   vec3 col = vec3(0.0);
-  float haloT = clamp(glow * 0.8 + 0.12, 0.0, 1.0);
-  col += elecRamp(haloT) * glow * gain * 1.3;
-  col += vec3(1.0) * core * gain * 2.4;
+  // Halo: keep it electric BLUE/violet (elecRamp biased low) and let only the hot
+  // core go white. Crush the faint glow tail so zero glow stays black (no wash),
+  // and keep the gain modest so the halo doesn't blow out to a white slab.
+  float g = glow * glow;
+  col += elecRamp(0.2 + 0.4 * g) * g * gain * 0.9;
+  col += vec3(1.0) * core * gain * 1.7;
 
   // IMPACT GLOW — a bright radial burst at the strike point, easing off after it lands.
   float dB = length(frag - uCenter);

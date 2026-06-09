@@ -104,7 +104,13 @@ function boltPolyline(
   return pts;
 }
 
-/** Stroke a polyline as a soft HALO (red) + hot CORE (green), additive. */
+/**
+ * Stroke a polyline as a tight soft HALO (red channel) + hot CORE (green),
+ * additively. The halo is a thin bright stroke with a `shadowBlur` gaussian
+ * falloff — a real bright-spine→transparent-edge glow, NOT a wide flat band (the
+ * latter reads as a fuzzy translucent slab once the screen blend + gain amplify
+ * its low-alpha tail).
+ */
 function strokeBolt(ctx: CanvasRenderingContext2D, pts: Vec2[], rad: number): void {
   if (pts.length < 2) return;
   ctx.beginPath();
@@ -112,16 +118,20 @@ function strokeBolt(ctx: CanvasRenderingContext2D, pts: Vec2[], rad: number): vo
   for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  // HALO -> R: a few widening, fading strokes approximate the plasma glow falloff.
-  const halo: Array<[number, number]> = [[3.0, 0.10], [1.8, 0.18], [1.0, 0.30]];
+
+  // HALO -> R: a few TIGHT widening strokes approximate the plasma glow falloff
+  // (bright spine, quick fade). Kept narrow (≤~1.6× rad) so it reads as a halo,
+  // not a slab — and cheap (no shadowBlur gaussian, which is costly per frame).
+  const halo: Array<[number, number]> = [[1.6, 0.16], [1.0, 0.3], [0.55, 0.6]];
   for (const [wmul, alpha] of halo) {
-    ctx.lineWidth = Math.max(rad * 2.0 * wmul, 1);
+    ctx.lineWidth = Math.max(rad * wmul, 1);
     ctx.strokeStyle = `rgba(255,0,0,${alpha})`;
     ctx.stroke();
   }
-  // CORE -> G: a crisp bright centre line.
-  ctx.lineWidth = Math.max(rad * 0.8, 1);
+
+  // CORE -> G: a crisp thin white-hot centre line.
   ctx.strokeStyle = "rgba(0,255,0,1)";
+  ctx.lineWidth = Math.max(rad * 0.28, 1.5);
   ctx.stroke();
 }
 
