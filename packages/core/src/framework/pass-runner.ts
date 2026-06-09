@@ -128,6 +128,43 @@ export interface PassConfig {
    * can feed it into `shadowGeometry`.
    */
   frame(info: FrameInfo, params: PassParams): { amp: number } & Record<string, number>;
+  /**
+   * OPTIONAL dynamic sprite panel. A full-screen pass effect whose look is mostly
+   * procedural (a bloom, a flash) but which also has a SPARSE element layer (motes,
+   * sparks) shouldn't loop those elements at every pixel — that's O(pixels ×
+   * elements). Instead it rasterizes them into an offscreen Canvas2D ONCE per frame
+   * here; the runner uploads that canvas into BOTH passes and binds it as `sampler`
+   * on `unit`, and the shader samples it. (This is the pass-runner analogue of the
+   * hybrid panel-runner, but it COMPOSES with the static aux textures above — e.g.
+   * solarbloom keeps its baked-SDF/glyph checkmark AND gains a mote panel.)
+   */
+  panel?: {
+    /** Texture unit to bind the panel on (distinct from any auxTextures unit). */
+    unit: number;
+    /** Sampler uniform name the shader reads the panel from. */
+    sampler: string;
+    /** Draw one frame of the sprite layer into the offscreen canvas. */
+    draw(
+      panelCtx: CanvasRenderingContext2D,
+      width: number,
+      height: number,
+      params: PassParams,
+      info: FrameInfo & { centerPx: { x: number; y: number }; dpr: number },
+    ): void;
+  };
+  /**
+   * OPTIONAL per-frame ARRAY uniforms (vec2/3/4 arrays). For effects that
+   * precompute geometry on the CPU each frame and feed it to the shader as a
+   * uniform array — e.g. lightning's bolt polyline, far cheaper than re-deriving
+   * it with `fbm` at every pixel. Computed ONCE per frame and bound (uniformNfv)
+   * in both passes. `geom` carries the live canvas size + the gl-coords strike
+   * origin (anchor). Each returned `name` must also appear in `uniforms`.
+   */
+  frameArrays?(
+    info: FrameInfo,
+    params: PassParams,
+    geom: { width: number; height: number; dpr: number; origin: { x: number; y: number } },
+  ): ReadonlyArray<{ name: string; size: 2 | 3 | 4; data: Float32Array }>;
 }
 
 // The pure-shader runner adds `uOrigin` (anchored radial effects) to the shared
@@ -162,7 +199,16 @@ export function createPassInstance(
 ): EffectInstance {
   const pal = params.palette as RGB[];
   const dpr = ctx.dpr;
-  const allUniforms = [...new Set([...STANDARD, ...config.uniforms])];
+  const panelCfg = config.panel;
+  const allUniforms = [
+    ...new Set([...STANDARD, ...config.uniforms, ...(panelCfg ? [panelCfg.sampler] : [])]),
+  ];
+
+  // Optional dynamic sprite panel (drawn once per frame, uploaded to both passes).
+  const panelCanvas = panelCfg ? document.createElement("canvas") : null;
+  const panelCtx2d = panelCanvas ? panelCanvas.getContext("2d", { alpha: true }) : null;
+  const panelTexLight = panelCfg ? allocTexture(ctx.light) : null;
+  const panelTexShadow = panelCfg && ctx.shadow ? allocTexture(ctx.shadow) : null;
 
   // The numeric params that auto-bind to a uniform: `name → u<Name>` unless an
   // explicit binding overrides it (or maps it to null to skip).
@@ -184,7 +230,28 @@ export function createPassInstance(
   const heightFrac = (): number =>
     typeof config.shadowHeightFrac === "function" ? config.shadowHeightFrac(params) : config.shadowHeightFrac;
 
-  const drawPass = (glc: GLContext, info: FrameInfo, frameUniforms: { amp: number } & Record<string, number>, isShadow: boolean): void => {
+  const bindFrameArrays = (
+    gl: WebGL2RenderingContext,
+    u: Record<string, WebGLUniformLocation | null>,
+    arrays: ReadonlyArray<{ name: string; size: 2 | 3 | 4; data: Float32Array }> | undefined,
+  ): void => {
+    if (!arrays) return;
+    for (const a of arrays) {
+      const loc = u[a.name];
+      if (!loc) continue;
+      if (a.size === 2) gl.uniform2fv(loc, a.data);
+      else if (a.size === 3) gl.uniform3fv(loc, a.data);
+      else gl.uniform4fv(loc, a.data);
+    }
+  };
+
+  const drawPass = (
+    glc: GLContext,
+    info: FrameInfo,
+    frameUniforms: { amp: number } & Record<string, number>,
+    isShadow: boolean,
+    frameArrs?: ReadonlyArray<{ name: string; size: 2 | 3 | 4; data: Float32Array }>,
+  ): void => {
     const { gl } = glc;
     const c = glc.canvas;
     const { u } = beginProgram(glc, config.vertex, config.fragment, allUniforms);
@@ -209,6 +276,20 @@ export function createPassInstance(
       applyFloatMap(gl, u, a.spec.uniforms?.(c, params));
     }
 
+    // Dynamic sprite panel (drawn this frame in renderAt): upload + bind here.
+    if (panelCfg && panelCanvas) {
+      const tex = isShadow ? panelTexShadow : panelTexLight;
+      if (tex) {
+        gl.activeTexture(gl.TEXTURE0 + panelCfg.unit);
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, panelCanvas);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        if (u[panelCfg.sampler]) gl.uniform1i(u[panelCfg.sampler], panelCfg.unit);
+      }
+    }
+
     // Extra per-pass scalar uniforms (canvas-size-dependent, non-aux).
     applyFloatMap(gl, u, config.passUniforms?.(c, params));
 
@@ -225,6 +306,7 @@ export function createPassInstance(
     bindPalette(gl, u, pal);
     bindScalars(gl, u, params, scalarBinds);
     bindFrameUniforms(gl, u, frameUniforms);
+    bindFrameArrays(gl, u, frameArrs);
 
     gl.uniform1f(u.uShadow, isShadow ? 1 : 0);
     if (isShadow) bindShadowGeometry(gl, u, c, heightFrac(), frameUniforms.amp, params.style);
@@ -242,8 +324,22 @@ export function createPassInstance(
       const life = Math.min(Math.max(animMs, 0) / params.durationMs, 1);
       const info: FrameInfo = { animMs, life };
       const frameUniforms = config.frame(info, params);
-      if (ctx.shadow) drawPass(ctx.shadow, info, frameUniforms, true);
-      drawPass(ctx.light, info, frameUniforms, false);
+      // Draw the dynamic sprite panel once (shared by both passes), if present.
+      if (panelCfg && panelCanvas && panelCtx2d) {
+        const c = ctx.light.canvas;
+        if (panelCanvas.width !== c.width || panelCanvas.height !== c.height) {
+          panelCanvas.width = c.width;
+          panelCanvas.height = c.height;
+        }
+        const centerPx = { x: ctx.anchor.x * dpr, y: ctx.anchor.y * dpr };
+        panelCfg.draw(panelCtx2d, c.width, c.height, params, { ...info, centerPx, dpr });
+      }
+      // Per-frame array uniforms (CPU-precomputed geometry), computed once.
+      const c = ctx.light.canvas;
+      const origin = { x: ctx.anchor.x * dpr, y: c.height - ctx.anchor.y * dpr };
+      const frameArrs = config.frameArrays?.(info, params, { width: c.width, height: c.height, dpr, origin });
+      if (ctx.shadow) drawPass(ctx.shadow, info, frameUniforms, true, frameArrs);
+      drawPass(ctx.light, info, frameUniforms, false, frameArrs);
     },
     dispose(): void {
       if (disposed) return;
@@ -252,6 +348,8 @@ export function createPassInstance(
         ctx.light.gl.deleteTexture(a.light);
         if (a.shadow && ctx.shadow) ctx.shadow.gl.deleteTexture(a.shadow);
       }
+      if (panelTexLight) ctx.light.gl.deleteTexture(panelTexLight);
+      if (panelTexShadow && ctx.shadow) ctx.shadow.gl.deleteTexture(panelTexShadow);
     },
   };
 }

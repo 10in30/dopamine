@@ -163,6 +163,12 @@ void main(){
   float hard = 1.0 - smoothstep(sw * 0.85, sw, dc);
   float core = mix(soft, hard, uStyle) * gate;
   float rim = exp(-dc / (sw * 2.2)) * 0.7 * gate;
+  // The baked SDF saturates (distance clamps) beyond its encoded range, so the
+  // soft rim's exp() never reaches zero inside the box — leaving a faint ghost
+  // BOX fill over the whole SDF region. Fade the rim out at the range edge so it
+  // stays a glow around the strokes, not a box. (No-op for the analytic fallback,
+  // whose distance is unbounded.)
+  rim *= 1.0 - smoothstep(uSdfRangePx * 0.55, uSdfRangePx * 0.9, dc);
   // The cross is the unambiguous "no" — it must out-shine the flare. Hot white
   // core biased toward the error hue; a sharp rim sells the stamp.
   vec3 crossTint = mix(vec3(1.0), uC0 + 0.35, 0.5);

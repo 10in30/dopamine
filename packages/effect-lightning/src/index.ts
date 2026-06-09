@@ -24,6 +24,7 @@ import {
   LIGHTNING_VERTEX_SRC,
   MAX_FORKS,
 } from "./lightning-shader.js";
+import { computeLightningArrays, type LightningRenderParams } from "./lightning-renderer.js";
 import {
   envelope,
   registerEffect,
@@ -53,20 +54,24 @@ interface LightningParams extends PassParams {
   boltSeed: number;
 }
 
+// Pure-shader pass effect, but the jagged bolt polyline (the part that used to
+// cost ~220 fbm/pixel) is PRECOMPUTED on the CPU once per frame and fed to the
+// shader as the uVerts/uBoltMeta array uniforms (frameArrays). The shader keeps
+// the original inverse-distance plasma glow — same look, far cheaper. The .dope
+// is unchanged; only the web render path moved.
 const CONFIG: PassConfig = {
   vertex: LIGHTNING_VERTEX_SRC,
   fragment: LIGHTNING_FRAGMENT_SRC,
-  // The shader's own uniforms (the standard ones — uOrigin/uLife/uTimeS/uStyle/
-  // uAmp/uC0..2/shadow — are bound implicitly by the runner).
   uniforms: [
-    "uStrike", "uFlash", "uThickness", "uJagged", "uBranches",
-    "uFlashBright", "uExposure", "uSeed",
+    "uStrike", "uFlash", "uThickness", "uFlashBright", "uExposure", "uSeed",
+    "uVerts", "uBoltMeta",
   ],
-  // Anchored strike: the bolt lands toward uOrigin.
   usesOrigin: true,
-  // boltSeed binds to uSeed; flicker feeds the strobe shape, overshoot the
-  // envelope — neither is a uniform of its own name.
-  bindings: { boltSeed: "uSeed", flicker: null, overshoot: null },
+  // boltSeed binds to uSeed (halo variation); the geometry params drive the CPU
+  // precompute (frameArrays), not uniforms; flicker/overshoot feed the timing.
+  bindings: {
+    boltSeed: "uSeed", flicker: null, overshoot: null, jagged: null, branches: null,
+  },
   // A bright, fairly tall occluder so the cast shadow reads as a sharp silhouette.
   shadowHeightFrac: (params) => (params as LightningParams).thickness * 14 + 0.4,
   frame: ({ animMs, life }, params) => {
@@ -76,6 +81,14 @@ const CONFIG: PassConfig = {
       uStrike: strikeProgress(animMs),
       uFlash: flashStrobe(life, p.flicker),
     };
+  },
+  frameArrays: ({ animMs, life }, params, geom) => {
+    const p = params as unknown as LightningRenderParams;
+    const { verts, meta } = computeLightningArrays(p, geom.width, geom.height, geom.origin, animMs, life);
+    return [
+      { name: "uVerts", size: 2, data: verts },
+      { name: "uBoltMeta", size: 4, data: meta },
+    ];
   },
 };
 
