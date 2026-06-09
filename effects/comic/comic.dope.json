@@ -2,6 +2,8 @@
   "fmt": "dopamine-effect",
   "v": "1.0.0",
   "id": "dopamine.success.comic",
+  "slug": "comic",
+  "kind": "panel",
   "meta": {
     "name": "Comic Impact",
     "description": "A Golden/Silver-Age comic-book success shout: a hand-lettered affirmation slams in over a jagged starburst with halftone + action lines.",
@@ -56,7 +58,7 @@
     "kind": "radial",
     "viewBox": [0, 0, 100, 100],
     "outlines": {
-      "starburst": { "role": "burst", "note": "Procedural jagged star drawn in comic-renderer drawPanel from burstPoints + comicSeed." }
+      "starburst": { "role": "burst", "note": "Procedural jagged star drawn in the panel from burstPoints + comicSeed." }
     }
   },
   "content": {
@@ -125,5 +127,28 @@
       }
     },
     "fallbackOrder": ["webgl2"]
+  },
+
+  "binding": {
+    "note": "CROSS-PLATFORM uniform-binding contract (consumed by the @dopamine/build toolchain, not the runtime). Which render.params are NOT shader uniforms, the seed-keyed scatter field, the per-frame/host extras, and the texture samplers — one source of truth for the web u<Name> list, the Swift struct + packer, and the MSL struct. The toolchain STRIPS this (and `x-build`, `slug`, `kind`) from the .dope it embeds in each platform package, so the embedded runtime doc stays the portable, standalone-safe data spine.",
+    "excludeParams": ["style", "overshoot", "scale", "burstPoints", "inkWeight", "dotSize"],
+    "scatterKey": "comicSeed",
+    "extras": [
+      { "name": "presence", "type": "float", "web": "uPresence", "note": "impactPresence(life)" },
+      { "name": "flash", "type": "float", "web": "uFlash", "note": "0..1 impact flash (fast spike, decays)" },
+      { "name": "dotSize", "type": "float", "web": "uDotSize", "note": "Ben-Day cell size (device px = dotSize*dpr)" },
+      { "name": "inkBoost", "type": "float", "web": "uInkBoost", "note": "ink darkness/spread (1 + style*0.4)" }
+    ],
+    "samplers": ["uPanel"]
+  },
+
+  "x-build": {
+    "note": "TOOLCHAIN build config (vendor-namespaced `x-` so runtime parsers ignore it; stripped from the embedded .dope). One block per platform: how `dopamine build` assembles the standalone, installable package into dist/<platform>/.",
+    "swift": {
+      "module": "DopamineEffectComic",
+      "sources": "swift",
+      "platforms": ["iOS(.v15)", "macOS(.v12)"],
+      "core": { "mode": "path", "package": "Dopamine", "product": "DopamineCore", "path": "swift" }
+    }
   }
 }

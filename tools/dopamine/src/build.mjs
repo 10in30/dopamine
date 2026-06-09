@@ -1,27 +1,48 @@
 /**
  * dopamine toolchain — the build orchestrator.
  *
- * Loads a single effect folder (`effects/<id>/`: the manifest `effect.json`, the
- * `.dope` data spine, and the per-platform sources) and produces the list of
- * artifacts for every configured platform — each a `{ path, content }` where the
- * path is relative to the `dist/` output root. The CLI writes them; the toolchain
- * test inspects them directly (no disk writes), so building is pure + testable.
+ * The single file `effects/<id>/<slug>.dope.json` is the source of truth: the
+ * portable runtime data + the cross-platform `binding` contract + the `x-build`
+ * per-platform config, in ONE document. This loads it, and produces the artifacts
+ * for every configured platform — each a `{ path, content }` relative to the
+ * `dist/` output root. The CLI writes them; the test inspects them (no disk
+ * writes), so building is pure + testable.
  *
- * Today it emits the SwiftPM package; the Android (Gradle library) and web (npm)
- * generators slot in here next, behind the same `manifest.platforms` config.
+ * Crucially, the `.dope` the toolchain EMBEDS in each platform package is the
+ * PORTABLE subset (`portableDope`): the source minus the toolchain-only keys, so
+ * the shipped runtime doc stays standalone-safe (no build URLs/paths trip the
+ * `assertStandalone` guard) and identical across platforms.
  */
 
 import { join, isAbsolute } from "node:path";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { generateSwiftPackage } from "./swift.mjs";
 
-/** Load an effect folder: its manifest + the referenced `.dope` (parsed + raw). */
+/** Top-level `.dope` keys that are TOOLCHAIN-only — consumed here, never shipped. */
+export const TOOLCHAIN_KEYS = ["slug", "kind", "binding", "x-build"];
+
+/**
+ * The portable runtime `.dope` (the embedded resource): the source document minus
+ * the toolchain-only keys, re-serialized with stable 2-space formatting + trailing
+ * newline. Identical bytes on every platform → the md5 parity gate stays green.
+ */
+export function portableDope(doc) {
+  const out = {};
+  for (const [k, v] of Object.entries(doc)) {
+    if (!TOOLCHAIN_KEYS.includes(k)) out[k] = v;
+  }
+  return JSON.stringify(out, null, 2) + "\n";
+}
+
+/** Load an effect folder: find its unified `*.dope.json`, parse it, derive slug. */
 export async function loadEffect(root, effectDir) {
   const dir = isAbsolute(effectDir) ? effectDir : join(root, effectDir);
-  const manifest = JSON.parse(await readFile(join(dir, "effect.json"), "utf8"));
-  const dataText = await readFile(join(dir, manifest.data), "utf8");
-  const dope = JSON.parse(dataText);
-  return { dir, manifest, dope, dataText };
+  const dopeName = (await readdir(dir)).find((f) => f.endsWith(".dope.json"));
+  if (!dopeName) throw new Error(`dopamine: no *.dope.json found in ${dir}`);
+  const sourceText = await readFile(join(dir, dopeName), "utf8");
+  const doc = JSON.parse(sourceText);
+  const slug = doc.slug ?? dopeName.replace(/\.dope\.json$/, "");
+  return { dir, dopeName, doc, slug, sourceText, dope: portableDope(doc) };
 }
 
 /**
@@ -29,16 +50,15 @@ export async function loadEffect(root, effectDir) {
  * @returns {Promise<Array<{ path: string, content: string }>>} dist-relative paths.
  */
 export async function buildEffect({ root, effectDir, outDir }) {
-  const { dir, manifest, dope, dataText } = await loadEffect(root, effectDir);
+  const eff = await loadEffect(root, effectDir);
+  const build = eff.doc["x-build"] ?? {};
   const artifacts = [];
 
-  if (manifest.platforms?.swift) {
-    artifacts.push(
-      ...(await generateSwiftPackage({ root, effectDirAbs: dir, manifest, dope, dataText, outDir })),
-    );
+  if (build.swift) {
+    artifacts.push(...(await generateSwiftPackage({ root, eff, outDir })));
   }
-  // TODO: manifest.platforms.android → generateAndroidLibrary(...)
-  // TODO: manifest.platforms.web     → generateNpmPackage(...)
+  // TODO: build.android → generateAndroidLibrary(...)
+  // TODO: build.web     → generateNpmPackage(...)
 
   return artifacts;
 }
