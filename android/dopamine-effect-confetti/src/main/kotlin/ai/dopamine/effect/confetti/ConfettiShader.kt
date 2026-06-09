@@ -63,6 +63,7 @@ ${GLSL_ROT2}
 ${GLSL_TONEMAP_ACES}
 ${GLSL_DITHER}
 ${GLSL_PARTICLES}
+${GLSL_LIGHT_OUT}
 
 // Per-piece deterministic motion + pose. Given piece index i and the live frag
 // sample p (device px), returns the piece's current centre and writes its half-
