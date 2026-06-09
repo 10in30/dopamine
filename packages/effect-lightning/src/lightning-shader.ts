@@ -13,8 +13,10 @@
  * unchanged while the per-pixel cost drops from ~220 fbm to a single fbm (the
  * halo's living variation).
  *
- * (The Swift/Metal lightning keeps its own analytic GPU pass; this is web-only
- * and lightning.dope.json is unchanged across platforms.)
+ * All three platforms now use this precomputed-vertex approach: the Swift/Metal
+ * port feeds the same CPU-computed polyline in via DopamineCore's `frameArrays`
+ * buffer seam (uVerts/uBoltMeta), and Android via its GL `frameArrays` seam.
+ * lightning.dope.json is unchanged across platforms.
  */
 
 import {

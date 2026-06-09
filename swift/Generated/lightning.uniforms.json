@@ -20,8 +20,6 @@
   "effectUniforms": [
     "uExposure",
     "uThickness",
-    "uJagged",
-    "uBranches",
     "uFlashBright",
     "uBoltSeed",
     "uStrike",
@@ -44,8 +42,6 @@
     "uShadowStrength",
     "uExposure",
     "uThickness",
-    "uJagged",
-    "uBranches",
     "uFlashBright",
     "uBoltSeed",
     "uStrike",
