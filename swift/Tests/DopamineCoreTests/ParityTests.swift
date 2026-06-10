@@ -11,9 +11,22 @@
 
 import XCTest
 @testable import DopamineCore
-@testable import DopamineEffectSolarbloom
 
 final class ParityTests: XCTestCase {
+
+    /// The mote cap const the solarbloom `.dope` references (`clampMax: "MAX_MOTES"`).
+    /// Mirrors the standalone effect package's `MAX_MOTES` (its MSL `#define` + the
+    /// integer-clamp const); inlined here so the core parity suite needs no effect
+    /// dependency now that every effect lives in its own single-folder package.
+    let MAX_MOTES: Double = 80
+
+    /// The solarbloom `.dope` parity vector, bundled with THIS test target (the
+    /// effect package is no longer part of this monorepo SwiftPM package, and the
+    /// core ships no effect data). Same bytes the effect ships — the toolchain's
+    /// md5 gate enforces that; `regen-parity.sh` refreshes this fixture.
+    func loadSolarbloomDoc() throws -> DopeDoc {
+        try DopeResource.loadDope("solarbloom.dope", bundle: Bundle.module)
+    }
 
     /// The fixture model (mirrors the dump script's JSON).
     struct Fixture: Decodable {
@@ -40,20 +53,18 @@ final class ParityTests: XCTestCase {
         let effectURL = try XCTUnwrap(
             Bundle.module.path(forResource: "solarbloom-parity", ofType: "json"))
         XCTAssertFalse(effectURL.isEmpty)
-        // Load the effect's `.dope` and the core's parity copy; both came from the
-        // same source `cp`. Here we assert the EFFECT-bundled bytes parse + match
-        // the web id; full byte-equality across packages is enforced by the build
-        // (all three are copied from one source — verified by md5 in CI/notes).
-        let solar = try Solarbloom()
-        XCTAssertEqual(solar.doc.id, "dopamine.success.solarbloom")
-        XCTAssertEqual(solar.doc.fmt, "dopamine-effect")
+        // Assert the core-bundled bytes parse + match the web id; full byte-equality
+        // across the platform packages is enforced by the @dopamine/build toolchain
+        // (all embeds are emitted from one source — md5-checked in android.yml).
+        let doc = try loadSolarbloomDoc()
+        XCTAssertEqual(doc.id, "dopamine.success.solarbloom")
+        XCTAssertEqual(doc.fmt, "dopamine-effect")
     }
 
     /// (2) Swift resolve output == web loader output across the whole grid.
     func testResolveParityAcrossGrid() throws {
         let fixture = try loadFixture()
-        let solar = try Solarbloom()
-        let doc = solar.doc
+        let doc = try loadSolarbloomDoc()
 
         XCTAssertEqual(fixture.cases.count, 192, "expected the full grid")
 
@@ -86,14 +97,5 @@ final class ParityTests: XCTestCase {
                 XCTAssertEqual(stop.b, c.palette[i][2], accuracy: 1e-9, "pal[\(i)].b")
             }
         }
-    }
-
-    /// The whimsy→check-glyph band picker matches the web `pickBand`/`pickCheckGlyph`.
-    func testCheckGlyphBands() throws {
-        let solar = try Solarbloom()
-        // 3 bands, equal width: [0,1/3) ✓, [1/3,2/3) ✔(sans), [2/3,1] ✔(symbols).
-        XCTAssertEqual(solar.pickCheckGlyph(whimsy: 0.0).char, "\u{2713}")
-        XCTAssertEqual(solar.pickCheckGlyph(whimsy: 0.5).char, "\u{2714}")
-        XCTAssertEqual(solar.pickCheckGlyph(whimsy: 1.0).char, "\u{2714}")
     }
 }

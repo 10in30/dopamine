@@ -1,0 +1,145 @@
+{
+  "fmt": "dopamine-effect",
+  "v": "1.0.0",
+  "id": "dopamine.loading.halo",
+  "slug": "halo",
+  "kind": "overlay",
+  "meta": {
+    "name": "Halo",
+    "description": "A calm ambient loading indicator: a soft luminous ring of light centred on the origin that gently rotates and breathes, with a traveling highlight arc sweeping around it (the 'loading' read). Dopamine's first CONTINUOUS effect — it LOOPS SEAMLESSLY. All motion is driven by periodic functions of uTimeS with period = 1.5s; tempo.durationMs (6000) is exactly 4 loop periods, and the period is exactly 18 'animate-on-twos' steps (NPR_TIME_STEP_MS = 1000/12), so the frame at t==durationMs matches t==0 at every whimsy. A host loops it by re-firing or by a long duration. amp is a steady gentle periodic breathe (NOT envelope(life)), so there is no one-shot fade to break the seam.",
+    "tags": ["loading", "ambient", "continuous", "looping"],
+    "loopPeriodMs": 1500,
+    "loops": true
+  },
+  "controls": {
+    "mood": {
+      "type": "enum",
+      "default": "celebratory",
+      "options": ["serene", "celebratory", "electric"],
+      "ui": "segmented"
+    },
+    "intensity": { "type": "scalar", "default": 0.7, "min": 0, "max": 1, "step": 0.01, "ui": "slider" },
+    "whimsy": { "type": "scalar", "default": 0.5, "min": 0, "max": 1, "step": 0.01, "ui": "slider" },
+    "seed": { "type": "int", "default": null, "nullable": true },
+    "origin": { "type": "point", "default": "center" },
+    "target": { "type": "selector", "default": "document.body" }
+  },
+  "baselines": {
+    "serene": {
+      "durationMs": 6000,
+      "lightness": 0.86,
+      "chroma": 0.08,
+      "hueCenter": 225,
+      "hueRange": 110,
+      "ringRadius": 0.3,
+      "ringWidth": 0.07,
+      "breathe": 0.16,
+      "sweepArc": 0.34,
+      "sweepTurns": 1,
+      "glow": 0.55
+    },
+    "celebratory": {
+      "durationMs": 6000,
+      "lightness": 0.82,
+      "chroma": 0.15,
+      "hueCenter": 200,
+      "hueRange": 280,
+      "ringRadius": 0.31,
+      "ringWidth": 0.06,
+      "breathe": 0.2,
+      "sweepArc": 0.4,
+      "sweepTurns": 2,
+      "glow": 0.7
+    },
+    "electric": {
+      "durationMs": 6000,
+      "lightness": 0.8,
+      "chroma": 0.22,
+      "hueCenter": 195,
+      "hueRange": 160,
+      "ringRadius": 0.32,
+      "ringWidth": 0.045,
+      "breathe": 0.24,
+      "sweepArc": 0.46,
+      "sweepTurns": 3,
+      "glow": 0.95
+    }
+  },
+  "palette": {
+    "model": "oklch",
+    "space": "linear-srgb",
+    "generator": "golden-angle",
+    "goldenAngleDeg": 137.50776405003785,
+    "stops": 3,
+    "hueSpread": 0.55,
+    "lightness": { "baseline": "lightness", "perStop": [0, 0.06, -0.05] },
+    "chroma": {
+      "from": { "mul": [{ "baseline": "chroma" }, { "lerp": ["intensity", 0.7, 1.5] }] },
+      "perStop": [0, 0.02, -0.01]
+    },
+    "seed": { "deterministic": true, "source": "controls.seed", "prng": "mulberry32" },
+    "perMood": {
+      "serene": { "hueCenter": 225, "hueRange": 110, "lightness": 0.86, "chroma": 0.08 },
+      "celebratory": { "hueCenter": 200, "hueRange": 280, "lightness": 0.82, "chroma": 0.15 },
+      "electric": { "hueCenter": 195, "hueRange": 160, "lightness": 0.8, "chroma": 0.22 }
+    }
+  },
+  "tempo": {
+    "durationMs": { "from": { "baseline": "durationMs" } }
+  },
+  "render": {
+    "params": {
+      "exposure": { "type": "float", "from": { "lerp": ["intensity", 0.7, 1.45] } },
+      "ringRadius": { "type": "float", "from": { "baseline": "ringRadius" } },
+      "ringWidth": {
+        "type": "float",
+        "from": { "mul": [{ "baseline": "ringWidth" }, { "lerp": ["intensity", 1.25, 0.78] }] }
+      },
+      "breathe": { "type": "float", "from": { "baseline": "breathe" } },
+      "sweepArc": {
+        "type": "float",
+        "from": { "mul": [{ "baseline": "sweepArc" }, { "lerp": ["intensity", 0.8, 1.2] }] }
+      },
+      "sweepTurns": { "type": "int", "from": { "round": { "baseline": "sweepTurns" } } },
+      "glow": {
+        "type": "float",
+        "from": { "mul": [{ "baseline": "glow" }, { "lerp": ["intensity", 0.6, 1.3] }] }
+      },
+      "period": { "type": "float", "from": { "const": 1.5 } },
+      "style": { "type": "float", "from": { "control": "whimsy" } }
+    },
+    "backends": {
+      "webgl2": {
+        "stage": "fullscreen-triangle",
+        "blend": "screen",
+        "shader": { "program": "halo" }
+      }
+    },
+    "fallbackOrder": ["webgl2"]
+  },
+  "binding": {
+    "note": "CROSS-PLATFORM uniform-binding contract (consumed by the @dopamine/build toolchain, not the runtime). Which render.params are NOT shader uniforms, the seed-keyed scatter field, the per-frame/host extras, and the texture samplers — one source of truth for the web u<Name> list, the Swift struct + packer, and the MSL struct. The toolchain STRIPS this (and `x-build`, `slug`, `kind`) from the .dope it embeds in each platform package, so the embedded runtime doc stays the portable, standalone-safe data spine.",
+    "excludeParams": ["style"],
+    "scatterKey": null,
+    "extras": [],
+    "samplers": []
+  },
+  "x-build": {
+    "note": "TOOLCHAIN build config (vendor-namespaced `x-` so runtime parsers ignore it; stripped from the embedded .dope). One block per platform: how `dopamine build` assembles the standalone, installable package into dist/<platform>/.",
+    "swift": {
+      "module": "DopamineEffectHalo",
+      "sources": "swift",
+      "platforms": ["iOS(.v15)", "macOS(.v12)"],
+      "core": { "mode": "path", "package": "Dopamine", "product": "DopamineCore", "path": "swift" }
+    },
+    "web": {
+      "package": "@dopamine/effect-halo",
+      "sources": "web"
+    },
+    "android": {
+      "module": "dopamine-effect-halo",
+      "namespace": "ai.dopamine.effect.halo",
+      "sources": "android"
+    }
+  }
+}

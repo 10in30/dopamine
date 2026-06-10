@@ -1,21 +1,23 @@
 // swift-tools-version:5.9
 //
-// Dopamine — Swift / Metal port (vertical slice).
+// Dopamine — Swift / Metal port.
 //
-// Mirrors the web monorepo's package layout: a shared `DopamineCore` runtime
-// (the `.dope` loader + mapping grammar, OKLCH color, tempo primitives, the
-// registry + mood-registry, and the resolve pipeline) plus ONE effect package,
-// `DopamineEffectSolarbloom`, that contributes only {Metal shader + bespoke
-// tempo} — exactly the per-effect surface the web keeps.
+// This monorepo package now ships ONLY the shared `DopamineCore` runtime (the
+// `.dope` loader + mapping grammar, OKLCH color, tempo primitives, the registry +
+// mood-registry, and the resolve pipeline). Every EFFECT has migrated to the
+// consolidated single-folder model under `effects/<name>/` and is built into a
+// STANDALONE, installable SwiftPM package under `dist/swift/DopamineEffect<Name>`
+// by the `@dopamine/build` toolchain (run `node tools/dopamine/src/cli.mjs build`).
+// The iOS demo (swift/Demo/project.yml) consumes those dist packages by path,
+// exactly like an external app would — the effect packages are no longer targets
+// of this package.
 //
-// HARD PORTABILITY RULE: the package must build on Linux with NO Apple
-// toolchain. So every Metal / MetalKit / UIKit type is wrapped in
-// `#if canImport(Metal)` / `#if canImport(UIKit)`. On Linux you get the
-// portable core + the portable parts of the effect (its bespoke tempo,
-// uniform-struct shape, and the bundled `.dope`); the Metal host + the shader
-// pass-runner only compile on macOS/iOS. The shared `.dope` JSON is bundled as
-// a resource into BOTH the core (the byte-parity test) and the effect (its
-// runtime data), proving the data spine is shared verbatim across platforms.
+// HARD PORTABILITY RULE: DopamineCore must build on Linux with NO Apple toolchain,
+// so every Metal / MetalKit / UIKit type stays wrapped in `#if canImport(Metal)` /
+// `#if canImport(UIKit)`. The Linux CI job is the guard. DopamineCore is now
+// effect-agnostic — it ships NO effect data. The cross-platform byte-parity test
+// carries the solarbloom `.dope` (a representative resolve vector) as a TEST
+// FIXTURE alongside its expected-output fixture; it is not part of the library.
 
 import PackageDescription
 
@@ -27,108 +29,18 @@ let package = Package(
     ],
     products: [
         .library(name: "DopamineCore", targets: ["DopamineCore"]),
-        .library(name: "DopamineEffectSolarbloom", targets: ["DopamineEffectSolarbloom"]),
-        .library(name: "DopamineEffectAurora", targets: ["DopamineEffectAurora"]),
-        .library(name: "DopamineEffectConfetti", targets: ["DopamineEffectConfetti"]),
-        .library(name: "DopamineEffectFail", targets: ["DopamineEffectFail"]),
-        .library(name: "DopamineEffectHeartburst", targets: ["DopamineEffectHeartburst"]),
-        .library(name: "DopamineEffectInkstroke", targets: ["DopamineEffectInkstroke"]),
-        .library(name: "DopamineEffectLightning", targets: ["DopamineEffectLightning"]),
-        .library(name: "DopamineEffectRipple", targets: ["DopamineEffectRipple"]),
-        .library(name: "DopamineEffectHalo", targets: ["DopamineEffectHalo"]),
     ],
     targets: [
         .target(
-            name: "DopamineCore",
-            resources: [
-                // Bundled so the cross-platform byte-parity test can load the
-                // SAME `.dope` bytes the effect ships.
-                .copy("Resources/solarbloom.dope.json"),
-            ]
-        ),
-        .target(
-            name: "DopamineEffectSolarbloom",
-            dependencies: ["DopamineCore"],
-            resources: [
-                // The EXACT web `.dope` (same bytes) + the MSL shader. On Linux
-                // the .metal file is just an unbuilt resource; on macOS/iOS it is
-                // compiled into a `default.metallib` by the Swift build.
-                .copy("Resources/solarbloom.dope.json"),
-                .process("Shaders"),
-            ]
-        ),
-        .target(
-            name: "DopamineEffectAurora",
-            dependencies: ["DopamineCore"],
-            resources: [
-                .copy("Resources/aurora.dope.json"),
-                .process("Shaders"),
-            ]
-        ),
-        // DopamineEffectComic has MOVED to the single-folder model: it now lives in
-        // effects/comic/ and is built into a STANDALONE SwiftPM package under
-        // dist/swift/DopamineEffectComic by the @dopamine/build toolchain. The demo
-        // consumes it from there (swift/Demo/project.yml), like any external app.
-        .target(
-            name: "DopamineEffectConfetti",
-            dependencies: ["DopamineCore"],
-            resources: [
-                .copy("Resources/confetti.dope.json"),
-                .process("Shaders"),
-            ]
-        ),
-        .target(
-            name: "DopamineEffectFail",
-            dependencies: ["DopamineCore"],
-            resources: [
-                .copy("Resources/fail.dope.json"),
-                .process("Shaders"),
-            ]
-        ),
-        .target(
-            name: "DopamineEffectHeartburst",
-            dependencies: ["DopamineCore"],
-            resources: [
-                .copy("Resources/heartburst.dope.json"),
-                .process("Shaders"),
-            ]
-        ),
-        .target(
-            name: "DopamineEffectInkstroke",
-            dependencies: ["DopamineCore"],
-            resources: [
-                .copy("Resources/inkstroke.dope.json"),
-                .process("Shaders"),
-            ]
-        ),
-        .target(
-            name: "DopamineEffectLightning",
-            dependencies: ["DopamineCore"],
-            resources: [
-                .copy("Resources/lightning.dope.json"),
-                .process("Shaders"),
-            ]
-        ),
-        .target(
-            name: "DopamineEffectRipple",
-            dependencies: ["DopamineCore"],
-            resources: [
-                .copy("Resources/ripple.dope.json"),
-                .process("Shaders"),
-            ]
-        ),
-        .target(
-            name: "DopamineEffectHalo",
-            dependencies: ["DopamineCore"],
-            resources: [
-                .copy("Resources/halo.dope.json"),
-                .process("Shaders"),
-            ]
+            name: "DopamineCore"
         ),
         .testTarget(
             name: "DopamineCoreTests",
-            dependencies: ["DopamineCore", "DopamineEffectSolarbloom"],
+            dependencies: ["DopamineCore"],
             resources: [
+                // The parity vector: solarbloom's `.dope` (input) + the web loader's
+                // dumped output. Both live with the test, not in the shipped core.
+                .copy("Fixtures/solarbloom.dope.json"),
                 .copy("Fixtures/solarbloom-parity.json"),
             ]
         ),

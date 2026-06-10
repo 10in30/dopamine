@@ -4,7 +4,8 @@
  * STDOUT (empty = nothing to render, just re-stitch the cached clips).
  *
  * Policy:
- *   • A change under `packages/effect-<name>/**` re-renders just that effect.
+ *   • A change under `effects/<name>/**` (the single-folder model) re-renders just
+ *     that effect.
  *   • A change to anything SHARED — the core runtime, the effects umbrella, the
  *     demo the reel drives, or the reel pipeline itself (render-clips / stitch /
  *     lib/reel) — re-renders EVERY effect (they could all look different).
@@ -65,7 +66,8 @@ function plan() {
   }
   const want = new Set(missing);
   for (const f of files) {
-    const m = f.match(/^packages\/effect-([^/]+)\//);
+    // Effects now live in the single-folder model at effects/<name>/**.
+    const m = f.match(/^effects\/([^/]+)\//);
     if (m && names.includes(m[1])) want.add(m[1]);
   }
   console.error(

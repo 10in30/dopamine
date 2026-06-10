@@ -13,10 +13,26 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-WEB_SRC="$HERE/../../packages/core/src"
-DOPE="$HERE/../../packages/effect-solarbloom/src/solarbloom.dope.json"
+REPO="$HERE/../.."
+WEB_SRC="$REPO/packages/core/src"
+# The canonical single-folder source (carries the data spine + toolchain keys; the
+# web loader ignores the latter, exactly as the runtime does).
+DOPE="$REPO/effects/solarbloom/solarbloom.dope.json"
+FIXTURE_DIR="$HERE/../Tests/DopamineCoreTests/Fixtures"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
+
+# Refresh the test's `.dope` fixture to the PORTABLE bytes the effect actually
+# ships (toolchain keys stripped — what the Swift loader sees in production), so the
+# parity vector can't drift from the canonical source. Writes the file directly (no
+# stdout), keeping this script's stdout = the parity JSON.
+node -e '
+  import("'"$REPO"'/tools/dopamine/src/build.mjs").then(async (m) => {
+    const { readFile, writeFile } = await import("node:fs/promises");
+    const doc = JSON.parse(await readFile("'"$DOPE"'", "utf8"));
+    await writeFile("'"$FIXTURE_DIR"'/solarbloom.dope.json", m.portableDope(doc));
+  });
+' 1>&2
 
 mkdir -p "$STAGE/engine" "$STAGE/framework"
 sed 's/\.js"/.ts"/g' "$WEB_SRC/engine/seed.ts"  > "$STAGE/engine/seed.ts"

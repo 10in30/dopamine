@@ -1,6 +1,6 @@
 /**
- * Regenerate packages/effect-solarbloom/src/check-fonts.ts from the CHECK-GLYPH woff2
- * subsets in packages/effect-solarbloom/assets/fonts. Solarbloom's checkmark is a REAL font
+ * Regenerate effects/solarbloom/web/src/check-fonts.ts from the CHECK-GLYPH woff2
+ * subsets in effects/solarbloom/fonts. Solarbloom's checkmark is a REAL font
  * glyph (✓ U+2713 / ✔ U+2714) drawn into an offscreen canvas and uploaded as a
  * texture; the face + codepoint are chosen by whimsy. The subsets carry only the
  * two check codepoints (a few hundred bytes each) so the effect ships its own
@@ -17,8 +17,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const fontDir = join(root, "packages", "effect-solarbloom", "assets", "fonts");
-const outFile = join(root, "packages", "effect-solarbloom", "src", "check-fonts.ts");
+const fontDir = join(root, "effects", "solarbloom", "fonts");
+const outFile = join(root, "effects", "solarbloom", "web", "src", "check-fonts.ts");
 
 const FACES = [
   { family: "Dopamine Check Sans", file: "SourceSans3-Check.woff2" },

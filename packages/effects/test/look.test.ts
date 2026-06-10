@@ -8,8 +8,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import { FRAGMENT_SRC } from "../../effect-solarbloom/src/solarbloom-shader.js";
-import { INK_FRAGMENT_SRC } from "../../effect-inkstroke/src/inkstroke-shader.js";
+import { FRAGMENT_SRC } from "../../../effects/solarbloom/web/src/solarbloom-shader.js";
+import { INK_FRAGMENT_SRC } from "../../../effects/inkstroke/web/src/inkstroke-shader.js";
 import { COMIC_FRAGMENT_SRC } from "../../../effects/comic/web/src/comic-shader.js";
 import { GLSL_TONEMAP_ACES, GLSL_HASH, GLSL_FBM, GLSL_HALFTONE, envelope } from "@dopamine/core";
 import { impactScale, impactPresence } from "../../../effects/comic/web/src/comic-tempo.js";

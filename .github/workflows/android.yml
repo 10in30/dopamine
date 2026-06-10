@@ -25,14 +25,12 @@ on:
       - "android/**"
       - "effects/**"                         # single-folder effect sources (built to dist/)
       - "tools/dopamine/**"                  # the cross-platform build toolchain
-      - "packages/effect-*/src/*.dope.json"  # canonical .dope (byte-parity check)
       - ".github/workflows/android.yml"
   pull_request:
     paths:
       - "android/**"
       - "effects/**"
       - "tools/dopamine/**"
-      - "packages/effect-*/src/*.dope.json"
       - ".github/workflows/android.yml"
   workflow_dispatch:
 
@@ -50,43 +48,41 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      # The headline data-spine invariant: the `.dope` bundled into the Android
-      # packages must be the SAME bytes as the canonical web file (and swift's
-      # copy). Compare md5s for every effect that has an Android module.
-      - name: .dope byte-parity (android copies == canonical web)
-        run: |
-          set -e
-          status=0
-          for web in packages/effect-*/src/*.dope.json; do
-            name=$(basename "$web")                  # e.g. heartburst.dope.json
-            # The matching android asset (effect modules) or core test resource.
-            for android in android/dopamine-effect-*/src/main/assets/"$name" \
-                           android/dopamine-core/src/test/resources/"$name"; do
-              [ -f "$android" ] || continue
-              if [ "$(md5sum < "$web" | cut -d' ' -f1)" != "$(md5sum < "$android" | cut -d' ' -f1)" ]; then
-                echo "DRIFT: $android != $web"
-                status=1
-              else
-                echo "ok: $android == $web"
-              fi
-            done
-          done
-          exit $status
-
-      # comic has moved to the single-folder model (effects/comic) + is built to
-      # dist/ by the toolchain. Assert the .dope it embeds in EVERY platform package
-      # is byte-identical (the cross-platform spine invariant, as a build property).
-      - name: comic single-folder .dope parity (dist embeds identical across platforms)
+      # The headline data-spine invariant. Every effect now lives in the
+      # single-folder model (effects/<name>/) and the @dopamine/build toolchain
+      # emits the .dope into each platform package under dist/. Assert, for EVERY
+      # effect, that the .dope embedded in all three platform packages (android
+      # assets / web src / swift Resources) is byte-identical — the cross-platform
+      # spine invariant, as a build property. Also assert the dopamine-core JVM
+      # parity grid's test resource matches that same canonical embed.
+      - name: .dope byte-parity (every effect's dist embeds identical across platforms)
         run: |
           set -e
           python3 -m pip install --quiet --break-system-packages fonttools brotli \
             || python3 -m pip install --quiet fonttools brotli
-          node tools/dopamine/src/cli.mjs build effects/comic
-          a=$(md5sum < dist/android/dopamine-effect-comic/src/main/assets/comic.dope.json | cut -d' ' -f1)
-          w=$(md5sum < dist/web/effect-comic/src/comic.dope.json | cut -d' ' -f1)
-          s=$(md5sum < dist/swift/DopamineEffectComic/Sources/DopamineEffectComic/Resources/comic.dope.json | cut -d' ' -f1)
-          echo "android=$a web=$w swift=$s"
-          [ "$a" = "$w" ] && [ "$w" = "$s" ] || { echo "DRIFT: comic .dope embeds differ"; exit 1; }
+          node tools/dopamine/src/cli.mjs build
+          status=0
+          for dir in effects/*/; do
+            name=$(basename "$dir")
+            pascal=$(python3 -c "import sys; print(sys.argv[1].capitalize())" "$name")
+            a="dist/android/dopamine-effect-$name/src/main/assets/$name.dope.json"
+            w="dist/web/effect-$name/src/$name.dope.json"
+            s="dist/swift/DopamineEffect$pascal/Sources/DopamineEffect$pascal/Resources/$name.dope.json"
+            am=$(md5sum < "$a" | cut -d' ' -f1)
+            wm=$(md5sum < "$w" | cut -d' ' -f1)
+            sm=$(md5sum < "$s" | cut -d' ' -f1)
+            if [ "$am" = "$wm" ] && [ "$wm" = "$sm" ]; then
+              echo "ok: $name embeds identical ($am)"
+            else
+              echo "DRIFT: $name embeds differ — android=$am web=$wm swift=$sm"; status=1
+            fi
+            # The dopamine-core JVM parity grid resource (only solarbloom today).
+            core="android/dopamine-core/src/test/resources/$name.dope.json"
+            if [ -f "$core" ] && [ "$(md5sum < "$core" | cut -d' ' -f1)" != "$am" ]; then
+              echo "DRIFT: $core != the canonical $name embed"; status=1
+            fi
+          done
+          exit $status
 
       - name: parity gate (dopamine-core, 192-case grid)
         working-directory: android
@@ -124,7 +120,7 @@ jobs:
         run: |
           python3 -m pip install --quiet --break-system-packages fonttools brotli \
             || python3 -m pip install --quiet fonttools brotli
-          node tools/dopamine/src/cli.mjs build effects/comic
+          node tools/dopamine/src/cli.mjs build
 
       - name: assembleDebug (GL backbone + effects + demo APK)
         working-directory: android
@@ -165,7 +161,7 @@ jobs:
         run: |
           python3 -m pip install --quiet --break-system-packages fonttools brotli \
             || python3 -m pip install --quiet fonttools brotli
-          node tools/dopamine/src/cli.mjs build effects/comic
+          node tools/dopamine/src/cli.mjs build
 
       - name: Build the demo APK
         working-directory: android

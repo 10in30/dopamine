@@ -21,16 +21,16 @@ import { describe, expect, it } from "vitest";
 // Importing the umbrella registers all ten built-in effects + their moods.
 import { builtinEffectNames, getEffect, resolveMood, type FeelingInput } from "../src/index.js";
 
-import solarbloomDoc from "../../effect-solarbloom/src/solarbloom.dope.json";
-import inkstrokeDoc from "../../effect-inkstroke/src/inkstroke.dope.json";
+import solarbloomDoc from "../../../effects/solarbloom/solarbloom.dope.json";
+import inkstrokeDoc from "../../../effects/inkstroke/inkstroke.dope.json";
 import comicDoc from "../../../effects/comic/comic.dope.json";
-import failDoc from "../../effect-fail/src/fail.dope.json";
-import auroraDoc from "../../effect-aurora/src/aurora.dope.json";
-import rippleDoc from "../../effect-ripple/src/ripple.dope.json";
-import confettiDoc from "../../effect-confetti/src/confetti.dope.json";
-import heartburstDoc from "../../effect-heartburst/src/heartburst.dope.json";
-import lightningDoc from "../../effect-lightning/src/lightning.dope.json";
-import haloDoc from "../../effect-halo/src/halo.dope.json";
+import failDoc from "../../../effects/fail/fail.dope.json";
+import auroraDoc from "../../../effects/aurora/aurora.dope.json";
+import rippleDoc from "../../../effects/ripple/ripple.dope.json";
+import confettiDoc from "../../../effects/confetti/confetti.dope.json";
+import heartburstDoc from "../../../effects/heartburst/heartburst.dope.json";
+import lightningDoc from "../../../effects/lightning/lightning.dope.json";
+import haloDoc from "../../../effects/halo/halo.dope.json";
 
 const DOCS: Record<string, { controls?: { mood?: { options?: string[] } } }> = {
   solarbloom: solarbloomDoc as never,

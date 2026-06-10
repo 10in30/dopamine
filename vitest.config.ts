@@ -1,8 +1,26 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
+import { existsSync, readdirSync } from "node:fs";
 
 const pkg = (p: string): string =>
   fileURLToPath(new URL(`./packages/${p}`, import.meta.url));
+
+// Effects migrated to the single-folder model (effects/<name>/web) resolve there;
+// the rest still resolve to packages/effect-<name>. Auto-discovered so a freshly
+// moved effect needs no alias edit — its `effects/<name>/web/src/index.ts` is
+// placed BEFORE the generic packages/effect-* alias below, so it wins.
+const movedEffectAliases = (() => {
+  let names: string[] = [];
+  try {
+    names = readdirSync(fileURLToPath(new URL("./effects/", import.meta.url))).filter((n) =>
+      existsSync(fileURLToPath(new URL(`./effects/${n}/web/src/index.ts`, import.meta.url))),
+    );
+  } catch { /* no effects/ yet */ }
+  return names.map((n) => ({
+    find: new RegExp(`^@dopamine\\/effect-${n}$`),
+    replacement: fileURLToPath(new URL(`./effects/${n}/web/src/index.ts`, import.meta.url)),
+  }));
+})();
 
 export default defineConfig({
   // Resolve every @dopamine/* package to its TS SOURCE so the suite runs against
@@ -11,9 +29,8 @@ export default defineConfig({
     alias: [
       { find: /^@dopamine\/core$/, replacement: pkg("core/src/index.ts") },
       { find: /^@dopamine\/effects$/, replacement: pkg("effects/src/index.ts") },
-      // comic has MOVED to the single-folder model (effects/comic/web); resolve it
-      // there, BEFORE the generic packages/effect-* alias below.
-      { find: /^@dopamine\/effect-comic$/, replacement: fileURLToPath(new URL("./effects/comic/web/src/index.ts", import.meta.url)) },
+      // Moved effects (effects/<name>/web) resolve here, BEFORE the generic alias.
+      ...movedEffectAliases,
       { find: /^@dopamine\/effect-(.*)$/, replacement: pkg("effect-$1/src/index.ts") },
     ],
   },

@@ -5,10 +5,9 @@
 import Foundation
 
 public enum DopeResource {
-    /// The core's OWN resource bundle (carries the parity-test copy of the
-    /// `.dope`). Each SwiftPM module gets its own `Bundle.module`, so a caller in
-    /// the effect package must pass ITS `Bundle.module` to load the effect's copy.
-    public static var coreBundle: Bundle { .module }
+    // DopamineCore ships no resources of its own — it is effect-agnostic. Each
+    // SwiftPM module gets its own `Bundle.module`, so a caller (an effect package,
+    // or the parity test) passes ITS OWN `Bundle.module` to load a bundled `.dope`.
 
     /// Load + parse a bundled `.dope` JSON resource by base name (no extension)
     /// from the given module bundle.

@@ -2,7 +2,7 @@
 #
 # Two jobs:
 #   • macos-14  — the real validator: swift build + swift test (Metal compiles +
-#                 the Metal-guarded tests run), the gen-uniforms staleness gate,
+#                 the Metal-guarded tests run), the dopamine-build staleness gate,
 #                 then XcodeGen → xcodebuild the iOS-Simulator demo, boot a sim,
 #                 launch it with the autoplay arg, and screen-record a ~5s clip
 #                 uploaded as an artifact. build+test are MUST-PASS; the record
@@ -25,14 +25,12 @@ on:
       - "swift/**"
       - "effects/**"
       - "tools/dopamine/**"
-      - "scripts/gen-uniforms.mjs"
       - ".github/workflows/swift.yml"
   pull_request:
     paths:
       - "swift/**"
       - "effects/**"
       - "tools/dopamine/**"
-      - "scripts/gen-uniforms.mjs"
       - ".github/workflows/swift.yml"
   workflow_dispatch:
 
@@ -122,15 +120,15 @@ jobs:
         working-directory: swift
         run: swift test -v
 
-      # --- MUST-PASS: the generated uniform files must be in sync with the .dope ---
-      - name: gen-uniforms staleness check
+      # --- MUST-PASS: the toolchain-generated artifacts must be in sync with the
+      # single-folder sources. Every effect now lives in effects/<name>/ and the
+      # @dopamine/build toolchain (not the retired scripts/gen-uniforms.mjs) emits
+      # the Swift/MSL uniform structs into its dist package. `dopamine build`
+      # already ran above; --check re-derives every artifact and fails if the build
+      # isn't idempotent (i.e. a source edit didn't get rebuilt). ---
+      - name: dopamine build staleness check
         working-directory: .
-        run: |
-          set -x
-          node scripts/gen-uniforms.mjs --check
-          # belt-and-braces: regenerate and assert nothing changed in git
-          node scripts/gen-uniforms.mjs
-          git diff --exit-code -- swift/Sources swift/Generated
+        run: node tools/dopamine/src/cli.mjs build --check
 
       # --- MUST-PASS: generate + build the iOS demo for the Simulator ---
       - name: Install XcodeGen
@@ -330,9 +328,17 @@ jobs:
             # "Invalid argument"). And only replace the original if the re-encode
             # actually produced a playable file (a failed encode must NOT clobber
             # the good recording — the pipe to tail hides ffmpeg's exit code).
+            #
+            # `simctl recordVideo` writes a VARIABLE-frame-rate stream. `setpts` only
+            # rescales each frame's timestamp, so after the 4× compression the output
+            # is still VFR with irregular, tightly-packed PTS — and libx264 re-encoding
+            # that onto a CFR timeline dropped the late frames, leaving the back half of
+            # the clip BLANK (the slow-mo source was fine). Resample onto a constant
+            # real-time frame rate with the `fps` filter (and pin the encoder to CFR):
+            # every output frame lands on a uniform grid, so the whole clip plays.
             ffmpeg -y -hide_banner -i /tmp/solarbloom.mp4 \
-              -vf "setpts=${SLOWMO}*PTS,scale=trunc(iw/2)*2:trunc(ih/2)*2" \
-              -an -c:v libx264 -pix_fmt yuv420p /tmp/realtime.mp4 2>&1 | tail -8 || true
+              -vf "setpts=${SLOWMO}*PTS,scale=trunc(iw/2)*2:trunc(ih/2)*2,fps=30" \
+              -fps_mode cfr -an -c:v libx264 -pix_fmt yuv420p /tmp/realtime.mp4 2>&1 | tail -8 || true
             if [ -s /tmp/realtime.mp4 ] && ffmpeg -v error -ss 0 -i /tmp/realtime.mp4 -frames:v 1 /tmp/rt.png >/dev/null 2>&1; then
               mv /tmp/realtime.mp4 /tmp/solarbloom.mp4
               echo ">>> real-time clip OK"

@@ -35,11 +35,17 @@ adb pull /sdcard/dopamine-slowmo.mp4 "$OUT/dopamine-slowmo.mp4" || true
 # is installed by the workflow step before this; if it's somehow unavailable, or the
 # re-encode fails, fall back to shipping the slow-mo clip as dopamine.mp4 so the
 # artifact always exists.
+#
+# `screenrecord` writes a VARIABLE-frame-rate stream; `setpts` only rescales each
+# frame's timestamp, so the 4×-sped output stays VFR with irregular PTS, and the
+# CFR re-encode dropped the late frames — leaving the back half BLANK (the slow-mo
+# source was fine). Resample onto a constant real-time rate with the `fps` filter
+# (+ CFR) so every output frame lands on a uniform grid and the whole clip plays.
 if [ -s "$OUT/dopamine-slowmo.mp4" ]; then
   if command -v ffmpeg >/dev/null 2>&1; then
     ffmpeg -y -hide_banner -i "$OUT/dopamine-slowmo.mp4" \
-      -vf "setpts=0.25*PTS,scale=trunc(iw/2)*2:trunc(ih/2)*2" \
-      -an -c:v libx264 -pix_fmt yuv420p "$OUT/dopamine.mp4" 2>&1 | tail -8 || true
+      -vf "setpts=0.25*PTS,scale=trunc(iw/2)*2:trunc(ih/2)*2,fps=30" \
+      -fps_mode cfr -an -c:v libx264 -pix_fmt yuv420p "$OUT/dopamine.mp4" 2>&1 | tail -8 || true
   fi
   [ -s "$OUT/dopamine.mp4" ] || cp "$OUT/dopamine-slowmo.mp4" "$OUT/dopamine.mp4"
 fi

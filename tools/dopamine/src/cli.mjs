@@ -10,10 +10,29 @@
  * disk and exits non-zero if stale (a CI gate) instead of writing.
  */
 
-import { writeFile, readFile, mkdir } from "node:fs/promises";
+import { writeFile, readFile, mkdir, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join, isAbsolute } from "node:path";
 import { buildEffect } from "./build.mjs";
+
+/**
+ * Discover every effect folder under `effects/` — a subdirectory holding a unified
+ * `*.dope.json`. This is the default build set when no effect is named, so
+ * `dopamine build` (+ `--check`) covers ALL migrated effects as they land in the
+ * single-folder model, with zero per-effect wiring in package.json / CI.
+ */
+async function discoverEffects(root) {
+  const base = join(root, "effects");
+  let entries = [];
+  try { entries = await readdir(base, { withFileTypes: true }); } catch { return []; }
+  const found = [];
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    const files = await readdir(join(base, e.name));
+    if (files.some((f) => f.endsWith(".dope.json"))) found.push(join("effects", e.name));
+  }
+  return found.sort();
+}
 
 const toolDir = dirname(dirname(fileURLToPath(import.meta.url))); // tools/dopamine
 const repoRoot = dirname(dirname(toolDir)); // <repo>
@@ -60,7 +79,8 @@ async function main() {
     process.exit(2);
   }
   const outDir = out ? (isAbsolute(out) ? out : join(root, out)) : join(root, "dist");
-  const targets = positionals.slice(1).length ? positionals.slice(1) : ["effects/comic"];
+  const named = positionals.slice(1);
+  const targets = named.length ? named : await discoverEffects(root);
 
   const state = { stale: false };
   for (const effectDir of targets) {

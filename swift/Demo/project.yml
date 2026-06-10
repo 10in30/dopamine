@@ -27,11 +27,29 @@ options:
 packages:
   Dopamine:
     path: ".."
-  # comic now ships from the toolchain's dist/ output (the move + rewire): the demo
-  # consumes the GENERATED standalone SwiftPM package, exactly like an external app.
-  # Run `npm run dopamine -- build` before `xcodegen generate` so this path exists.
+  # Every effect now ships from the toolchain's dist/ output: the demo consumes the
+  # GENERATED standalone SwiftPM packages, exactly like an external app would. Run
+  # `npm run dopamine -- build` before `xcodegen generate` so these paths exist.
+  DopamineEffectSolarbloom:
+    path: "../../dist/swift/DopamineEffectSolarbloom"
+  DopamineEffectAurora:
+    path: "../../dist/swift/DopamineEffectAurora"
   DopamineEffectComic:
     path: "../../dist/swift/DopamineEffectComic"
+  DopamineEffectConfetti:
+    path: "../../dist/swift/DopamineEffectConfetti"
+  DopamineEffectFail:
+    path: "../../dist/swift/DopamineEffectFail"
+  DopamineEffectHeartburst:
+    path: "../../dist/swift/DopamineEffectHeartburst"
+  DopamineEffectInkstroke:
+    path: "../../dist/swift/DopamineEffectInkstroke"
+  DopamineEffectLightning:
+    path: "../../dist/swift/DopamineEffectLightning"
+  DopamineEffectRipple:
+    path: "../../dist/swift/DopamineEffectRipple"
+  DopamineEffectHalo:
+    path: "../../dist/swift/DopamineEffectHalo"
 
 targets:
   DopamineDemo:
@@ -76,25 +94,25 @@ targets:
     dependencies:
       - package: Dopamine
         product: DopamineCore
-      - package: Dopamine
+      - package: DopamineEffectSolarbloom
         product: DopamineEffectSolarbloom
-      - package: Dopamine
+      - package: DopamineEffectAurora
         product: DopamineEffectAurora
       - package: DopamineEffectComic
         product: DopamineEffectComic
-      - package: Dopamine
+      - package: DopamineEffectConfetti
         product: DopamineEffectConfetti
-      - package: Dopamine
+      - package: DopamineEffectFail
         product: DopamineEffectFail
-      - package: Dopamine
+      - package: DopamineEffectHeartburst
         product: DopamineEffectHeartburst
-      - package: Dopamine
+      - package: DopamineEffectInkstroke
         product: DopamineEffectInkstroke
-      - package: Dopamine
+      - package: DopamineEffectLightning
         product: DopamineEffectLightning
-      - package: Dopamine
+      - package: DopamineEffectRipple
         product: DopamineEffectRipple
-      - package: Dopamine
+      - package: DopamineEffectHalo
         product: DopamineEffectHalo
 
 schemes:
