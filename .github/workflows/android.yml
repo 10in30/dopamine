@@ -81,7 +81,7 @@ jobs:
           set -e
           python3 -m pip install --quiet --break-system-packages fonttools brotli \
             || python3 -m pip install --quiet fonttools brotli
-          node tools/dopamine/src/cli.mjs build effects/comic
+          node tools/dopamine/src/cli.mjs build
           a=$(md5sum < dist/android/dopamine-effect-comic/src/main/assets/comic.dope.json | cut -d' ' -f1)
           w=$(md5sum < dist/web/effect-comic/src/comic.dope.json | cut -d' ' -f1)
           s=$(md5sum < dist/swift/DopamineEffectComic/Sources/DopamineEffectComic/Resources/comic.dope.json | cut -d' ' -f1)
@@ -124,7 +124,7 @@ jobs:
         run: |
           python3 -m pip install --quiet --break-system-packages fonttools brotli \
             || python3 -m pip install --quiet fonttools brotli
-          node tools/dopamine/src/cli.mjs build effects/comic
+          node tools/dopamine/src/cli.mjs build
 
       - name: assembleDebug (GL backbone + effects + demo APK)
         working-directory: android
@@ -165,7 +165,7 @@ jobs:
         run: |
           python3 -m pip install --quiet --break-system-packages fonttools brotli \
             || python3 -m pip install --quiet fonttools brotli
-          node tools/dopamine/src/cli.mjs build effects/comic
+          node tools/dopamine/src/cli.mjs build
 
       - name: Build the demo APK
         working-directory: android
