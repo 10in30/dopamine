@@ -1,7 +1,7 @@
 {
   "name": "@dopamine/effect-inkstroke",
   "version": "0.1.0",
-  "description": "Inkstroke — a calligraphic ink-stroke verdict success effect for Dopamine.",
+  "description": "Inkstroke — a calligraphic ink/light signature-stroke success effect for Dopamine.",
   "keywords": ["dopamine-effect"],
   "type": "module",
   "main": "./dist/index.js",

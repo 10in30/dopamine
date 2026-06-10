@@ -2,6 +2,8 @@
   "fmt": "dopamine-effect",
   "v": "1.0.0",
   "id": "dopamine.success.verdict",
+  "slug": "inkstroke",
+  "kind": "overlay",
   "meta": {
     "name": "Calligraphic Verdict",
     "description": "A single confident ink/light signature stroke that writes itself across the frame.",
@@ -102,5 +104,50 @@
       }
     },
     "fallbackOrder": ["webgl2"]
+  },
+  "binding": {
+    "note": "CROSS-PLATFORM uniform-binding contract (consumed by the @dopamine/build toolchain, not the runtime). Which render.params are NOT shader uniforms, the seed-keyed scatter field, the per-frame/host extras, and the texture samplers — one source of truth for the web u<Name> list, the Swift struct + packer, and the MSL struct. The toolchain STRIPS this (and `x-build`, `slug`, `kind`) from the .dope it embeds in each platform package, so the embedded runtime doc stays the portable, standalone-safe data spine.",
+    "excludeParams": [
+      "style",
+      "overshoot",
+      "durationMs"
+    ],
+    "scatterKey": "inkSeed",
+    "scatterWeb": "uSeed",
+    "extras": [
+      {
+        "name": "draw",
+        "type": "float",
+        "web": "uDraw",
+        "note": "strokeProgress(animMs) — pen draw 0..1"
+      }
+    ],
+    "samplers": []
+  },
+  "x-build": {
+    "note": "TOOLCHAIN build config (vendor-namespaced `x-` so runtime parsers ignore it; stripped from the embedded .dope). One block per platform: how `dopamine build` assembles the standalone, installable package into dist/<platform>/.",
+    "swift": {
+      "module": "DopamineEffectInkstroke",
+      "sources": "swift",
+      "platforms": [
+        "iOS(.v15)",
+        "macOS(.v12)"
+      ],
+      "core": {
+        "mode": "path",
+        "package": "Dopamine",
+        "product": "DopamineCore",
+        "path": "swift"
+      }
+    },
+    "web": {
+      "package": "@dopamine/effect-inkstroke",
+      "sources": "web"
+    },
+    "android": {
+      "module": "dopamine-effect-inkstroke",
+      "namespace": "ai.dopamine.effect.inkstroke",
+      "sources": "android"
+    }
   }
 }
