@@ -2,6 +2,8 @@
   "fmt": "dopamine-effect",
   "v": "1.0.0",
   "id": "dopamine.error.fail",
+  "slug": "fail",
+  "kind": "overlay",
   "meta": {
     "name": "Fail Stamp",
     "description": "A failure/denied moment — the emotional opposite of the success effects. A red/amber cross is stamped in over a recoiling error flare with a sharp hit + shake, then desaturates and collapses. Short and punchy.",
@@ -260,5 +262,37 @@
     "fallbackOrder": [
       "webgl2"
     ]
+  },
+  "binding": {
+    "note": "CROSS-PLATFORM uniform-binding contract (consumed by the @dopamine/build toolchain, not the runtime). Which render.params are NOT shader uniforms, the seed-keyed scatter field (null — the fail shader reads no seed uniform), the per-frame/host extras, and the texture samplers — one source of truth for the web u<Name> list, the Swift struct + packer, and the MSL struct. The toolchain STRIPS this (and `x-build`, `slug`, `kind`) from the .dope it embeds in each platform package, so the embedded runtime doc stays the portable, standalone-safe data spine.",
+    "excludeParams": ["style", "shakeAmount"],
+    "scatterKey": null,
+    "extras": [
+      { "name": "stamp", "type": "float", "web": "uStamp", "note": "stampProgress(animMs)" },
+      { "name": "shake", "type": "float", "web": "uShake", "note": "signed recoil shake (-1..1)" },
+      { "name": "sdfOn", "type": "float", "web": "uSdfOn", "note": "1 = drive the cross from the baked SDF" },
+      { "name": "sdfRangePx", "type": "float", "web": "uSdfRangePx", "note": "device px mapping to the SDF 0..1 range" },
+      { "name": "sdfStrokePx", "type": "float", "web": "uSdfStrokePx", "note": "half stroke width (device px)" },
+      { "name": "boxPx", "type": "float", "web": "uBoxPx", "note": "half-size (device px) of the ✗ box" }
+    ],
+    "samplers": ["uSdfTex"]
+  },
+  "x-build": {
+    "note": "TOOLCHAIN build config (vendor-namespaced `x-` so runtime parsers ignore it; stripped from the embedded .dope). One block per platform: how `dopamine build` assembles the standalone, installable package into dist/<platform>/.",
+    "swift": {
+      "module": "DopamineEffectFail",
+      "sources": "swift",
+      "platforms": ["iOS(.v15)", "macOS(.v12)"],
+      "core": { "mode": "path", "package": "Dopamine", "product": "DopamineCore", "path": "swift" }
+    },
+    "web": {
+      "package": "@dopamine/effect-fail",
+      "sources": "web"
+    },
+    "android": {
+      "module": "dopamine-effect-fail",
+      "namespace": "ai.dopamine.effect.fail",
+      "sources": "android"
+    }
   }
 }
