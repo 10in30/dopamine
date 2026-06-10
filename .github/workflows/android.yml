@@ -79,6 +79,8 @@ jobs:
       - name: comic single-folder .dope parity (dist embeds identical across platforms)
         run: |
           set -e
+          python3 -m pip install --quiet --break-system-packages fonttools brotli \
+            || python3 -m pip install --quiet fonttools brotli
           node tools/dopamine/src/cli.mjs build effects/comic
           a=$(md5sum < dist/android/dopamine-effect-comic/src/main/assets/comic.dope.json | cut -d' ' -f1)
           w=$(md5sum < dist/web/effect-comic/src/comic.dope.json | cut -d' ' -f1)
@@ -118,8 +120,11 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: ${{ runner.os }}-gradle-
 
-      - name: dopamine build (generate dist/ platform packages incl. comic)
-        run: node tools/dopamine/src/cli.mjs build effects/comic
+      - name: dopamine build (generate dist/ platform packages incl. comic + fonts)
+        run: |
+          python3 -m pip install --quiet --break-system-packages fonttools brotli \
+            || python3 -m pip install --quiet fonttools brotli
+          node tools/dopamine/src/cli.mjs build effects/comic
 
       - name: assembleDebug (GL backbone + effects + demo APK)
         working-directory: android
@@ -156,8 +161,11 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm || true
 
-      - name: dopamine build (generate dist/ platform packages incl. comic)
-        run: node tools/dopamine/src/cli.mjs build effects/comic
+      - name: dopamine build (generate dist/ platform packages incl. comic + fonts)
+        run: |
+          python3 -m pip install --quiet --break-system-packages fonttools brotli \
+            || python3 -m pip install --quiet fonttools brotli
+          node tools/dopamine/src/cli.mjs build effects/comic
 
       - name: Build the demo APK
         working-directory: android

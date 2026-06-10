@@ -1,11 +1,35 @@
 # Handoff: finish the Comic renderer unification (Swift + Android → web parity)
 
-Status: the **dist trio is DONE** — Swift, web, and Android all build the comic
-effect from the single `effects/comic/` folder via the `@dopamine/build` toolchain
-(`tools/dopamine`) into standalone packages under `dist/`. This doc is the prompt
-to finish the LAST piece: bring the web's **animated panel + embedded per-mood
-display fonts + full per-letter typography** to Swift and Android (level them UP;
-do not dumb the web down).
+Status: **DONE.** The dist trio (Swift, web, Android all built from the single
+`effects/comic/` folder via the `@dopamine/build` toolchain) now also carries the
+web's **animated panel + bundled per-mood display fonts + full per-letter
+typography** on Swift and Android. What landed:
+
+- **Fonts** — the three SIL-OFL faces are stored ONCE as woff2 in
+  `effects/comic/fonts/` (the web still embeds them base64 via
+  `scripts/embed-fonts.mjs`); `dopamine build` converts them to ttf at build time
+  (`tools/dopamine/src/fonts.mjs`, fonttools + `SOURCE_DATE_EPOCH=0` for
+  reproducible bytes) and bundles them into the Swift package's `Resources/fonts`
+  + the Android module's `assets/fonts`. `web-env-setup.sh` + all three CI
+  workflows provision `fonttools`/`brotli` and run the font-prep build.
+- **Typography in the bag** — `DopeValue` gained an additive `string`/`Str` case;
+  `resolveTypography` is ported to `DopamineCore/Content.swift` +
+  `dopamine-core/Content.kt` and composed on top of the numeric bag in
+  `Comic.resolve` (Swift) / `Comic.kt` (Android). The numeric/palette parity grid
+  is untouched.
+- **Panels** — `ComicPanel.swift` + `ComicPanel.kt` now redraw every frame with
+  the LIVE slam scale + presence and lay the word out per-letter in the mood face
+  (skew / stretch / tilt / per-letter rotation + baseline jitter / 3D extrude /
+  stacked outline / inkRoundness), with a system-face fallback. Starburst +
+  vector checkmark kept.
+
+The notes below are retained as the original handoff / design rationale.
+
+---
+
+The original prompt was to finish the LAST piece: bring the web's **animated panel
++ embedded per-mood display fonts + full per-letter typography** to Swift and
+Android (level them UP; do not dumb the web down).
 
 ## The canonical look (the target)
 

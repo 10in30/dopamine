@@ -21,6 +21,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { generateSwiftPackage } from "./swift.mjs";
 import { generateNpmPackage } from "./web.mjs";
 import { generateAndroidLibrary } from "./android.mjs";
+import { convertFonts } from "./fonts.mjs";
 
 /** Top-level `.dope` keys that are TOOLCHAIN-only — consumed here, never shipped. */
 export const TOOLCHAIN_KEYS = ["slug", "kind", "binding", "x-build"];
@@ -61,8 +62,13 @@ export async function buildEffect({ root, effectDir, outDir }) {
   const dist = [];
   const sync = [];
 
+  // Convert the shared woff2 faces to ttf ONCE (gated: no `x-build.fonts` ⇒ []),
+  // then hand the same Buffers to the Swift + Android emitters so each platform
+  // package bundles its own lettering. The web embeds them base64 separately.
+  const fonts = convertFonts(eff);
+
   if (build.swift) {
-    dist.push(...(await generateSwiftPackage({ root, eff, outDir })));
+    dist.push(...(await generateSwiftPackage({ root, eff, outDir, fonts })));
   }
   if (build.web) {
     dist.push(...(await generateNpmPackage({ eff })));
@@ -75,7 +81,7 @@ export async function buildEffect({ root, effectDir, outDir }) {
     });
   }
   if (build.android) {
-    dist.push(...(await generateAndroidLibrary({ eff })));
+    dist.push(...(await generateAndroidLibrary({ eff, fonts })));
   }
 
   return { dist, sync };

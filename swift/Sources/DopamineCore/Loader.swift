@@ -182,10 +182,15 @@ public struct DopeResolveInput {
     }
 }
 
-/// A resolved value in the flat bag: a scalar, or the palette (3 RGB stops).
+/// A resolved value in the flat bag: a scalar, the palette (3 RGB stops), or a
+/// string (e.g. the per-mood typography face / font stack). The string case is
+/// ADDITIVE — every existing consumer matches `.number` / `.palette` explicitly
+/// (no exhaustive switch), so a string value is simply ignored by the uniform
+/// auto-bind and the parity grid.
 public enum DopeValue: Equatable {
     case number(Double)
     case palette([RGB])
+    case string(String)
 }
 
 func applyFlags(_ v0: Double, _ spec: DopeParamSpec, _ consts: [String: Double]) -> Double {

@@ -144,6 +144,11 @@
 
   "x-build": {
     "note": "TOOLCHAIN build config (vendor-namespaced `x-` so runtime parsers ignore it; stripped from the embedded .dope). One block per platform: how `dopamine build` assembles the standalone, installable package into dist/<platform>/.",
+    "fonts": {
+      "note": "Shared display faces — the single stored format is SIL-OFL woff2 (effects/comic/fonts). The web embeds them base64 (comic-fonts.ts via scripts/embed-fonts.mjs); the toolchain converts woff2→ttf at build time (fonttools) and bundles the ttf into the Swift (Resources/fonts) + Android (assets/fonts) packages, so every platform ships its own lettering. No .ttf is committed.",
+      "source": "fonts",
+      "files": ["Bangers-Regular.woff2", "Anton-Regular.woff2", "LuckiestGuy-Regular.woff2"]
+    },
     "swift": {
       "module": "DopamineEffectComic",
       "sources": "swift",

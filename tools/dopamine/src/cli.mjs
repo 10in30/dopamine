@@ -32,9 +32,13 @@ function parseArgs(argv) {
 }
 
 async function emit(label, absPath, content, check, state) {
+  // Artifacts are either text (string) or binary (Buffer — e.g. the converted
+  // ttf faces); compare + write each in its own encoding so binary stays intact.
+  const binary = Buffer.isBuffer(content);
   let prev = null;
-  try { prev = await readFile(absPath, "utf8"); } catch { /* new */ }
-  if (prev !== content) {
+  try { prev = await readFile(absPath, binary ? undefined : "utf8"); } catch { /* new */ }
+  const same = prev !== null && (binary ? prev.equals(content) : prev === content);
+  if (!same) {
     state.stale = true;
     if (check) {
       console.error(`STALE: ${label}`);

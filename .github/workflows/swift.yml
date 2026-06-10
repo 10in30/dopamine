@@ -23,11 +23,15 @@ on:
     branches: ["main"]
     paths:
       - "swift/**"
+      - "effects/**"
+      - "tools/dopamine/**"
       - "scripts/gen-uniforms.mjs"
       - ".github/workflows/swift.yml"
   pull_request:
     paths:
       - "swift/**"
+      - "effects/**"
+      - "tools/dopamine/**"
       - "scripts/gen-uniforms.mjs"
       - ".github/workflows/swift.yml"
   workflow_dispatch:
@@ -93,7 +97,21 @@ jobs:
           swift --version
           xcodebuild -version
           node --version
+          python3 --version
           xcrun simctl --version || true
+
+      # --- Build the standalone effect packages the demo depends on. The comic
+      # effect lives in the single-folder model (effects/comic) and is emitted into
+      # dist/swift/DopamineEffectComic by the toolchain; this step also converts the
+      # shared woff2 display faces → ttf (fonttools+brotli) and bundles them into the
+      # package's Resources/fonts. Runs before xcodegen/xcodebuild, which reference
+      # the dist package by path. ---
+      - name: Build effect packages (dopamine build — woff2→ttf fonts)
+        run: |
+          set -x
+          python3 -m pip install --quiet --break-system-packages fonttools brotli \
+            || python3 -m pip install --quiet fonttools brotli
+          node tools/dopamine/src/cli.mjs build
 
       # --- MUST-PASS: build + test the Metal-backed package ---
       - name: swift build (macOS — Metal + the MSL shaders compile)

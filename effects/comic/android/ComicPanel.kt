@@ -18,26 +18,21 @@
 //
 // COORDINATE FLIP: `GlPanelRunner` pre-flips the Canvas to a y-up store (the web's
 // UNPACK_FLIP_Y), so this draws in y-DOWN top-left logical coords (web-identical).
-// The starburst + check PATHS flip cleanly under that global flip; TEXT does not —
-// glyph rasters would render upside-down — so the word block re-flips y LOCALLY
-// (mirroring swift's `scaleBy(x:1, y:-1)` for the text), exactly as the README's
-// panel-flip note prescribes.
+// The starburst + check PATHS flip cleanly under that global flip; TEXT also draws
+// upright because `Canvas.drawText` honors the canvas matrix (unlike swift/CoreText
+// glyph rasters, which needed a manual counter-flip).
 //
-// STATIC-SNAPSHOT SIMPLIFICATION (mirror swift): the web redraws the panel every
-// frame with the live slam `scale` + `presence`; here we bake it at the
-// fully-landed slam (slamScale = 1, presence = 1). The shader still animates the
-// slam-in / flash / halftone via its uniforms (uPresence drives the fade), so the
-// motion reads; only the panel GEOMETRY is frozen at its rest pose (which is what
-// is on screen for the long proud hold anyway). dpr = 1 because the runner already
-// rasterizes the panel at the device size.
+// ANIMATED (leveled up to web parity): the panel is redrawn EVERY frame with the
+// LIVE slam scale + presence — `GlPanelRunner` passes `info.elapsedMs` + `.life`
+// per frame — so the word slams in / recoils / fades exactly like the web. dpr = 1
+// because the runner already rasterizes at the device size.
 //
-// TYPOGRAPHY SIMPLIFICATION (mirror swift): the web resolves a mood-picked bundled
-// display face (Bangers / Anton / Luckiest Guy) plus per-letter skew/stretch/tilt/
-// bounce. That embedded-font pipeline does not port without bundling woff2, so the
-// word is drawn with a bold SYSTEM Typeface sized to fit the burst, as a filled
-// body (R) + a stroked ink contour (G). The word itself is still the SAME
-// seed-picked token the effect would choose (`pickFromList(pool, seed)`), so the
-// content matches the web; the checkmark sentinel "✓" is a VECTOR path.
+// TYPOGRAPHY (leveled up to web parity): the mood-picked bundled display face
+// (Bangers / Anton / Luckiest Guy) is loaded from `assets/fonts/` (ttf converted
+// from the shared woff2 by the toolchain) and laid out per-letter with the full
+// skew / stretch / tilt / per-letter rotation + baseline jitter / 3D extrude /
+// stacked outline / inkRoundness treatment, from the typography fields the loader
+// composes into the resolved bag. Falls back to a bold system face if unavailable.
 
 package ai.dopamine.effect.comic
 
@@ -45,8 +40,11 @@ import ai.dopamine.core.DopeValue
 import ai.dopamine.core.mulberry32
 import ai.dopamine.core.number
 import ai.dopamine.core.pickFromList
+import ai.dopamine.core.string
+import android.content.res.AssetManager
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
@@ -69,17 +67,45 @@ private const val COMIC_TARGET_FILL: Float = 1.7f
 private val WORD_POOL: List<String> =
     listOf("YES!", "DONE!", "NICE!", "OKAY!", "WIN!", "GREAT!", "WOO!", "✓")
 
+/** Bundled display faces, mapped family → ttf basename in `assets/fonts/`. The
+ * `.dope` per-mood `face` is a CSS family (quoted); the quotes are stripped to look
+ * it up. Kept in sync with `effects/comic/fonts` + the toolchain. */
+private val COMIC_FONT_FILES: Map<String, String> = mapOf(
+    "Bangers" to "Bangers-Regular",
+    "Anton" to "Anton-Regular",
+    "Luckiest Guy" to "LuckiestGuy-Regular",
+)
+
+/** Loaded-Typeface cache (keyed by ttf basename) so each face is decoded once. */
+private val typefaceCache = HashMap<String, Typeface?>()
+
+private fun loadFace(assets: AssetManager, face: String): Typeface {
+    val family = face.trim('"')
+    val file = COMIC_FONT_FILES[family]
+    if (file != null) {
+        val tf = typefaceCache.getOrPut(file) {
+            runCatching { Typeface.createFromAsset(assets, "fonts/$file.ttf") }.getOrNull()
+        }
+        if (tf != null) return tf
+    }
+    // Robust fallback so the word still reads if the bundled face is unavailable.
+    return Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+}
+
 private fun channel(v: Double): Int = (255.0 * v).roundToInt().coerceIn(0, 255)
 
 /**
  * Draw the offscreen panel for this frame: a jagged starburst balloon (B fill +
- * G outline), then the onomatopoeia word (R fill + G ink contour) or a vector
- * checkmark, baked at the fully-landed slam pose. Channel encoding:
- *   R = word fill · G = ink (contours) · B = starburst fill.
+ * G outline), then the onomatopoeia word (R fill + G ink contour, full per-letter
+ * typography in the mood face) or a vector checkmark, at the LIVE slam pose.
+ * Channel encoding: R = word fill · G = ink (contours) · B = starburst fill.
  */
 fun drawComicPanel(
     canvas: Canvas,
+    assets: AssetManager,
     params: Map<String, DopeValue>,
+    elapsedMs: Double,
+    life: Double,
     centerX: Float,
     centerY: Float,
     targetWidthPx: Float,
@@ -95,19 +121,18 @@ fun drawComicPanel(
     val scaleParam = params.number("scale", 0.34)
     val burstPoints = params.number("burstPoints", 14.0)
     val inkWeight = params.number("inkWeight", 3.0)
+    val overshoot = params.number("overshoot", 1.0)
 
-    // STATIC snapshot at the fully-landed slam (swift simplification).
-    val presence = 1.0
-    val slamScale = 1.0f
+    // LIVE slam: presence over life, scale over elapsedMs (web parity).
+    val presence = impactPresence(life)
+    if (presence <= 0.001) return
+    val slamScale = impactScale(elapsedMs, overshoot).toFloat()
     val dpr = 1.0f // the runner already rasterizes the panel at the device size.
 
     // Position + size the word/starburst to the targeted element (defaults to the
     // canvas centre + full canvas, reproducing the old screen-centred pose).
     val cx = centerX
     val cy = centerY
-    // The word + starburst read at ~150% of the targeted element, clamped to the
-    // canvas so a full-page fire (target == canvas) keeps its original size. Sync
-    // w/ the web (COMIC_TARGET_FILL).
     val minDim = min(min(targetWidthPx, targetHeightPx) * COMIC_TARGET_FILL, min(canvasW, canvasH).toFloat())
     // The web rng seeds the burst jitter from (comicSeed * 1000) >>> 0.
     val rng = mulberry32((comicSeed * 1000.0).toLong().toUInt())
@@ -123,8 +148,6 @@ fun drawComicPanel(
     }
 
     // ---------- STARBURST BALLOON (B fill + G outline) -----------------------
-    // A classic many-pointed jagged star: alternating long/short radii with
-    // per-point jitter. Filled into BLUE; its bold outline into GREEN.
     val points = max(8, burstPoints.roundToInt())
     val outerR = minDim * scaleParam.toFloat() * 1.3f * slamScale
     val innerR = outerR * 0.64f
@@ -142,7 +165,7 @@ fun drawComicPanel(
     burstPath.close()
 
     val ink = inkWeight.toFloat() * dpr * slamScale
-    val fillA = channel(presence) // 0..1 channel value at full presence -> 255.
+    val fillA = channel(presence) // presence-scaled channel value (web `255*presence`).
 
     // Burst FILL -> BLUE.
     fill.color = Color.argb(255, 0, 0, fillA)
@@ -154,88 +177,166 @@ fun drawComicPanel(
     canvas.drawPath(burstPath, stroke)
 
     // ---------- WORD / CHECKMARK ---------------------------------------------
-    // The seed-picked token. The web picks with the RAW fire seed
-    // (`pickFromList(pool, feeling.seed)`), NOT the scatter offset; the pool is the
-    // comic.dope `content.pool` mirrored above so the panel content matches the
-    // effect's word.
+    // The seed-picked token (raw fire seed, like the web `pickFromList(pool, seed)`).
     val word = pickFromList(WORD_POOL, rawSeed.toLong().toUInt())
     val inkColor = Color.argb(255, 0, fillA, 0)
     val fillColor = Color.argb(255, fillA, 0, 0)
 
+    // Typography knobs (composed into the bag by the loader; web parity defaults).
+    val fontSkew = params.number("fontSkew", 0.0).toFloat()
+    val fontTilt = params.number("fontTilt", 0.0).toFloat()
+    val fontStretchX = params.number("fontStretchX", 1.0).toFloat()
+    val fontTracking = params.number("fontTracking", 0.0).toFloat()
+    val outlineLayers = max(1, params.number("outlineLayers", 1.0).roundToInt())
+    val extrudeDepth = params.number("extrudeDepth", 0.0).toFloat()
+    val letterRotJitter = params.number("letterRotJitter", 0.0)
+    val letterBaselineJitter = params.number("letterBaselineJitter", 0.0)
+    val round = params.number("inkRoundness", 0.0)
+
     canvas.save()
     canvas.translate(cx, cy)
-    if (tilt != 0f) canvas.rotate(Math.toDegrees(tilt.toDouble()).toFloat())
+    canvas.rotate(Math.toDegrees((tilt + fontTilt).toDouble()).toFloat())
+    // Italic lean + non-uniform stretch as a shared transform on the whole word:
+    // web matrix [a=stretchX, b=0, c=skew, d=1] → Android 3x3 with MSCALE_X=stretchX,
+    // MSKEW_X=skew, MSCALE_Y=1 (x' = stretchX·x + skew·y, y' = y).
+    canvas.concat(
+        Matrix().apply {
+            setValues(floatArrayOf(fontStretchX, fontSkew, 0f, 0f, 1f, 0f, 0f, 0f, 1f))
+        },
+    )
+    val joinRound = round > 0.5
 
     if (word == "✓") {
         // ----- VECTOR CHECKMARK (web isCheckmark path) ------------------------
         val span = innerR * 1.25f
-        val strokeW = span * 0.24f * 0.85f
-        val checkPath = Path().apply {
+        val strokeW = span * 0.24f * (0.85f + round.toFloat() * 0.25f)
+        val extrude = span * extrudeDepth
+        fun checkPath(): Path = Path().apply {
             moveTo(-span * 0.42f, span * 0.02f)
             lineTo(-span * 0.12f, span * 0.34f)
             lineTo(span * 0.46f, -span * 0.36f)
         }
-        // Bold ink contour, then bright fill body (both stroked) — swift order.
-        // The `stroke` Paint keeps its MITER join (swift's check inherits `.miter`).
-        stroke.strokeWidth = strokeW + ink * 1.2f
+        stroke.strokeJoin = if (joinRound) Paint.Join.ROUND else Paint.Join.MITER
+        stroke.strokeCap = if (joinRound) Paint.Cap.ROUND else Paint.Cap.BUTT
+        // 3D extrude: stacked ink copies stepping down-right (pop-art only).
+        if (extrude > 0.5f) {
+            for (s in 8 downTo 1) {
+                val d = extrude * s / 8f
+                canvas.save()
+                canvas.translate(d, d)
+                stroke.strokeWidth = strokeW
+                stroke.color = inkColor
+                canvas.drawPath(checkPath(), stroke)
+                canvas.restore()
+            }
+        }
+        // Bold ink contour (heavier toward pop-art via outlineLayers).
+        stroke.strokeWidth = strokeW + ink * (1.2f + outlineLayers * 0.5f)
         stroke.color = inkColor
-        canvas.drawPath(checkPath, stroke)
+        canvas.drawPath(checkPath(), stroke)
+        // Bright fill body.
         stroke.strokeWidth = strokeW
         stroke.color = fillColor
-        canvas.drawPath(checkPath, stroke)
+        canvas.drawPath(checkPath(), stroke)
         canvas.restore()
         return
     }
 
-    // ----- WORD RUN (bold system Typeface, shrink-to-fit) ---------------------
-    // A reliable bold system face stands in for the web's mood-picked bundled
-    // display faces (documented simplification). Target size then shrink so longer
-    // words never spill the burst.
+    // ----- WORD RUN (mood face, full per-letter typography) -------------------
+    val typeface = loadFace(assets, params.string("face", ""))
+    val chars = word.map { it.toString() }
+
+    // Target size, then SHRINK-TO-FIT so longer words never spill the burst.
     var fontPx = minDim * scaleParam.toFloat() * 0.92f * slamScale
-    val maxW = innerR * 1.7f
-    val bold = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    if (fontPx < 1f) { canvas.restore(); return }
+
+    val measurePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        this.typeface = typeface
+        textAlign = Paint.Align.CENTER
+        textSize = fontPx
+    }
+    fun trackPx(px: Float): Float = px * fontTracking
+    fun runWidth(px: Float): Float {
+        measurePaint.textSize = px
+        var total = 0f
+        for (ch in chars) total += measurePaint.measureText(ch) + trackPx(px)
+        return max(1f, total - trackPx(px))
+    }
+    val maxW = (innerR * 1.7f) / max(0.6f, fontStretchX)
+    var measured = runWidth(fontPx)
+    if (measured > maxW) {
+        fontPx *= maxW / measured
+        measured = runWidth(fontPx)
+    }
+
+    val extrude = fontPx * extrudeDepth
+    val inkLine = ink * (1.3f + (outlineLayers - 1) * 0.7f)
 
     val textFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        xfermode = add
-        typeface = bold
-        textAlign = Paint.Align.CENTER
-        style = Paint.Style.FILL
-        textSize = fontPx
+        xfermode = add; this.typeface = typeface; textAlign = Paint.Align.CENTER
+        style = Paint.Style.FILL; textSize = fontPx
     }
-    var measured = textFill.measureText(word)
-    if (measured > maxW && measured > 0f) {
-        fontPx *= maxW / measured
-        textFill.textSize = fontPx
-        measured = textFill.measureText(word)
-    }
-    val inkLine = ink * 1.3f
-
     val textInk = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        xfermode = add
-        typeface = bold
-        textAlign = Paint.Align.CENTER
+        xfermode = add; this.typeface = typeface; textAlign = Paint.Align.CENTER
         style = Paint.Style.STROKE
-        strokeJoin = Paint.Join.ROUND
-        textSize = fontPx
-        strokeWidth = inkLine
+        strokeJoin = if (joinRound) Paint.Join.ROUND else Paint.Join.MITER
+        strokeCap = if (joinRound) Paint.Cap.ROUND else Paint.Cap.BUTT
+        strokeMiter = 2f; textSize = fontPx
     }
-
-    // NO local y-flip here (unlike swift's `scaleBy(1,-1)`): Android's
-    // `Canvas.drawText` honors the canvas matrix, so under the runner's global
-    // pre-flip the glyphs already land upright — exactly like the starburst/check
-    // PATHS. Swift/CoreText needed the manual counter-flip because its glyph
-    // rasterization doesn't mirror under the flipped context; doing it here too
-    // flipped the text TWICE and rendered the word upside-down. Vertical-centre via
-    // the font metrics (the standard centred-baseline offset puts the line's visual
-    // middle at the origin).
+    // Vertical "middle" baseline (Canvas2D textBaseline = "middle"): centre the line
+    // on the origin via the standard centred-baseline metric offset.
     val fm = textFill.fontMetrics
     val baselineY = -(fm.ascent + fm.descent) / 2f
 
-    // INK contour under the fill (-> GREEN), then bright FILL body (-> RED).
+    // Per-letter / per-shape deterministic jitter (web `mulberry32((comicSeed *
+    // 2654435761) >>> 0)`).
+    val jrng = mulberry32((comicSeed * 2654435761.0).toLong().toUInt())
+
+    // Lay out letters individually so we can apply per-letter rotation/baseline
+    // jitter (the pop-art bounce). Start at the left edge of the centred run.
+    class Letter(val ch: String, val x: Float, val rot: Float, val dy: Float)
+    var penX = -measured / 2f
+    val letters = ArrayList<Letter>(chars.size)
+    for (ch in chars) {
+        val wpx = textFill.measureText(ch)
+        val x = penX + wpx / 2f
+        penX += wpx + trackPx(fontPx)
+        val rot = ((jrng() - 0.5) * 2 * letterRotJitter).toFloat()
+        val dy = ((jrng() - 0.5) * 2 * letterBaselineJitter).toFloat() * fontPx
+        jrng() // web draws a third rng() per letter (`wgt`); keep the stream aligned.
+        letters.add(Letter(ch, x, rot, dy))
+    }
+
+    // Draw one letter centred at its origin, offset by (dx,dy), with `paint`. The
+    // per-letter translate/rotate is the canvas matrix; drawText is CENTER-aligned
+    // so the glyph centres on x=0, and baselineY puts its visual middle on y=0.
+    fun drawLetter(l: Letter, dx: Float, dy: Float, paint: Paint) {
+        canvas.save()
+        canvas.translate(l.x, l.dy)
+        canvas.rotate(Math.toDegrees(l.rot.toDouble()).toFloat())
+        canvas.drawText(l.ch, dx, baselineY + dy, paint)
+        canvas.restore()
+    }
+
+    // 3D extrude / drop: stacked ink copies stepping down-right (pop-art pops).
+    if (extrude > 0.5f) {
+        textFill.color = inkColor
+        for (s in 8 downTo 1) {
+            val d = extrude * s / 8f
+            for (l in letters) drawLetter(l, d, d, textFill)
+        }
+    }
+
+    // Bold INK contour under the fill — outlineLayers stacks fattening passes.
     textInk.color = inkColor
-    canvas.drawText(word, 0f, baselineY, textInk)
+    for (layer in outlineLayers downTo 1) {
+        textInk.strokeWidth = inkLine * (1f + (layer - 1) * 0.5f)
+        for (l in letters) drawLetter(l, 0f, 0f, textInk)
+    }
+
+    // Bright FILL body on top.
     textFill.color = fillColor
-    canvas.drawText(word, 0f, baselineY, textFill)
+    for (l in letters) drawLetter(l, 0f, 0f, textFill)
 
     canvas.restore()
 }

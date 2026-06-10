@@ -103,4 +103,22 @@ describe("dopamine toolchain — comic → standalone platform packages", () => 
     expect(webDope).toBe(swiftDope);
     expect(androidDope).toBe(swiftDope);
   });
+
+  it("converts the shared woff2 faces → ttf and bundles them per platform", async () => {
+    const { dist } = await buildEffect({ root, effectDir: "effects/comic", outDir });
+    const byPath = new Map(dist.map((a) => [a.path, a.content]));
+    const SF = "swift/DopamineEffectComic/Sources/DopamineEffectComic/Resources/fonts";
+    const AF = "android/dopamine-effect-comic/src/main/assets/fonts";
+    for (const file of ["Bangers-Regular.ttf", "Anton-Regular.ttf", "LuckiestGuy-Regular.ttf"]) {
+      const sTtf = byPath.get(`${SF}/${file}`);
+      const aTtf = byPath.get(`${AF}/${file}`);
+      expect(Buffer.isBuffer(sTtf), `swift ${file} is binary`).toBe(true);
+      // A real (de-flavored) sfnt, NOT a woff2 ("wOF2") — the conversion happened.
+      expect(sTtf.subarray(0, 4).equals(Buffer.from([0x00, 0x01, 0x00, 0x00])), `${file} is ttf`).toBe(true);
+      // The Swift + Android packages bundle the IDENTICAL converted bytes.
+      expect(aTtf.equals(sTtf), `${file} swift == android`).toBe(true);
+    }
+    // The SwiftPM manifest declares the copied fonts resource directory.
+    expect(byPath.get("swift/DopamineEffectComic/Package.swift")).toContain('.copy("Resources/fonts")');
+  });
 });

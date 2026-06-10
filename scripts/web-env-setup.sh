@@ -9,9 +9,11 @@
 #
 # The base image already ships Node + npm (web stack) and Java 21 + Gradle (the
 # Android `dopamine-core` JVM 192-case parity grid — no Android SDK needed). The
-# only missing piece is a Swift toolchain for the swift/ package: `swift build` +
-# `swift test` of DopamineCore + the parity grid (Metal stays behind
-# `#if canImport(Metal)`, exactly like swift.yml's Linux job).
+# missing pieces are a Swift toolchain for the swift/ package (`swift build` +
+# `swift test` of DopamineCore + the parity grid; Metal stays behind
+# `#if canImport(Metal)`, exactly like swift.yml's Linux job) and Python's
+# `fonttools` + `brotli` so `dopamine build` can convert the shared woff2 display
+# faces to the ttf the Swift/Android packages bundle.
 #
 # Requires a network policy that allows `download.swift.org` and the Ubuntu apt
 # mirrors. Idempotent + non-interactive.
@@ -51,8 +53,15 @@ sudo ln -sf "${SWIFT_BIN}/swiftc" /usr/local/bin/swiftc
 echo "export PATH=\"${SWIFT_BIN}:\$PATH\"" | sudo tee /etc/profile.d/dopamine-swift.sh >/dev/null
 export PATH="${SWIFT_BIN}:$PATH"
 
+# fonttools + brotli for the woff2→ttf font conversion in `dopamine build`. Both
+# are pure-Python wheels (no toolchain), so a quiet pip install suffices.
+echo "[dopamine] installing fonttools + brotli (woff2→ttf for dopamine build) …"
+python3 -m pip install --quiet --break-system-packages fonttools brotli 2>/dev/null \
+  || python3 -m pip install --quiet fonttools brotli
+
 echo "[dopamine] toolchains ready:"
 echo "  node   $(node --version 2>/dev/null || echo MISSING)"
 echo "  java   $(java -version 2>&1 | head -1 || echo MISSING)"
 echo "  gradle $(gradle --version 2>/dev/null | awk '/^Gradle/{print $2}' || echo MISSING)"
 echo "  swift  $(swift --version 2>/dev/null | head -1 || echo MISSING)"
+echo "  python $(python3 --version 2>/dev/null || echo MISSING) ($(python3 -c 'import fontTools,brotli; print(\"fonttools\", fontTools.version)' 2>/dev/null || echo 'fonttools MISSING'))"

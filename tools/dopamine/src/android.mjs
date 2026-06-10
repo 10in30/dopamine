@@ -61,7 +61,7 @@ const MANIFEST = `<?xml version="1.0" encoding="utf-8"?>
  * Generate the Android library artifacts for one loaded effect.
  * @returns {Promise<Array<{ path: string, content: string }>>} dist-relative paths.
  */
-export async function generateAndroidLibrary({ eff }) {
+export async function generateAndroidLibrary({ eff, fonts = [] }) {
   const { dir, doc, slug, dope } = eff;
   const a = doc["x-build"].android ?? {};
   const module = a.module ?? `dopamine-effect-${slug}`;
@@ -82,6 +82,12 @@ export async function generateAndroidLibrary({ eff }) {
 
   // (2) the PORTABLE .dope asset (byte-identical to the swift/web embeds).
   out.push({ path: join(modRel, "src/main/assets", `${slug}.dope.json`), content: dope });
+
+  // (2b) the bundled display faces (ttf, converted from the shared woff2) — the
+  //      panel loads these via Typeface.createFromAsset("fonts/<name>.ttf").
+  for (const f of fonts) {
+    out.push({ path: join(modRel, "src/main/assets", "fonts", f.name), content: f.content });
+  }
 
   // (3) generated manifest + build.gradle.kts.
   out.push({ path: join(modRel, "src/main/AndroidManifest.xml"), content: MANIFEST });

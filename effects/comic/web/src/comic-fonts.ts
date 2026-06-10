@@ -3,7 +3,7 @@
  * Impact effect carries its OWN lettering and never silently depends on a host
  * font being installed. Regenerate with scripts/embed-fonts.mjs.
  *
- * Faces (all SIL Open Font License 1.1 — see assets/fonts/OFL.txt):
+ * Faces (all SIL Open Font License 1.1 — see effects/comic/fonts/OFL.txt):
  *   Bangers      — exuberant comic brush caps (celebratory)
  *   Anton        — heavy condensed grotesque (electric / aggressive)
  *   Luckiest Guy — rounded bouncy balloon caps (serene / pop-art inflate)
