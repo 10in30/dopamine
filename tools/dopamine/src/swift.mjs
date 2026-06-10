@@ -19,10 +19,19 @@
  */
 
 import { readFile, readdir } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { join, relative, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildFields, emitSwift, emitMSL } from "./uniforms.mjs";
 
 const pascal = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/**
+ * The shared MSL "look" library, kept in ONE canonical place (the toolchain's
+ * `assets/`) instead of a byte-identical copy hand-maintained in every effect's
+ * `swift/Shaders/`. The Android port already holds the look once (`Look.kt`); this
+ * is the Swift analog. The toolchain injects it into every effect's `dist/` package.
+ */
+const LOOK_METAL_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "assets", "DopamineLook.metal");
 
 /** Emit the generated `Package.swift` for a standalone effect package. */
 function emitPackageSwift({ module, slug, corePath, core, platforms, hasFonts }) {
@@ -89,13 +98,19 @@ export async function generateSwiftPackage({ root, eff, outDir, fonts = [] }) {
     }
   }
 
-  // (2) hand-written shaders (Shaders/* — the .metal body + the shared look lib)
+  // (2) the bespoke per-effect shader(s) (Shaders/<Name>.metal). The shared look
+  //     lib is NOT kept here — it's injected once from the toolchain asset (2b),
+  //     so the byte-identical copy can't drift across effects.
   const shadersAbs = join(srcAbs, "Shaders");
   let shaderNames = [];
   try { shaderNames = (await readdir(shadersAbs)).sort(); } catch { /* no shaders */ }
   for (const name of shaderNames) {
+    if (name === "DopamineLook.metal") continue;
     out.push({ path: join(srcRel, "Shaders", name), content: await readFile(join(shadersAbs, name), "utf8") });
   }
+
+  // (2b) the shared MSL look library — one canonical source → every package.
+  out.push({ path: join(srcRel, "Shaders", "DopamineLook.metal"), content: await readFile(LOOK_METAL_PATH, "utf8") });
 
   // (3) generated binding glue — the Swift struct + packer and the MSL struct,
   //     from ONE source (the .dope render.params + the binding contract).
