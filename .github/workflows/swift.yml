@@ -330,9 +330,17 @@ jobs:
             # "Invalid argument"). And only replace the original if the re-encode
             # actually produced a playable file (a failed encode must NOT clobber
             # the good recording — the pipe to tail hides ffmpeg's exit code).
+            #
+            # `simctl recordVideo` writes a VARIABLE-frame-rate stream. `setpts` only
+            # rescales each frame's timestamp, so after the 4× compression the output
+            # is still VFR with irregular, tightly-packed PTS — and libx264 re-encoding
+            # that onto a CFR timeline dropped the late frames, leaving the back half of
+            # the clip BLANK (the slow-mo source was fine). Resample onto a constant
+            # real-time frame rate with the `fps` filter (and pin the encoder to CFR):
+            # every output frame lands on a uniform grid, so the whole clip plays.
             ffmpeg -y -hide_banner -i /tmp/solarbloom.mp4 \
-              -vf "setpts=${SLOWMO}*PTS,scale=trunc(iw/2)*2:trunc(ih/2)*2" \
-              -an -c:v libx264 -pix_fmt yuv420p /tmp/realtime.mp4 2>&1 | tail -8 || true
+              -vf "setpts=${SLOWMO}*PTS,scale=trunc(iw/2)*2:trunc(ih/2)*2,fps=30" \
+              -fps_mode cfr -an -c:v libx264 -pix_fmt yuv420p /tmp/realtime.mp4 2>&1 | tail -8 || true
             if [ -s /tmp/realtime.mp4 ] && ffmpeg -v error -ss 0 -i /tmp/realtime.mp4 -frames:v 1 /tmp/rt.png >/dev/null 2>&1; then
               mv /tmp/realtime.mp4 /tmp/solarbloom.mp4
               echo ">>> real-time clip OK"
