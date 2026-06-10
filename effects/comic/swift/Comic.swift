@@ -43,11 +43,18 @@ public final class Comic: EffectFactory {
         self.pool = words.isEmpty ? ["DONE!"] : words
     }
 
-    /// Resolve via the shared loader. There are no consts; `comicSeed` is the
-    /// scatter key — both byte-identical to the web call
-    /// (`resolveDopeParams(DOPE, feeling, {}, "comicSeed")`).
+    /// Resolve via the shared loader, then compose the per-mood TYPOGRAPHY (the
+    /// face + the whimsy/intensity curve fields) on top — mirroring the web
+    /// `composeComic`. The numeric/palette half is byte-identical to the web call
+    /// (`resolveDopeParams(DOPE, feeling, {}, "comicSeed")`); the typography keys
+    /// are ADDITIVE (strings + extra numerics the uniform packer ignores), so the
+    /// parity grid stays green.
     public func resolve(_ feeling: DopeResolveInput) throws -> [String: DopeValue] {
-        try resolveDopeParams(doc, feeling, consts: [:], scatterKey: "comicSeed")
+        var bag = try resolveDopeParams(doc, feeling, consts: [:], scatterKey: "comicSeed")
+        for (k, v) in resolveTypography(doc, mood: feeling.mood, intensity: feeling.intensity, whimsy: feeling.whimsy) {
+            bag[k] = v
+        }
+        return bag
     }
 
     /// The per-fire SLAMMED word, picked from the pool by seed (composed on top

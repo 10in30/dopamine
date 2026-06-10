@@ -23,7 +23,7 @@ import { builtinEffectNames, getEffect, resolveMood, type FeelingInput } from ".
 
 import solarbloomDoc from "../../effect-solarbloom/src/solarbloom.dope.json";
 import inkstrokeDoc from "../../effect-inkstroke/src/inkstroke.dope.json";
-import comicDoc from "../../effect-comic/src/comic.dope.json";
+import comicDoc from "../../../effects/comic/comic.dope.json";
 import failDoc from "../../effect-fail/src/fail.dope.json";
 import auroraDoc from "../../effect-aurora/src/aurora.dope.json";
 import rippleDoc from "../../effect-ripple/src/ripple.dope.json";

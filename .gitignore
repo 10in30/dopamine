@@ -1,5 +1,9 @@
 node_modules/
 dist/
+.build/
+# Toolchain-generated portable .dope synced into a web workspace's src. The single
+# source is effects/<id>/<slug>.dope.json; `dopamine build` regenerates these.
+effects/*/web/src/*.dope.json
 *.tsbuildinfo
 e2e/output/
 test-results/

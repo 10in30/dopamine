@@ -147,15 +147,26 @@ data class DopeResolveInput(
     val seed: UInt,
 )
 
-/** A resolved value in the flat bag: a scalar, or the palette (3 RGB stops). */
+/**
+ * A resolved value in the flat bag: a scalar, the palette (3 RGB stops), or a
+ * string (e.g. the per-mood typography face / font stack). The `Str` case is
+ * ADDITIVE — every existing consumer matches `Number` / `Palette` explicitly (no
+ * exhaustive `when`), so a string value is simply ignored by the uniform auto-bind
+ * (PassCommon skips non-`Number`s) and the parity grid.
+ */
 sealed class DopeValue {
     data class Number(val value: Double) : DopeValue()
     data class Palette(val stops: List<RGB>) : DopeValue()
+    data class Str(val value: String) : DopeValue()
 }
 
 /** Convenience: read a scalar from a resolved bag (0.0 if absent / a palette). */
 fun Map<String, DopeValue>.number(key: String, default: Double = 0.0): Double =
     (this[key] as? DopeValue.Number)?.value ?: default
+
+/** Convenience: read a string from a resolved bag (`default` if absent / numeric). */
+fun Map<String, DopeValue>.string(key: String, default: String = ""): String =
+    (this[key] as? DopeValue.Str)?.value ?: default
 
 private fun applyFlags(v0: Double, spec: DopeParamSpec, consts: Map<String, Double>): Double {
     var v = v0

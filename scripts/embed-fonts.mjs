@@ -1,7 +1,9 @@
 /**
- * Regenerate packages/effect-comic/src/comic-fonts.ts from the bundled woff2
- * faces in packages/effect-comic/assets/fonts. The Comic Impact effect ships its own
- * SIL OFL display faces as base64 so it never depends on a host-installed font.
+ * Regenerate effects/comic/web/src/comic-fonts.ts from the SHARED woff2 faces in
+ * effects/comic/fonts (the single cross-platform source — the web embeds them
+ * base64, the toolchain converts them to ttf for Swift/Android at build time). The
+ * Comic Impact effect ships its own SIL OFL display faces so it never depends on a
+ * host-installed font.
  *
  * Usage: node scripts/embed-fonts.mjs
  */
@@ -10,8 +12,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const fontDir = join(root, "packages", "effect-comic", "assets", "fonts");
-const outFile = join(root, "packages", "effect-comic", "src", "comic-fonts.ts");
+const fontDir = join(root, "effects", "comic", "fonts");
+const outFile = join(root, "effects", "comic", "web", "src", "comic-fonts.ts");
 
 const FACES = [
   { family: "Bangers", file: "Bangers-Regular.woff2" },
@@ -24,7 +26,7 @@ const header = `/**
  * Impact effect carries its OWN lettering and never silently depends on a host
  * font being installed. Regenerate with scripts/embed-fonts.mjs.
  *
- * Faces (all SIL Open Font License 1.1 — see assets/fonts/OFL.txt):
+ * Faces (all SIL Open Font License 1.1 — see effects/comic/fonts/OFL.txt):
  *   Bangers      — exuberant comic brush caps (celebratory)
  *   Anton        — heavy condensed grotesque (electric / aggressive)
  *   Luckiest Guy — rounded bouncy balloon caps (serene / pop-art inflate)

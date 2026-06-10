@@ -28,12 +28,16 @@ on:
     branches: ["main"]
     paths:
       - "packages/**"
+      - "effects/**"          # single-folder effect sources (comic + future effects)
+      - "tools/dopamine/**"   # the cross-platform build toolchain
       - "examples/**"
       - "scripts/**"
       - ".github/workflows/web-reel.yml"
   pull_request:
     paths:
       - "packages/**"
+      - "effects/**"          # single-folder effect sources (comic + future effects)
+      - "tools/dopamine/**"   # the cross-platform build toolchain
       - "examples/**"
       - "scripts/**"
       - ".github/workflows/web-reel.yml"
@@ -82,6 +86,15 @@ jobs:
             if [ "$n" -ge 4 ]; then echo "npm install failed after $n attempts"; exit 1; fi
             echo "npm install failed (attempt $n) — retrying in 15s…"; sleep 15
           done
+
+      # `npm run build` runs `dopamine build effects/comic`, which converts the
+      # shared woff2 display faces → ttf (fonttools+brotli) for the Swift/Android
+      # packages. Web doesn't bundle the ttf (it embeds the faces base64), but the
+      # one build command emits all platforms, so the deps must be present.
+      - name: Install fonttools (woff2→ttf for dopamine build)
+        run: |
+          python3 -m pip install --quiet --break-system-packages fonttools brotli \
+            || python3 -m pip install --quiet fonttools brotli
 
       # The demo is a Vite app whose config resolves @dopamine/* to source, so this
       # produces a self-contained static site in examples/demo/dist (base: "./", so
@@ -146,6 +159,13 @@ jobs:
 
       - name: Install Chromium (+ OS deps)
         run: npx playwright install --with-deps chromium
+
+      # `npm run build` runs `dopamine build effects/comic` → woff2→ttf font
+      # conversion (fonttools+brotli) for the Swift/Android packages.
+      - name: Install fonttools (woff2→ttf for dopamine build)
+        run: |
+          python3 -m pip install --quiet --break-system-packages fonttools brotli \
+            || python3 -m pip install --quiet fonttools brotli
 
       - name: Build the web packages + demo
         run: npm run build

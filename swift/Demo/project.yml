@@ -27,6 +27,11 @@ options:
 packages:
   Dopamine:
     path: ".."
+  # comic now ships from the toolchain's dist/ output (the move + rewire): the demo
+  # consumes the GENERATED standalone SwiftPM package, exactly like an external app.
+  # Run `npm run dopamine -- build` before `xcodegen generate` so this path exists.
+  DopamineEffectComic:
+    path: "../../dist/swift/DopamineEffectComic"
 
 targets:
   DopamineDemo:
@@ -75,7 +80,7 @@ targets:
         product: DopamineEffectSolarbloom
       - package: Dopamine
         product: DopamineEffectAurora
-      - package: Dopamine
+      - package: DopamineEffectComic
         product: DopamineEffectComic
       - package: Dopamine
         product: DopamineEffectConfetti

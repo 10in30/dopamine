@@ -10,9 +10,9 @@ import { describe, expect, it } from "vitest";
 
 import { FRAGMENT_SRC } from "../../effect-solarbloom/src/solarbloom-shader.js";
 import { INK_FRAGMENT_SRC } from "../../effect-inkstroke/src/inkstroke-shader.js";
-import { COMIC_FRAGMENT_SRC } from "../../effect-comic/src/comic-shader.js";
+import { COMIC_FRAGMENT_SRC } from "../../../effects/comic/web/src/comic-shader.js";
 import { GLSL_TONEMAP_ACES, GLSL_HASH, GLSL_FBM, GLSL_HALFTONE, envelope } from "@dopamine/core";
-import { impactScale, impactPresence } from "../../effect-comic/src/comic-tempo.js";
+import { impactScale, impactPresence } from "../../../effects/comic/web/src/comic-tempo.js";
 
 const defCount = (src: string, signature: string): number =>
   src.split(signature).length - 1;
