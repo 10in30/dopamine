@@ -20,6 +20,7 @@
     "clips": "node scripts/render-clips.mjs",
     "stitch": "node scripts/stitch.mjs",
     "reel": "node scripts/render-clips.mjs && node scripts/stitch.mjs",
+    "media": "node scripts/media.mjs",
     "bake-sdf": "node scripts/bake-sdf.mjs",
     "pack-dope": "node scripts/pack-dope.mjs",
     "gen-uniforms": "node scripts/gen-uniforms.mjs",
