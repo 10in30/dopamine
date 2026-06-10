@@ -1,7 +1,7 @@
 {
   "name": "@dopamine/effect-aurora",
   "version": "0.1.0",
-  "description": "Aurora — shimmering aurora curtains success effect for Dopamine.",
+  "description": "Aurora — hanging curtains of polar light, a calm ambient success effect for Dopamine.",
   "keywords": ["dopamine-effect"],
   "type": "module",
   "main": "./dist/index.js",
