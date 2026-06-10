@@ -302,6 +302,7 @@
       "durationMs"
     ],
     "scatterKey": "rippleSeed",
+    "scatterWeb": "uSeed",
     "extras": [],
     "samplers": []
   },

@@ -87,7 +87,7 @@ float ringLaunch(int i){
 // Each ring is a radially-expanding wave packet: a cosine carrier (phase =
 // k*r - w*t) under a gaussian envelope that travels outward at uSpeed and
 // spreads/decays as 1/sqrt(r) (energy conservation on an expanding circle).
-void waveField(float rn, float jitterScale, out float h, out float slope, out float front){
+void waveField(float rn, out float h, out float slope, out float front){
   h = 0.0; slope = 0.0; front = 0.0;
   float k = TAU / max(uWavelength, 0.001);        // angular wavenumber (per rn)
   float w = k * uSpeed;                            // angular frequency
@@ -133,7 +133,7 @@ float rippleOcclusion(vec2 frag){
   float minDim = min(uResolution.x, uResolution.y);
   float rn = length(frag - uOrigin) / minDim;
   float h, slope, front;
-  waveField(rn, 0.0, h, slope, front);
+  waveField(rn, h, slope, front);
   float trough = max(-h, 0.0);                      // depth below rest
   return clamp(trough * 2.2 * front * uAmp, 0.0, 1.0);
 }
@@ -172,7 +172,7 @@ void main(){
 
   // ---- The wave surface at this fragment. ----
   float h, slope, front;
-  waveField(rn, 1.0, h, slope, front);
+  waveField(rn, h, slope, front);
 
   float gain = uAmp * uExposure;
 
