@@ -1,7 +1,7 @@
 {
   "name": "@dopamine/effect-halo",
   "version": "0.1.0",
-  "description": "Halo — a calm ambient looping 'loading' indicator for Dopamine.",
+  "description": "Halo — a calm ambient looping loading-ring effect for Dopamine.",
   "keywords": ["dopamine-effect"],
   "type": "module",
   "main": "./dist/index.js",
