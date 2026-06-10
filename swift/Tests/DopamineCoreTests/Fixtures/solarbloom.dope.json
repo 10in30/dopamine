@@ -218,9 +218,18 @@
   "content": {
     "note": "Whimsy→check-glyph fallback bands (face + char), used only when the baked SDF is absent. Equal-width bands: low whimsy = refined ✓, high = bold ✔. Reproduces engine/mood.ts pickCheckGlyph byte-for-byte.",
     "glyphBands": [
-      { "family": "Dopamine Check Symbols", "char": "✓" },
-      { "family": "Dopamine Check Sans", "char": "✔" },
-      { "family": "Dopamine Check Symbols", "char": "✔" }
+      {
+        "family": "Dopamine Check Symbols",
+        "char": "✓"
+      },
+      {
+        "family": "Dopamine Check Sans",
+        "char": "✔"
+      },
+      {
+        "family": "Dopamine Check Symbols",
+        "char": "✔"
+      }
     ]
   },
   "render": {

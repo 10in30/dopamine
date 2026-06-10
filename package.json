@@ -23,8 +23,6 @@
     "media": "node scripts/media.mjs",
     "bake-sdf": "node scripts/bake-sdf.mjs",
     "pack-dope": "node scripts/pack-dope.mjs",
-    "gen-uniforms": "node scripts/gen-uniforms.mjs",
-    "gen-uniforms:check": "node scripts/gen-uniforms.mjs --check",
     "dopamine": "node tools/dopamine/src/cli.mjs",
     "dopamine:check": "node tools/dopamine/src/cli.mjs build --check"
   },

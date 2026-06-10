@@ -2,7 +2,7 @@
 #
 # Two jobs:
 #   • macos-14  — the real validator: swift build + swift test (Metal compiles +
-#                 the Metal-guarded tests run), the gen-uniforms staleness gate,
+#                 the Metal-guarded tests run), the dopamine-build staleness gate,
 #                 then XcodeGen → xcodebuild the iOS-Simulator demo, boot a sim,
 #                 launch it with the autoplay arg, and screen-record a ~5s clip
 #                 uploaded as an artifact. build+test are MUST-PASS; the record
@@ -25,14 +25,12 @@ on:
       - "swift/**"
       - "effects/**"
       - "tools/dopamine/**"
-      - "scripts/gen-uniforms.mjs"
       - ".github/workflows/swift.yml"
   pull_request:
     paths:
       - "swift/**"
       - "effects/**"
       - "tools/dopamine/**"
-      - "scripts/gen-uniforms.mjs"
       - ".github/workflows/swift.yml"
   workflow_dispatch:
 
@@ -122,15 +120,15 @@ jobs:
         working-directory: swift
         run: swift test -v
 
-      # --- MUST-PASS: the generated uniform files must be in sync with the .dope ---
-      - name: gen-uniforms staleness check
+      # --- MUST-PASS: the toolchain-generated artifacts must be in sync with the
+      # single-folder sources. Every effect now lives in effects/<name>/ and the
+      # @dopamine/build toolchain (not the retired scripts/gen-uniforms.mjs) emits
+      # the Swift/MSL uniform structs into its dist package. `dopamine build`
+      # already ran above; --check re-derives every artifact and fails if the build
+      # isn't idempotent (i.e. a source edit didn't get rebuilt). ---
+      - name: dopamine build staleness check
         working-directory: .
-        run: |
-          set -x
-          node scripts/gen-uniforms.mjs --check
-          # belt-and-braces: regenerate and assert nothing changed in git
-          node scripts/gen-uniforms.mjs
-          git diff --exit-code -- swift/Sources swift/Generated
+        run: node tools/dopamine/src/cli.mjs build --check
 
       # --- MUST-PASS: generate + build the iOS demo for the Simulator ---
       - name: Install XcodeGen
