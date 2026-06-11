@@ -3,16 +3,17 @@ import { parseDope, resolveDopeParams, NPR_TIME_STEP_MS } from "@dopamine/core";
 import doc from "../src/halo.dope.json";
 
 // The breathe gate lives in halo.dope.json (`tempo.frame.amp` — a steady
-// periodic sine, evaluated by the generic dope factory). Local mirror for the
-// loop-seam property checks below.
-const haloBreathe = (timeS: number, periodS: number): number =>
-  0.85 + 0.15 * Math.sin((Math.PI * 2 * timeS) / Math.max(periodS, 1e-3));
+// periodic sine of the loop PHASE, evaluated by the generic dope factory).
+// Local mirror for the loop-seam property checks below.
+const haloBreathe = (phase: number): number => 0.85 + 0.15 * Math.sin(Math.PI * 2 * phase);
 
 // Per the authoring guide (§7.5) we exercise the production loader path directly
 // and pin a seed to assert the params + mood/intensity/whimsy mapping we expect —
-// PLUS the property that makes Halo special: it LOOPS SEAMLESSLY.
+// PLUS the property that makes Halo special: it LOOPS SEAMLESSLY via the
+// first-class `tempo.loop` contract.
 const DOPE = parseDope(doc as object);
 const CONSTS = {};
+const PERIOD_MS = DOPE.tempo.loop!.periodMs;
 
 const resolve = (mood: string, intensity: number, whimsy: number, seed: number) =>
   resolveDopeParams(DOPE, { mood, intensity, whimsy, seed }, CONSTS, "haloSeed") as unknown as {
@@ -26,12 +27,10 @@ const resolve = (mood: string, intensity: number, whimsy: number, seed: number) 
     sweepArc: number;
     sweepTurns: number;
     glow: number;
-    period: number;
     haloSeed: number;
   };
 
 const MOODS = ["serene", "celebratory", "electric"];
-const TAU = Math.PI * 2;
 
 describe("halo resolve (calm looping loader)", () => {
   it("is deterministic for a fixed seed", () => {
@@ -85,57 +84,73 @@ describe("halo resolve (calm looping loader)", () => {
   });
 });
 
-describe("halo loops seamlessly (the continuous-effect contract)", () => {
-  it("period is a fixed 1.5s and duration is an integer number of periods", () => {
+describe("halo loops seamlessly (the tempo.loop contract)", () => {
+  it("declares the first-class loop contract: 1.5s period, whole periods per fire", () => {
+    expect(PERIOD_MS).toBe(1500);
     for (const mood of MOODS) {
       const p = resolve(mood, 0.6, 0.5, 11);
-      expect(p.period).toBe(1.5);
-      const loops = p.durationMs / 1000 / p.period;
-      expect(loops).toBe(Math.round(loops)); // whole number of loops
+      const loops = p.durationMs / PERIOD_MS;
+      expect(loops).toBe(Math.round(loops)); // whole number of loops (parser-gated too)
       expect(loops).toBeGreaterThanOrEqual(2); // a few periods per fire
     }
   });
 
   it("the loop period is an integer number of animate-on-twos steps", () => {
     // 1.5 s / (1000/12 ms) == 18 steps exactly, so the on-twos-snapped clock is
-    // ALSO periodic with the loop period -> seam survives at full whimsy.
-    const periodMs = 1.5 * 1000;
-    expect(periodMs / NPR_TIME_STEP_MS).toBe(18);
+    // ALSO periodic with the loop period -> seam survives at full whimsy. The
+    // parser enforces this (snapAligned defaults true); pin it here too.
+    expect(PERIOD_MS / NPR_TIME_STEP_MS).toBe(18);
+  });
+
+  it("the parser rejects a loop period off the on-twos grid or a ragged duration", () => {
+    const raw = JSON.parse(JSON.stringify(doc));
+    raw.tempo.loop.periodMs = 100; // not a multiple of 1000/12
+    expect(() => parseDope(raw)).toThrow(/animate-on-twos/);
+
+    const ragged = JSON.parse(JSON.stringify(doc));
+    ragged.tempo.loop.periodMs = 2250; // 27 on-twos steps, but 6000/2250 isn't whole
+    expect(() => parseDope(ragged)).toThrow(/whole number of tempo.loop periods/);
   });
 
   it("the breathe gate returns to its t=0 value at the loop boundary", () => {
     const p = resolve("celebratory", 0.7, 0.5, 1);
-    const periodS = p.period;
-    const durS = p.durationMs / 1000;
-    expect(haloBreathe(durS, periodS)).toBeCloseTo(haloBreathe(0, periodS), 9);
+    const phaseAt = (ms: number) => (ms % PERIOD_MS) / PERIOD_MS;
+    expect(haloBreathe(phaseAt(p.durationMs))).toBeCloseTo(haloBreathe(phaseAt(0)), 9);
     // and at each intermediate period boundary
-    for (let n = 1; n * periodS <= durS + 1e-9; n++) {
-      expect(haloBreathe(n * periodS, periodS)).toBeCloseTo(haloBreathe(0, periodS), 9);
+    for (let n = 1; n * PERIOD_MS <= p.durationMs + 1e-9; n++) {
+      expect(haloBreathe(phaseAt(n * PERIOD_MS))).toBeCloseTo(haloBreathe(phaseAt(0)), 9);
     }
   });
 
   it("every periodic driver matches at t==durationMs vs t==0, at EVERY whimsy", () => {
-    // Reproduce the runner's "on twos" snap: animMs = elapsed + (stepped-elapsed)*style.
+    // Reproduce the runner's "on twos" snap: animMs = elapsed + (stepped-elapsed)*style,
+    // then the runner's loop clocks: phase = (animMs % periodMs) / periodMs.
     const snap = (elapsedMs: number, style: number) => {
       const stepped = Math.floor(elapsedMs / NPR_TIME_STEP_MS) * NPR_TIME_STEP_MS;
       return elapsedMs + (stepped - elapsedMs) * style;
     };
+    const phaseOf = (animMs: number) => (animMs % PERIOD_MS) / PERIOD_MS;
     const p = resolve("electric", 0.8, 0.5, 3);
-    const periodS = p.period;
     const turns = p.sweepTurns;
-    // The three periodic drivers the shader uses, as pure functions of timeS:
-    const drivers = (timeS: number) => ({
-      breathe: Math.sin((TAU * timeS) / periodS),
-      rotation: ((TAU * timeS) / periodS) % TAU,
-      sweepHead: ((timeS / periodS) * turns) % 1,
-      amp: haloBreathe(timeS, periodS),
+    const TAU = Math.PI * 2;
+    // The periodic drivers the shader uses, as pure functions of uPhase:
+    const drivers = (phase: number) => ({
+      breathe: Math.sin(TAU * phase),
+      rotation: (TAU * phase) % TAU,
+      sweepHead: (phase * turns) % 1,
+      hueSway: Math.sin(TAU * phase) * 0.045,
+      fbmPath: [Math.cos(TAU * phase) * 0.075, Math.sin(TAU * phase) * 0.075],
+      amp: haloBreathe(phase),
     });
     for (const style of [0, 0.25, 0.5, 0.75, 1]) {
-      const a = drivers(snap(0, style) / 1000);
-      const b = drivers(snap(p.durationMs, style) / 1000);
+      const a = drivers(phaseOf(snap(0, style)));
+      const b = drivers(phaseOf(snap(p.durationMs, style)));
       expect(b.breathe).toBeCloseTo(a.breathe, 9);
       expect(b.rotation).toBeCloseTo(a.rotation, 9);
       expect(b.sweepHead).toBeCloseTo(a.sweepHead, 9);
+      expect(b.hueSway).toBeCloseTo(a.hueSway, 9);
+      expect(b.fbmPath[0]).toBeCloseTo(a.fbmPath[0], 9);
+      expect(b.fbmPath[1]).toBeCloseTo(a.fbmPath[1], 9);
       expect(b.amp).toBeCloseTo(a.amp, 9);
     }
   });

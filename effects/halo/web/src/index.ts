@@ -12,12 +12,14 @@
  *
  * CONTINUOUS / LOOPING. Halo is Dopamine's first continuous effect: every other
  * effect is a one-shot reward moment gated by `amp = envelope(life)` (a 0→peak→0
- * fade). Halo's `tempo.frame.amp` is instead a STEADY periodic breathe driven
- * off elapsed seconds — `0.85 + 0.15·sin(2π·(animMs/1000)/period)` — so it
- * LOOPS SEAMLESSLY: the `.dope` sets `period = 1.5 s` and `durationMs = 6000`
- * (= 4 periods), and 1.5 s is exactly 18 "animate-on-twos" steps, so the frame
- * at `t == durationMs` matches `t == 0` at every whimsy. A host loops it by
- * re-firing or by a long duration.
+ * fade). Halo instead declares the first-class `tempo.loop` contract
+ * (`periodMs = 1500`): the parser validates the seam invariants (the period is
+ * exactly 18 "animate-on-twos" steps and `durationMs = 6000` is exactly 4
+ * periods), the runner derives the standard periodic clocks `uPhase`/`uLoopS`
+ * every frame, and `tempo.frame.amp` is a STEADY periodic breathe of that
+ * phase — `0.85 + 0.15·sin(2π·phase)` — so the frame at `t == durationMs`
+ * matches `t == 0` at every whimsy. The conductor re-arms it at every
+ * `durationMs` seam; the host stops it via the handle `play()` returns.
  */
 
 import { HALO_FRAGMENT_SRC, HALO_VERTEX_SRC } from "./halo-shader.js";
@@ -35,7 +37,6 @@ export interface HaloParams extends PassParams {
   sweepArc: number;
   sweepTurns: number;
   glow: number;
-  period: number;
   haloSeed: number;
 }
 

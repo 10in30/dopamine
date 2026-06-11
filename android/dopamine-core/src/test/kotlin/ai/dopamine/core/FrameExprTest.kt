@@ -34,6 +34,26 @@ class FrameExprTest {
     }
 
     @Test
+    fun evaluatesLoopClockInputs() {
+        // Supplied by the caller (the dope-pass frame derivation) for effects
+        // with tempo.loop; the calm default is 0, never a throw.
+        val looping = FrameExprCtx(
+            animMs = 375.0, life = 0.0625, elapsedMs = 375.0,
+            params = emptyMap(), loopS = 0.375, phase = 0.25,
+        )
+        assertEquals(0.375, evalFrameExpr(expr("""{"input":"loopS"}"""), looping), 0.0)
+        assertEquals(0.25, evalFrameExpr(expr("""{"input":"phase"}"""), looping), 0.0)
+        assertEquals(0.0, evalFrameExpr(expr("""{"input":"loopS"}"""), ctx()), 0.0)
+        assertEquals(0.0, evalFrameExpr(expr("""{"input":"phase"}"""), ctx()), 0.0)
+        // halo's periodic breathe amp peaks at a quarter period.
+        val amp = evalFrameExpr(
+            expr("""{"add":[0.85,{"mul":[0.15,{"sin":{"mul":[6.283185307179586,{"input":"phase"}]}}]}]}"""),
+            looping,
+        )
+        assertEquals(1.0, amp, 1e-9)
+    }
+
+    @Test
     fun throwsOnMissingParamUnknownInputAndUnknownNode() {
         assertThrows(DopeException::class.java) { evalFrameExpr(expr("""{"param":"nope"}"""), ctx()) }
         // A non-numeric param (e.g. the palette) is as missing as an absent one.

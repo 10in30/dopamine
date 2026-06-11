@@ -14,7 +14,7 @@ vertex VSOut halo_vertex(uint vid [[vertex_id]]) {
 inline float2x2 rot2(float a) { float s = sin(a), c = cos(a); return float2x2(float2(c, -s), float2(s, c)); }
 
 inline float liveRadius(constant HaloUniforms &u) {
-  float ph = TAU * u.timeS / max(u.period, 1e-3);
+  float ph = TAU * u.phase;
   return u.ringRadius + sin(ph) * u.breathe * u.ringWidth * 1.6;
 }
 
@@ -28,7 +28,7 @@ inline float3 haloLight(float2 frag, float minDim, constant HaloUniforms &u) {
   float rn = length(rel);
   
   
-  float rot = TAU * u.timeS / max(u.period, 1e-3);
+  float rot = TAU * u.phase;
   float2 rdir = rot2(rot) * rel;
   float ang = atan2(rdir.y, rdir.x);            
   float angN = ang / TAU + 0.5;                
@@ -37,13 +37,16 @@ inline float3 haloLight(float2 frag, float minDim, constant HaloUniforms &u) {
   float halfW = max(u.ringWidth, 1e-3);
 
   
-  float breatheB = 1.0 + sin(TAU * u.timeS / max(u.period, 1e-3)) * u.breathe * 0.5;
+  float breatheB = 1.0 + sin(TAU * u.phase) * u.breathe * 0.5;
   float gain = u.amp * u.exposure * breatheB;
 
   
   
-  float tcol = abs(fract(angN + u.timeS * 0.03) * 2.0 - 1.0);
-  tcol = clamp(tcol + (dop_fbm(rdir * 6.0 + u.timeS * 0.05) - 0.5) * 0.12, 0.0, 1.0);
+  
+  
+  
+  float tcol = abs(fract(angN + sin(TAU * u.phase) * 0.045) * 2.0 - 1.0);
+  tcol = clamp(tcol + (dop_fbm(rdir * 6.0 + float2(cos(TAU * u.phase), sin(TAU * u.phase)) * 0.075) - 0.5) * 0.12, 0.0, 1.0);
   float3 ringCol = dop_paletteMix(tcol, u.c0, u.c1, u.c2);
 
   float3 col = float3(0.0);
@@ -61,7 +64,7 @@ inline float3 haloLight(float2 frag, float minDim, constant HaloUniforms &u) {
   
   
   
-  float head = fract(u.timeS / max(u.period, 1e-3) * u.sweepTurns);     
+  float head = fract(u.phase * u.sweepTurns);                          
   float ad = fract(angN - head + 1.0);                               
   float arcHalf = max(u.sweepArc, 0.02);
   float sweepMask = exp(-ad / (arcHalf * 0.9 + 1e-3)) * cov;          
@@ -115,6 +118,7 @@ fragment float4 halo_fragment(
   
   
   
+  
   if(u.style > 0.001) {
     float2 rel = (frag - u.origin) / minDim;
     float rn = length(rel);
@@ -122,17 +126,17 @@ fragment float4 halo_fragment(
     float halfW = max(u.ringWidth, 1e-3);
     float cov = ringCoverage(rn, radius, halfW);
     
-    float rot = TAU * u.timeS / max(u.period, 1e-3);
+    float rot = TAU * u.phase;
     float2 rdir = rot2(rot) * rel;
     float angN = atan2(rdir.y, rdir.x) / TAU + 0.5;
-    float tcol = abs(fract(angN + u.timeS * 0.03) * 2.0 - 1.0);
+    float tcol = abs(fract(angN + sin(TAU * u.phase) * 0.045) * 2.0 - 1.0);
     float3 ringCol = dop_paletteMix(clamp(tcol, 0.0, 1.0), u.c0, u.c1, u.c2);
-    float breatheB = 1.0 + sin(TAU * u.timeS / max(u.period, 1e-3)) * u.breathe * 0.5;
+    float breatheB = 1.0 + sin(TAU * u.phase) * u.breathe * 0.5;
     float gain = u.amp * u.exposure * breatheB;
     
     float band = smoothstep(0.35, 0.55, cov);
     
-    float head = fract(u.timeS / max(u.period, 1e-3) * u.sweepTurns);
+    float head = fract(u.phase * u.sweepTurns);
     float ad = fract(angN - head + 1.0);
     float arcHalf = max(u.sweepArc, 0.02);
     float celSweep = step(ad, arcHalf) * band;
@@ -144,7 +148,8 @@ fragment float4 halo_fragment(
 
   
   
-  col = dop_ditherAdd(col, frag, u.timeS, 1.0 - u.style);
+  
+  col = dop_ditherAdd(col, frag, u.loopS, 1.0 - u.style);
 
   col = max(col, 0.0);
     float outA = clamp(max(max(col.r, col.g), col.b), 0.0, 1.0);

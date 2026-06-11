@@ -58,6 +58,8 @@ class DopePassPlan internal constructor(
     val consts: Map<String, Double>,
     val reducedMotionPeakMs: Double?,
     val reducedMotionHoldMs: Double?,
+    /** The continuous-loop period (`tempo.loop.periodMs`); null for one-shots. */
+    val loopPeriodMs: Double?,
     private val shadowSpec: FrameExprNode,
     private val ampExpr: FrameExprNode,
     /** Per-frame extras as `(web uniform name, expression)`, authored order. */
@@ -70,6 +72,8 @@ class DopePassPlan internal constructor(
      * The per-frame uniform values: the well-known `amp` first, then each extra
      * under its web uniform name — the exact map the old hand-written `frame()`
      * hooks returned (`bindFrameUniforms` maps `amp` → `uAmp`, others by name).
+     * The loop clocks (0 without `tempo.loop`) use the SAME formula the runner
+     * uses for `uLoopS`/`uPhase`, so a `{input:"phase"}` amp matches the shader.
      */
     fun frame(
         animMs: Double,
@@ -77,7 +81,11 @@ class DopePassPlan internal constructor(
         elapsedMs: Double,
         params: Map<String, DopeValue>,
     ): LinkedHashMap<String, Double> {
-        val ctx = FrameExprCtx(animMs = animMs, life = life, elapsedMs = elapsedMs, params = params)
+        val loopMs = loopPeriodMs?.let { animMs % it } ?: 0.0
+        val ctx = FrameExprCtx(
+            animMs = animMs, life = life, elapsedMs = elapsedMs, params = params,
+            loopS = loopMs / 1000.0, phase = loopPeriodMs?.let { loopMs / it } ?: 0.0,
+        )
         val out = LinkedHashMap<String, Double>()
         out["amp"] = evalFrameExpr(ampExpr, ctx)
         for ((web, expr) in extraExprs) out[web] = evalFrameExpr(expr, ctx)
@@ -157,6 +165,7 @@ fun dopePassPlan(doc: DopeDoc, extraUniforms: List<String> = emptyList()): DopeP
         consts = consts,
         reducedMotionPeakMs = reducedMotion?.get("peakMs")?.asNumber,
         reducedMotionHoldMs = reducedMotion?.get("holdMs")?.asNumber,
+        loopPeriodMs = doc.loop?.periodMs,
         shadowSpec = shadowSpec,
         ampExpr = ampExpr,
         extraExprs = extraExprs,

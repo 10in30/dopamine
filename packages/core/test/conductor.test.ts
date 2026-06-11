@@ -221,6 +221,52 @@ describe("conductor", () => {
     expect(mod.activeHostCount()).toBe(0);
   });
 
+  it("re-arms a CONTINUOUS effect at durationMs and tears down on the handle's stop()", async () => {
+    const body = installDom();
+    const { play } = await import("../src/framework/conductor.js");
+    const base = await makeFakeFactory();
+    let renders = 0;
+    const looping = {
+      ...base,
+      loop: { periodMs: 300 }, // marks the factory CONTINUOUS (durationMs 1200 = 4 periods)
+      create: (params: Record<string, unknown>, ctx: unknown) => {
+        const inner = base.create(params, ctx);
+        return {
+          ...inner,
+          renderAt: (ms: number) => {
+            renders++;
+            inner.renderAt(ms);
+          },
+        };
+      },
+    };
+    let resolved = false;
+    const handle = play({
+      factory: looping, target: body, anchor: { x: 0, y: 0 },
+      feeling: { mood: "celebratory", intensity: 0.7, whimsy: 0.5, seed: 4 },
+    });
+    void handle.then(() => { resolved = true; });
+
+    // Drive WELL past durationMs (1200): a one-shot would have resolved; the
+    // looping effect re-arms at every seam and keeps drawing.
+    pump(50);
+    pump(2000);
+    pump(5000);
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+    const rendersWhileLooping = renders;
+    expect(rendersWhileLooping).toBeGreaterThan(2);
+
+    // The host stops it: the next frame disposes + resolves.
+    handle.stop();
+    pump(5050);
+    await handle;
+    expect(resolved).toBe(true);
+    // Stopped means stopped: no further draws on later frames.
+    pump(6000);
+    expect(rafQueue.length).toBe(0);
+  });
+
   it("prefers-reduced-motion renders one held frame and never starts a RAF loop", async () => {
     reduceMotion = true;
     vi.useFakeTimers();

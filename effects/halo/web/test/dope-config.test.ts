@@ -29,11 +29,26 @@ describe("halo derived pass config", () => {
   });
 
   it("derives the expected uniforms (as a set) and bindings", () => {
+    // No uPeriod: the loop clocks (uLoopS/uPhase) are STANDARD uniforms the
+    // runner derives from tempo.loop — no per-effect period plumbing.
     expect(new Set(CONFIG.uniforms)).toEqual(
-      new Set(["uExposure", "uRingRadius", "uRingWidth", "uBreathe", "uSweepArc", "uSweepTurns", "uGlow", "uPeriod"]),
+      new Set(["uExposure", "uRingRadius", "uRingWidth", "uBreathe", "uSweepArc", "uSweepTurns", "uGlow"]),
     );
     // haloSeed feeds the seeded palette only — no scatterWeb, not a uniform.
     expect(CONFIG.bindings).toEqual({ haloSeed: null });
     expect(CONFIG.usesOrigin).toBe(true);
+  });
+
+  it("derives the continuous-loop contract from tempo.loop", () => {
+    expect(CONFIG.loopPeriodMs).toBe(1500);
+    // The frame derivation feeds the SAME loop clocks to the amp expression the
+    // runner feeds the shader: a quarter period in, the breathe gate peaks.
+    const p = resolveDopeParams(
+      DOPE, { mood: "celebratory", intensity: 0.7, whimsy: 0, seed: 1 }, {}, "haloSeed",
+    ) as Record<string, number> & { durationMs: number };
+    const at = (animMs: number) =>
+      CONFIG.frame({ animMs, life: Math.min(animMs / p.durationMs, 1), elapsedMs: animMs }, p as never).amp;
+    expect(at(375)).toBeCloseTo(1.0, 9); // phase 0.25 → 0.85 + 0.15·sin(π/2)
+    expect(at(0)).toBeCloseTo(0.85, 9); // phase 0 → calm baseline
   });
 });

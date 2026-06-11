@@ -30,12 +30,24 @@ public struct FrameExprCtx {
     public var life: Double
     /// The REAL un-stepped wall clock in ms (same on every platform).
     public var elapsedMs: Double
+    /// Seconds within the current loop (`(animMs % tempo.loop.periodMs) / 1000`);
+    /// 0 for an effect with no `tempo.loop` — the caller (the dope-pass frame
+    /// derivation) fills these from the doc's loop contract.
+    public var loopS: Double
+    /// Normalized loop phase in [0, 1) (`animMs % periodMs / periodMs`); 0 without a loop.
+    public var phase: Double
     /// The resolved render-param bag (numeric entries are addressable).
     public var params: [String: DopeValue]
-    public init(animMs: Double, life: Double, elapsedMs: Double, params: [String: DopeValue]) {
+    public init(
+        animMs: Double, life: Double, elapsedMs: Double,
+        loopS: Double = 0, phase: Double = 0,
+        params: [String: DopeValue]
+    ) {
         self.animMs = animMs
         self.life = life
         self.elapsedMs = elapsedMs
+        self.loopS = loopS
+        self.phase = phase
         self.params = params
     }
 }
@@ -89,6 +101,8 @@ private func evalNode(_ node: JSONValue, _ ctx: FrameExprCtx, _ allowInputs: Boo
         case "animMs": return ctx.animMs
         case "life": return ctx.life
         case "elapsedMs": return ctx.elapsedMs
+        case "loopS": return ctx.loopS
+        case "phase": return ctx.phase
         default: throw FrameExprError.unknownInput(name)
         }
     }

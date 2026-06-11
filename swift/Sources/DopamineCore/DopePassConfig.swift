@@ -36,6 +36,9 @@ public struct DopePassConfig<U>: PassConfig {
     public let vertexFunction: String
     public let fragmentFunction: String
     public let usesOrigin: Bool
+    /// The continuous-loop period (`tempo.loop.periodMs`), nil for one-shots.
+    /// The runner derives the standard `loopS`/`phase` clock uniforms from it.
+    public let loopPeriodMs: Double?
 
     private let ampExpr: JSONValue
     private let extraExprs: [(String, JSONValue)]
@@ -62,6 +65,7 @@ public struct DopePassConfig<U>: PassConfig {
         self.vertexFunction = vertexFunction
         self.fragmentFunction = fragmentFunction
         self.usesOrigin = doc.usesOrigin ?? false
+        self.loopPeriodMs = doc.loop?.periodMs
         self.ampExpr = frame.amp
         self.extraExprs = frame.extras
         self.shadowSpec = shadow
@@ -78,10 +82,16 @@ public struct DopePassConfig<U>: PassConfig {
     }
 
     /// `tempo.frame` — amp + every extras entry, evaluated against the live
-    /// clocks + resolved params (extras keyed by canonical name).
+    /// clocks + resolved params (extras keyed by canonical name). The loop
+    /// clocks (0 without `tempo.loop`) use the SAME formula the runner uses
+    /// for the `loopS`/`phase` uniforms, so a `{input:"phase"}` amp matches
+    /// the shader.
     public func frame(_ info: FrameInfo, _ params: [String: DopeValue]) -> (amp: Double, extras: [String: Double]) {
+        let loopMs = loopPeriodMs.map { info.animMs.truncatingRemainder(dividingBy: $0) } ?? 0
         let ctx = FrameExprCtx(
-            animMs: info.animMs, life: info.life, elapsedMs: info.elapsedMs, params: params)
+            animMs: info.animMs, life: info.life, elapsedMs: info.elapsedMs,
+            loopS: loopMs / 1000, phase: loopPeriodMs.map { loopMs / $0 } ?? 0,
+            params: params)
         let amp = (try? evalFrameExpr(ampExpr, ctx)) ?? 0
         var extras: [String: Double] = [:]
         for (name, expr) in extraExprs {

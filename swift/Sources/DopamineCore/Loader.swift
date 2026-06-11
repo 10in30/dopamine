@@ -61,6 +61,9 @@ public enum DopeError: Error, CustomStringConvertible {
     /// The doc lacks a P2 datafied section a data-driven consumer needs
     /// (`binding.scatterKey` / `tempo.frame` / `render.shadowHeightFrac`).
     case notDatafied(String)
+    /// A `tempo.loop` block that breaks the seam invariants (message mirrors
+    /// the web parser's).
+    case invalidLoop(String)
 
     public var description: String {
         switch self {
@@ -72,6 +75,7 @@ public enum DopeError: Error, CustomStringConvertible {
         case let .externalReference(v): return "dope: external asset reference is not allowed: \"\(v)\""
         case .noBaselines: return "dope: document has no baselines to resolve a mood against"
         case let .notDatafied(m): return "dope: \(m)"
+        case let .invalidLoop(m): return "dope: \(m)"
         }
     }
 }
@@ -158,6 +162,22 @@ public struct DopeReducedMotion: Equatable {
     public var holdMs: Double
 }
 
+/// The continuous-loop contract (`tempo.loop`), mirror of the web
+/// `DopeLoopSpec`: the effect repeats seamlessly with period `periodMs`.
+/// `parseDope` validates the seam invariants (the period tiles the
+/// "animate on twos" grid unless `snapAligned` is false, and every baseline
+/// `durationMs` is a whole number of periods); the runner derives the standard
+/// periodic clocks (`loopS`/`phase` → the packed `loopS`/`phase` uniforms)
+/// from it each frame.
+public struct DopeLoopSpec: Equatable {
+    public var periodMs: Double
+    public var snapAligned: Bool
+    public init(periodMs: Double, snapAligned: Bool = true) {
+        self.periodMs = periodMs
+        self.snapAligned = snapAligned
+    }
+}
+
 /// One per-frame/host-filled extra in the binding contract (`binding.extras[]`),
 /// by canonical name; `web` is the web uniform it binds to (the Metal struct
 /// field is generated from the same entry at build time).
@@ -201,6 +221,8 @@ public struct DopeDoc {
     //         doc without them (a not-yet-datafied effect) still parses. ──
     /// Per-frame logic (`tempo.frame`): amp + extras as raw frame-expression trees.
     public var frame: DopeFrameSpec?
+    /// Continuous-loop contract (`tempo.loop`), validated at parse time.
+    public var loop: DopeLoopSpec?
     /// Reduced-motion peak/hold (`tempo.reducedMotion`).
     public var reducedMotion: DopeReducedMotion?
     /// Shadow occluder height (`render.shadowHeightFrac`): a bare number or a

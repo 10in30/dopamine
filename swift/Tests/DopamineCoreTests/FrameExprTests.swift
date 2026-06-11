@@ -25,6 +25,23 @@ final class FrameExprTests: XCTestCase {
         XCTAssertEqual(try evalFrameExpr(expr(#"{"input": "elapsedMs"}"#), ctx()), 300)
     }
 
+    func testLoopClockInputs() throws {
+        // Supplied by the caller (the dope-pass frame derivation) for effects
+        // with tempo.loop; the calm default is 0, never a throw.
+        let looping = FrameExprCtx(
+            animMs: 375, life: 0.0625, elapsedMs: 375,
+            loopS: 0.375, phase: 0.25, params: [:])
+        XCTAssertEqual(try evalFrameExpr(expr(#"{"input": "loopS"}"#), looping), 0.375)
+        XCTAssertEqual(try evalFrameExpr(expr(#"{"input": "phase"}"#), looping), 0.25)
+        XCTAssertEqual(try evalFrameExpr(expr(#"{"input": "loopS"}"#), ctx()), 0)
+        XCTAssertEqual(try evalFrameExpr(expr(#"{"input": "phase"}"#), ctx()), 0)
+        // halo's periodic breathe amp peaks at a quarter period.
+        let amp = try evalFrameExpr(
+            expr(#"{"add": [0.85, {"mul": [0.15, {"sin": {"mul": [6.283185307179586, {"input": "phase"}]}}]}]}"#),
+            looping)
+        XCTAssertEqual(amp, 1.0, accuracy: 1e-9)
+    }
+
     func testThrowsOnMissingParamUnknownInputAndUnknownNode() throws {
         XCTAssertThrowsError(try evalFrameExpr(expr(#"{"param": "nope"}"#), ctx()))
         // A non-numeric (palette/string) param is missing for the grammar's purposes.

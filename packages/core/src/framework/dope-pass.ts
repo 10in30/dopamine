@@ -73,6 +73,7 @@ export function dopePassConfig(doc: DopeDoc, shader: DopeShader, hooks: DopePass
 
   const frameSpec = doc.tempo.frame;
   if (!frameSpec) throw new Error(`dope: ${doc.id} has no tempo.frame (not a datafied effect)`);
+  const loopPeriodMs = doc.tempo.loop?.periodMs;
   const shadowSpec = doc.render.shadowHeightFrac;
   if (shadowSpec === undefined) {
     throw new Error(`dope: ${doc.id} has no render.shadowHeightFrac (not a datafied effect)`);
@@ -113,11 +114,22 @@ export function dopePassConfig(doc: DopeDoc, shader: DopeShader, hooks: DopePass
     fragment: shader.fragment,
     uniforms: [...uniforms],
     usesOrigin: doc.render.config?.usesOrigin ?? false,
+    loopPeriodMs,
     bindings,
     shadowHeightFrac:
       typeof shadowSpec === "number" ? shadowSpec : (params) => evalParamExpr(shadowSpec, params),
     frame(info: FrameInfo, params: PassParams) {
-      const ctx = { animMs: info.animMs, life: info.life, elapsedMs: info.elapsedMs, params };
+      // Loop clocks (0 without tempo.loop) — the SAME formula the runner uses
+      // for uLoopS/uPhase, so a `{input:"phase"}` amp matches the shader.
+      const loopMs = loopPeriodMs ? info.animMs % loopPeriodMs : 0;
+      const ctx = {
+        animMs: info.animMs,
+        life: info.life,
+        elapsedMs: info.elapsedMs,
+        params,
+        loopS: loopMs / 1000,
+        phase: loopPeriodMs ? loopMs / loopPeriodMs : 0,
+      };
       const out: { amp: number } & Record<string, number> = {
         amp: evalFrameExpr(frameSpec.amp, ctx),
       };
@@ -177,6 +189,9 @@ export function registerDopeEffect(
       resolveDopeParams(doc, feeling, consts, scatterKey) as unknown as PassParams,
     create,
     reducedMotion,
+    // The continuous-loop contract: the conductor re-arms at durationMs instead
+    // of tearing down (the host stops it via the returned handle).
+    loop: doc.tempo.loop ? { periodMs: doc.tempo.loop.periodMs } : undefined,
   };
 
   if (opts.program !== false) {

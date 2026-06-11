@@ -13,11 +13,14 @@
 //
 // CONTINUOUS / LOOPING. Halo is Dopamine's first continuous effect. The other
 // nine are one-shot reward moments gated by the held-breath `envelope` (a 0→peak
-// →0 fade that would not loop). Halo's datafied `tempo.frame.amp` is instead a
-// periodic sine of `animMs` (the breathe gate, period = the `.dope` `period`
-// param, 1.5 s), so it LOOPS SEAMLESSLY: `durationMs = 6000` (= 4 periods), and
-// 1.5 s is exactly 18 "animate-on-twos" steps, so the frame at `t == durationMs`
-// matches `t == 0` at every whimsy.
+// →0 fade that would not loop). Halo instead declares the first-class
+// `tempo.loop` contract (`periodMs = 1500`): the parser validates the seam
+// invariants (the period is exactly 18 "animate-on-twos" steps; `durationMs =
+// 6000` is exactly 4 periods), the runner derives the standard periodic clocks
+// `uPhase`/`uLoopS` every frame, and the datafied `tempo.frame.amp` is a
+// periodic sine of that phase — so the frame at `t == durationMs` matches
+// `t == 0` at every whimsy. `DopamineView` re-arms it at every seam; the host
+// stops it via the `PlayHandle` that `play` returns.
 
 package ai.dopamine.effect.halo
 
@@ -65,6 +68,10 @@ class Halo(context: Context) : DrawableEffect {
     // calm frame briefly (peakMs 0 / holdMs 600, from tempo.reducedMotion).
     override val reducedMotionPeakMs: Double? = plan.reducedMotionPeakMs
     override val reducedMotionHoldMs: Double? = plan.reducedMotionHoldMs
+
+    // CONTINUOUS: the parsed tempo.loop contract — the conductor re-arms at
+    // every durationMs seam until the host stops the play handle.
+    override val loop = doc.loop
 
     companion object {
         /** Construct + register the effect (needs a Context for the `.dope` asset). */

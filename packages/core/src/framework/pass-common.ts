@@ -148,7 +148,7 @@ export function allocTexture(glc: GLContext): WebGLTexture {
 
 /** The standard uniforms common to BOTH runners (excludes uOrigin/uCenter). */
 export const STANDARD_COMMON = [
-  "uResolution", "uTarget", "uLife", "uTimeS", "uStyle", "uAmp",
+  "uResolution", "uTarget", "uLife", "uTimeS", "uLoopS", "uPhase", "uStyle", "uAmp",
   "uC0", "uC1", "uC2", "uShadow", "uShadowOffset", "uShadowSoft", "uShadowStrength",
 ] as const;
 

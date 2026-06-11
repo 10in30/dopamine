@@ -517,7 +517,7 @@ authored once and interpreted identically on every platform.
 - **`frame.amp`** — the per-frame amplitude. The well-known value: it feeds the
   shadow geometry and binds to `uAmp`. One-shot effects use
   `envelope(life, overshoot)`; halo (continuous) uses a periodic sine of
-  `animMs` so its loop seam survives.
+  `phase` (the §7.2 loop clock) so its loop seam survives.
 - **`frame.extras`** — every other time-varying uniform, keyed by canonical
   name; the `binding.extras` entry with the same `name` supplies each
   platform's uniform name (web `uDraw`, the Metal struct field, …). A
@@ -533,6 +533,8 @@ authored once and interpreted identically on every platform.
 | `animMs` | the "animate on twos"-snapped clock, ms (stepping applied) |
 | `life` | normalized 0..1 (`animMs / durationMs`, clamped) |
 | `elapsedMs` | the REAL un-stepped wall clock, ms (fail's stamp/shake — identical on every platform) |
+| `loopS` | seconds within the current `tempo.loop` period (`(animMs % periodMs) / 1000`); 0 without a loop (§7.2) |
+| `phase` | normalized loop phase in [0, 1) (`(animMs % periodMs) / periodMs`); 0 without a loop (§7.2) |
 
 plus `{ "param": "<name>" }` (a resolved render param) and the nodes: number
 literal, `const`, `add`, `sub` (left fold), `mul`, `div` (left fold, plain IEEE),
@@ -543,6 +545,44 @@ same tempo primitives every platform ships, so evaluated output is
 bit-identical across platforms. Operation order is significant for float
 parity: an implementation must reduce `add`/`mul` left-to-right exactly as
 written. Anything outside the grammar **throws** (same posture as §4.1).
+
+### 7.2 Continuous effects — `tempo.loop`
+
+Most effects are one-shot reward moments (`amp = envelope(life)`, a 0→peak→0
+fade). A CONTINUOUS effect — a calm "loading" ring (halo), a pulsing
+"recording" dot — instead declares a `tempo.loop` block and LOOPS SEAMLESSLY:
+
+```jsonc
+"tempo": {
+  "durationMs": { "from": { "baseline": "durationMs" } },
+  "loop": { "periodMs": 1500 },        // seamless period; snapAligned defaults true
+  "frame": {
+    "amp": { "add": [0.85, { "mul": [0.15, { "sin":
+              { "mul": [6.283185307179586, { "input": "phase" }] } }] }] }
+  }
+}
+```
+
+- **`periodMs`** (required) — the seamless loop period. **The parser validates
+  the seam invariants** on every platform: unless `snapAligned` is `false`,
+  `periodMs` must be a whole number of "animate on twos" steps
+  (`NPR_TIME_STEP_MS` = 1000/12 ms) so the whimsy-snapped clock is also
+  periodic, and every baseline `durationMs` must be a whole number of periods —
+  so the frame at `t == durationMs` matches `t == 0` at EVERY whimsy. What used
+  to be per-effect convention is a parse error when broken.
+- **Runner clocks** — the runners derive two standard periodic clock uniforms
+  from the contract each frame, off the SAME snapped clock as `uTimeS`:
+  `uLoopS` (seconds within the current loop) and `uPhase` (normalized phase in
+  `[0, 1)`). A looping shader drives ALL its motion from them —
+  `sin(TAU * uPhase)` for a breathe, `fract(uPhase * turns)` for a sweep, a
+  closed circle through noise space for texture — with no per-effect period
+  param or plumbing. The same clocks are the §7.1 `loopS`/`phase` inputs, so
+  the declarative `amp` and the shader read one clock.
+- **Conductor** — a looping effect re-arms at every `durationMs` seam instead
+  of tearing down; the host stops it via the handle `play()` returns (web
+  `PlayHandle.stop()`, Android `PlayHandle.stop()`; the Metal runner wraps its
+  clock at `durationMs`, so a host that keeps ticking loops forever). The
+  reduced-motion fallback renders ONE calm phase and holds — it never loops.
 
 ---
 

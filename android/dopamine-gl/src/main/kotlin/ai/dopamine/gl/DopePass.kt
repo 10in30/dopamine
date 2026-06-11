@@ -36,6 +36,7 @@ fun dopePassConfig(
     fragment = fragment,
     uniforms = plan.uniforms,
     usesOrigin = plan.usesOrigin,
+    loopPeriodMs = plan.loopPeriodMs,
     bindings = plan.bindings,
     shadowHeightFrac = { params -> plan.shadowHeightFrac(params) },
     passUniforms = passUniforms,

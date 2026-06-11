@@ -9,6 +9,7 @@ package ai.dopamine.demo
 
 import ai.dopamine.core.EffectRegistry
 import ai.dopamine.gl.DopamineView
+import ai.dopamine.gl.PlayHandle
 import ai.dopamine.gl.PlayOptions
 import android.app.Activity
 import android.content.Context
@@ -25,6 +26,9 @@ class MainActivity : Activity() {
     private var names: List<String> = emptyList()
     private var index = 0
     private val moods = listOf("serene", "celebratory", "electric")
+
+    /** A CONTINUOUS effect (halo) loops until stopped — stop it on the next fire. */
+    private var loopingHandle: PlayHandle? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,10 +78,14 @@ class MainActivity : Activity() {
 
     private fun fireNext(x: Float, y: Float) {
         if (names.isEmpty()) return
+        // A looping effect plays until stopped; end the previous one when the
+        // cycle moves on (a real host would stop it when its "loading" finishes).
+        loopingHandle?.stop()
+        loopingHandle = null
         val name = names[index % names.size]
         val mood = moods[index % moods.size]
         index++
-        view.play(
+        val handle = view.play(
             name,
             PlayOptions(
                 mood = mood, intensity = 0.85, whimsy = 0.5,
@@ -88,6 +96,7 @@ class MainActivity : Activity() {
                 targetHeightPx = minOf(view.width, view.height) * 0.4f,
             ),
         )
+        if (handle.looping) loopingHandle = handle
     }
 
     override fun onResume() { super.onResume(); view.onResume() }

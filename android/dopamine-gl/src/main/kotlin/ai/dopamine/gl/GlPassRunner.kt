@@ -44,6 +44,14 @@ class PassConfig(
     val uniforms: List<String> = emptyList(),
     /** Whether the shader reads `uOrigin` (anchored radial effects do). */
     val usesOrigin: Boolean = false,
+    /**
+     * The seamless loop period in ms (`tempo.loop.periodMs`) for a CONTINUOUS
+     * effect. When set, the runner computes the standard periodic clock
+     * uniforms each frame from the snapped clock: `uLoopS` (seconds within the
+     * current loop) and `uPhase` (normalized [0, 1)) — so a looping shader
+     * needs no per-effect period plumbing. Null for one-shot effects.
+     */
+    val loopPeriodMs: Double? = null,
     /** `param name → uniform name` overrides; map to `null` to skip a non-uniform param. */
     val bindings: Map<String, String?> = emptyMap(),
     /** Shadow occluder "height" as a fraction of min canvas dim (kept for portability). */
@@ -66,7 +74,7 @@ class PassConfig(
 )
 
 private val STANDARD_PASS = listOf(
-    "uOrigin", "uResolution", "uTarget", "uLife", "uTimeS", "uStyle", "uAmp",
+    "uOrigin", "uResolution", "uTarget", "uLife", "uTimeS", "uLoopS", "uPhase", "uStyle", "uAmp",
     "uC0", "uC1", "uC2", "uShadow", "uShadowOffset", "uShadowSoft", "uShadowStrength",
 )
 
@@ -111,6 +119,13 @@ fun createPassInstance(config: PassConfig, params: Map<String, DopeValue>, ctx: 
         }
         setF(prog, "uLife", info.life.toFloat())
         setF(prog, "uTimeS", (info.animMs / 1000.0).toFloat())
+        config.loopPeriodMs?.let { p ->
+            // Standard periodic clocks for a looping effect, off the SAME snapped
+            // clock as uTimeS (so the on-twos seam guarantee carries over).
+            val loopMs = info.animMs % p
+            setF(prog, "uLoopS", (loopMs / 1000.0).toFloat())
+            setF(prog, "uPhase", (loopMs / p).toFloat())
+        }
         setF(prog, "uStyle", style.toFloat())
         bindPalette(prog, pal)
         bindScalars(prog, params, scalarBinds)

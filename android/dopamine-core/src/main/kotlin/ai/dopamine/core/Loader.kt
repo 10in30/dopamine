@@ -105,6 +105,20 @@ data class DopePalette(
 )
 
 /**
+ * The continuous-loop contract (`tempo.loop`), mirror of the web `DopeLoopSpec`:
+ * the effect repeats seamlessly with period `periodMs`. `parseDope` validates
+ * the seam invariants (the period tiles the "animate on twos" grid unless
+ * `snapAligned` is false, and every baseline `durationMs` is a whole number of
+ * periods); the runner derives the standard periodic clock uniforms
+ * (`uLoopS`/`uPhase`) and the `loopS`/`phase` frame-expr inputs from it, and
+ * the conductor re-arms at `durationMs` instead of tearing down.
+ */
+data class DopeLoop(
+    val periodMs: Double,
+    val snapAligned: Boolean = true,
+)
+
+/**
  * A `.dope` document (the parts the loader consumes — others are ignored). The
  * raw ordered JSON is retained so effect code can read free-form `content` /
  * `geometry` sections (the data spine carries more than the loader needs).
@@ -121,6 +135,8 @@ data class DopeDoc(
     val baselineOrder: List<String>,
     /** Declared default mood from `controls.mood.default`, if any. */
     val controlsMoodDefault: String?,
+    /** Continuous-loop contract (`tempo.loop`), validated at parse time. */
+    val loop: DopeLoop? = null,
     /** The raw ordered JSON (for `content` / `geometry` consumers). */
     val raw: JsonValue,
 )

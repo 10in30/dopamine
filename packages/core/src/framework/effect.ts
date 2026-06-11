@@ -106,6 +106,13 @@ export interface EffectFactory<Params = unknown> {
     /** Which `elapsedMs` of the full timeline best represents a calm peak. */
     peakMs?: number;
   };
+  /**
+   * CONTINUOUS-loop contract (from `tempo.loop`): the effect repeats seamlessly
+   * with this period and `durationMs` is a whole number of periods. The
+   * conductor re-arms it at `durationMs` instead of tearing down — the host
+   * stops it via the handle `play()` returns. Absent for one-shot effects.
+   */
+  readonly loop?: { periodMs: number };
 }
 
 /** Public alias: an `Effect` is what you register and play by name. */

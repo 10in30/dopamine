@@ -157,6 +157,14 @@ public func parseDope(_ src: String) throws -> DopeDoc {
         frame = DopeFrameSpec(amp: amp, extras: f["extras"]?.asObject ?? [])
     }
 
+    // tempo.loop — the continuous-loop contract { periodMs, snapAligned }.
+    // Validated here (mirroring the web parseDope): the seam invariants move
+    // from per-effect convention into the parser on every platform.
+    var loop: DopeLoopSpec?
+    if let l = json["tempo"]?["loop"] {
+        loop = try decodeLoop(l, baselines: baselines)
+    }
+
     // tempo.reducedMotion — { peakMs, holdMs }.
     var reducedMotion: DopeReducedMotion?
     if let rm = json["tempo"]?["reducedMotion"] {
@@ -202,9 +210,35 @@ public func parseDope(_ src: String) throws -> DopeDoc {
         palette: palette, durationMs: durationMs,
         renderParams: renderParams, baselines: baselines,
         baselineOrder: baselineOrder, controlsMoodDefault: controlsMoodDefault,
-        frame: frame, reducedMotion: reducedMotion,
+        frame: frame, loop: loop, reducedMotion: reducedMotion,
         shadowHeightFrac: shadowHeightFrac, consts: consts,
         usesOrigin: usesOrigin, binding: binding,
         raw: json
     )
+}
+
+// MARK: - tempo.loop decode + validation (mirrors the web `assertValidLoop`).
+
+/// Tolerance for the loop whole-multiple checks (the step 1000/12 is not
+/// exactly representable, so an exact remainder check would be float-fragile).
+private let loopEps = 1e-6
+private func isWhole(_ x: Double) -> Bool { abs(x - x.rounded()) < loopEps }
+
+func decodeLoop(_ json: JSONValue, baselines: [String: [String: Double]]) throws -> DopeLoopSpec {
+    let p = json["periodMs"]?.asNumber ?? 0
+    guard p.isFinite, p > 0 else {
+        throw DopeError.invalidLoop("tempo.loop.periodMs must be a positive number (got \(json["periodMs"].map { "\($0)" } ?? "nil"))")
+    }
+    let snapAligned = json["snapAligned"]?.asBool ?? true
+    if snapAligned, !isWhole(p / NPR_TIME_STEP_MS) {
+        throw DopeError.invalidLoop(
+            "tempo.loop.periodMs (\(p)) is not a whole number of animate-on-twos steps (1000/12 ms)")
+    }
+    for (mood, row) in baselines {
+        if let d = row["durationMs"], !isWhole(d / p) {
+            throw DopeError.invalidLoop(
+                "baselines.\(mood).durationMs (\(d)) is not a whole number of tempo.loop periods (\(p) ms)")
+        }
+    }
+    return DopeLoopSpec(periodMs: p, snapAligned: snapAligned)
 }

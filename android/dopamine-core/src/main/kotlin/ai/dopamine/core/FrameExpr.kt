@@ -112,6 +112,14 @@ data class FrameExprCtx(
     val elapsedMs: Double,
     /** The resolved render-param bag (numeric entries are addressable). */
     val params: Map<String, DopeValue>,
+    /**
+     * Seconds within the current loop (`(animMs % tempo.loop.periodMs) / 1000`);
+     * 0 for an effect with no `tempo.loop` — the caller (the dope-pass frame
+     * derivation) fills these from the doc's loop contract.
+     */
+    val loopS: Double = 0.0,
+    /** Normalized loop phase in [0, 1) (`animMs % periodMs / periodMs`); 0 without a loop. */
+    val phase: Double = 0.0,
 )
 
 private fun evalNode(node: FrameExprNode, ctx: FrameExprCtx, allowInputs: Boolean): Double = when (node) {
@@ -128,6 +136,8 @@ private fun evalNode(node: FrameExprNode, ctx: FrameExprCtx, allowInputs: Boolea
             "animMs" -> ctx.animMs
             "life" -> ctx.life
             "elapsedMs" -> ctx.elapsedMs
+            "loopS" -> ctx.loopS
+            "phase" -> ctx.phase
             else -> throw DopeException("dope: unknown frame input \"${node.name}\"")
         }
     }

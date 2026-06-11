@@ -13,7 +13,11 @@
  * conveniences + the `<dopamine-success>` element.
  */
 
-import { play as conductorPlay, prepare as conductorPrepare } from "./framework/conductor.js";
+import {
+  play as conductorPlay,
+  prepare as conductorPrepare,
+  type PlayHandle,
+} from "./framework/conductor.js";
 import { getEffect } from "./framework/registry.js";
 import type { Anchor, FeelingInput } from "./framework/effect.js";
 import { randomSeed } from "./engine/seed.js";
@@ -43,7 +47,7 @@ export {
   type MoodSpec,
   type ResolvedMood,
 } from "./framework/mood-registry.js";
-export { teardown, type PreparedHandle } from "./framework/conductor.js";
+export { teardown, type PreparedHandle, type PlayHandle } from "./framework/conductor.js";
 export {
   loadEffect,
   loadEffectSync,
@@ -60,6 +64,7 @@ export {
   type DopeOutline,
   type DopeBinding,
   type DopeFrameSpec,
+  type DopeLoopSpec,
 } from "./framework/loader.js";
 export {
   dopePassConfig,
@@ -156,14 +161,16 @@ function resolveRequest(
 
 /**
  * Generic real-time fire: play a registered effect by name. Resolves when the
- * animation has fully played out. SSR-safe (resolves immediately off-DOM). The
+ * animation has fully played out. A CONTINUOUS effect (one whose `.dope`
+ * declares `tempo.loop`, e.g. halo) loops seamlessly until the host calls the
+ * returned handle's `stop()`. SSR-safe (resolves immediately off-DOM). The
  * effect must already be registered (import `@dopamine/effect-<name>` or the
  * `@dopamine/effects` umbrella, or load one via `loadEffect`).
  */
-export function play(effect: string, options: DopamineSuccessOptions = {}): Promise<void> {
-  if (!isBrowser()) return Promise.resolve();
+export function play(effect: string, options: DopamineSuccessOptions = {}): PlayHandle {
+  if (!isBrowser()) return Object.assign(Promise.resolve(), { stop() {} });
   const req = resolveRequest(effect, options);
-  if (!req || !req.factory) return Promise.resolve();
+  if (!req || !req.factory) return Object.assign(Promise.resolve(), { stop() {} });
   return conductorPlay({
     factory: req.factory,
     target: req.target,
