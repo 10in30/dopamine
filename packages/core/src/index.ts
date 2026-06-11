@@ -58,7 +58,16 @@ export {
   getOutline,
   type DopeDoc,
   type DopeOutline,
+  type DopeBinding,
+  type DopeFrameSpec,
 } from "./framework/loader.js";
+export {
+  dopePassConfig,
+  registerDopeEffect,
+  type DopePassHooks,
+  type DopeShader,
+  type RegisterDopeEffectOptions,
+} from "./framework/dope-pass.js";
 export {
   evalFrameExpr,
   evalParamExpr,

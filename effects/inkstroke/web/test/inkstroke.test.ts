@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { resolveInkParams, MAX_DROPS } from "../src/inkstroke-oracle.js";
-import { strokeProgress, STROKE_DRAW_MS } from "../src/inkstroke-tempo.js";
-import type { DopamineMood } from "@dopamine/core";
+import { easeOutCubic, type DopamineMood } from "@dopamine/core";
 // Importing the effect registers it (self-registers on import).
 import "../src/index.js";
+
+// The stroke-draw timing now lives in inkstroke.dope.json (`tempo.frame.extras.
+// draw` — easeOutCubic of animMs/360, evaluated by the generic dope factory; the
+// frame-parity suite pins it). These are local mirrors for the property checks.
+const STROKE_DRAW_MS = 360;
+const strokeProgress = (elapsedMs: number): number => easeOutCubic(elapsedMs / STROKE_DRAW_MS);
 
 const MOODS: DopamineMood[] = ["serene", "celebratory", "electric"];
 
