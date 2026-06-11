@@ -20,13 +20,13 @@ const pascal = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**
  * Transform a raw web template body → an Android Kotlin raw-string body:
- *  - resolve non-`GLSL_*` `${X}` interpolations to their numeric const value,
+ *  - resolve non-`GLSL_*` `${X}` interpolations to the module's exported value,
  *  - collect the `GLSL_*` chunk names referenced (kept as `${…}`).
  */
-function transformBody(body, consts, chunks) {
+function transformBody(body, mod, chunks) {
   return body.replace(/\$\{([A-Za-z_]\w*)\}/g, (_m, id) => {
     if (id.startsWith("GLSL_")) { chunks.add(id); return `\${${id}}`; }
-    if (id in consts) return consts[id];
+    if (mod[id] !== undefined) return String(mod[id]);
     throw new Error(`android-shader: cannot resolve \${${id}}`);
   });
 }
@@ -42,11 +42,11 @@ export async function generateAndroidShaderKt({ root, dir, slug, namespace, shad
   const UPPER = slug.toUpperCase();
   const vertexName = `${UPPER}_VERTEX_SRC`;
   const fragmentName = `${UPPER}_FRAGMENT_SRC`;
-  const { srcText, consts } = await loadWebShaderSource(root, dir, shaderCfg);
+  const { srcText, mod } = await loadWebShaderSource(root, dir, shaderCfg);
   const chunks = new Set();
 
-  const vertexBody = transformBody(extractTemplate(srcText, shaderCfg.vertexExport), consts, chunks);
-  let fragmentBody = transformBody(extractTemplate(srcText, shaderCfg.fragmentExport), consts, chunks);
+  const vertexBody = transformBody(extractTemplate(srcText, shaderCfg.vertexExport), mod, chunks);
+  let fragmentBody = transformBody(extractTemplate(srcText, shaderCfg.fragmentExport), mod, chunks);
 
   // Append the light-out chunk after the leading chunk block (i.e. right after the
   // last `${GLSL_*}` interpolation), then swap the web emit for the premultiplied one.

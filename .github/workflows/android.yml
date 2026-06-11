@@ -47,6 +47,16 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      # `dopamine build` transpiles the single-source web GLSL → MSL/Android via
+      # esbuild, so it needs the node deps. --ignore-scripts skips Playwright/ffmpeg
+      # downloads; esbuild's platform binary is an optional dep in the lockfile.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install toolchain deps (esbuild for dopamine build)
+        run: npm ci --ignore-scripts
 
       # The headline data-spine invariant. Every effect now lives in the
       # single-folder model (effects/<name>/) and the @dopamine/build toolchain
@@ -116,6 +126,14 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: ${{ runner.os }}-gradle-
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install toolchain deps (esbuild for dopamine build)
+        run: npm ci --ignore-scripts
+
       - name: dopamine build (generate dist/ platform packages incl. comic + fonts)
         run: |
           python3 -m pip install --quiet --break-system-packages fonttools brotli \
@@ -156,6 +174,14 @@ jobs:
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm || true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install toolchain deps (esbuild for dopamine build)
+        run: npm ci --ignore-scripts
 
       - name: dopamine build (generate dist/ platform packages incl. comic + fonts)
         run: |
