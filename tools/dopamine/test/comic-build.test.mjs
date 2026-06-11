@@ -25,13 +25,15 @@ describe("dopamine toolchain — comic → standalone platform packages", () => 
     expect(eff.doc["x-build"].web.package).toBe("@dopamine/effect-comic");
   });
 
-  it("strips the toolchain-only keys from the PORTABLE embedded .dope", () => {
+  it("strips the toolchain-only keys (but SHIPS binding) in the PORTABLE embedded .dope", () => {
     const doc = { fmt: "dopamine-effect", v: "1.0.0", slug: "x", kind: "pass",
                   binding: { a: 1 }, "x-build": { swift: {} }, render: { params: {} } };
     const portable = portableDope(doc);
     expect(portable).toContain('"fmt": "dopamine-effect"');
     expect(portable).toContain('"render"');
-    for (const k of ['"slug"', '"kind"', '"binding"', '"x-build"']) {
+    // The binding contract ships: the runtimes derive uniform bindings from it.
+    expect(portable).toContain('"binding"');
+    for (const k of ['"slug"', '"kind"', '"x-build"']) {
       expect(portable, k).not.toContain(k);
     }
   });

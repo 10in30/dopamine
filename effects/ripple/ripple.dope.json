@@ -172,7 +172,12 @@
           ]
         }
       }
-    }
+    },
+    "frame": {
+      "amp": { "envelope": [{ "input": "life" }, { "param": "overshoot" }] },
+      "extras": {}
+    },
+    "reducedMotion": { "peakMs": 280, "holdMs": 380 }
   },
   "render": {
     "params": {
@@ -281,6 +286,9 @@
         }
       }
     },
+    "shadowHeightFrac": { "min": [{ "add": [{ "mul": [{ "param": "wavelength" }, { "param": "rings" }, 0.6] }, { "mul": [{ "param": "amplitude" }, 0.3] }] }, 1] },
+    "consts": { "MAX_RINGS": 7, "MIN_RINGS": 2 },
+    "config": { "usesOrigin": true },
     "backends": {
       "webgl2": {
         "stage": "fullscreen-triangle",
@@ -295,7 +303,7 @@
     ]
   },
   "binding": {
-    "note": "CROSS-PLATFORM uniform-binding contract (consumed by the @dopamine/build toolchain, not the runtime). Which render.params are NOT shader uniforms, the seed-keyed scatter field, the per-frame/host extras, and the texture samplers \u2014 one source of truth for the web u<Name> list, the Swift struct + packer, and the MSL struct. The toolchain STRIPS this (and `x-build`, `slug`, `kind`) from the .dope it embeds in each platform package, so the embedded runtime doc stays the portable, standalone-safe data spine.",
+    "note": "CROSS-PLATFORM uniform-binding contract. Which render.params are NOT shader uniforms, the seed-keyed scatter field, the per-frame/host extras, and the texture samplers \u2014 one source of truth for the web u<Name> list, the Swift struct + packer, and the MSL struct. SHIPS in the portable .dope (the runtime derives its uniform bindings from it); the toolchain consumes it too for the Metal struct codegen. Only `x-build`, `slug` and `kind` stay toolchain-only.",
     "excludeParams": [
       "style",
       "overshoot",
