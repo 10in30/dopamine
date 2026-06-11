@@ -326,6 +326,7 @@
       "branches"
     ],
     "scatterKey": "boltSeed",
+    "scatterWeb": "uSeed",
     "extras": [
       {
         "name": "strike",

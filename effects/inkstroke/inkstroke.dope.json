@@ -126,6 +126,13 @@
   },
   "x-build": {
     "note": "TOOLCHAIN build config (vendor-namespaced `x-` so runtime parsers ignore it; stripped from the embedded .dope). One block per platform: how `dopamine build` assembles the standalone, installable package into dist/<platform>/.",
+    "shader": {
+      "note": "Single-source shader: the canonical web GLSL is the ONLY hand-written shader; the MSL is TRANSPILED from it. See tools/dopamine/src/shader.mjs.",
+      "web": "web/src/inkstroke-shader.ts",
+      "vertexExport": "INK_VERTEX_SRC",
+      "fragmentExport": "INK_FRAGMENT_SRC",
+      "generateMSL": true
+    },
     "swift": {
       "module": "DopamineEffectInkstroke",
       "sources": "swift",

@@ -1,6 +1,10 @@
 # RFC: Simplifying cross-platform effects — first-class looping + one shader source
 
 Status: DRAFT / RFC. Date: 2026-06-09.
+> **Update (2026-06-11):** the single-source SHADER path (Proposals B/C) is IMPLEMENTED for 5
+> effects — see [`single-source-effects-status.md`](./single-source-effects-status.md) for what
+> shipped and the roadmap for the remaining logic-datafication (P2) + looping (Proposal A) work.
+
 Scope: two concrete refinements to how Dopamine effects are built across the
 three stacks (web / Swift+Metal / Android+GL ES), grounded in the friction of
 shipping the **tenth** effect — `halo`, the first *continuous / looping* effect —
