@@ -130,7 +130,6 @@
     },
     "swift": {
       "module": "DopamineEffectAurora",
-      "sources": "swift",
       "platforms": ["iOS(.v15)", "macOS(.v12)"],
       "core": { "mode": "path", "package": "Dopamine", "product": "DopamineCore", "path": "swift" }
     },
@@ -140,8 +139,7 @@
     },
     "android": {
       "module": "dopamine-effect-aurora",
-      "namespace": "ai.dopamine.effect.aurora",
-      "sources": "android"
+      "namespace": "ai.dopamine.effect.aurora"
     }
   }
 }

@@ -34,23 +34,32 @@ test("inkstroke: the generated factory shells match the committed snapshots", ()
   expect(emitKotlinFactory("inkstroke", "ai.dopamine.effect.inkstroke")).toBe(golden("Inkstroke.kt"));
 });
 
-test("inkstroke: the dist packages carry ONLY generated sources (no hand-written platform files)", async () => {
-  const eff = await loadEffect(root, "effects/inkstroke");
+// The fully declarative effects — those that ship NO swift/ or android/
+// folder. Their dist packages must carry ONLY generated sources.
+const GENERATED = ["aurora", "ripple", "inkstroke", "halo"];
 
-  const swift = await generateSwiftPackage({ root, eff, outDir: "/tmp/out" });
-  const swiftSources = swift.filter((f) => f.path.endsWith(".swift") && !f.path.endsWith("Package.swift"));
-  expect(swiftSources.map((f) => f.path.split("/").pop()).sort()).toEqual(
-    ["Inkstroke.swift", "InkstrokeBundle.swift", "InkstrokeUniforms.swift"],
-  );
-  expect(swift.find((f) => f.path.endsWith("/Inkstroke.swift")).content).toBe(golden("Inkstroke.swift"));
+for (const slug of GENERATED) {
+  const Name = slug.charAt(0).toUpperCase() + slug.slice(1);
+  test(`${slug}: the dist packages carry ONLY generated sources (no hand-written platform files)`, async () => {
+    const eff = await loadEffect(root, `effects/${slug}`);
 
-  const android = await generateAndroidLibrary({ root, eff });
-  const ktSources = android.filter((f) => f.path.endsWith(".kt"));
-  expect(ktSources.map((f) => f.path.split("/").pop()).sort()).toEqual(
-    ["Inkstroke.kt", "InkstrokeShader.kt"],
-  );
-  expect(android.find((f) => f.path.endsWith("/Inkstroke.kt")).content).toBe(golden("Inkstroke.kt"));
-});
+    const swift = await generateSwiftPackage({ root, eff, outDir: "/tmp/out" });
+    const swiftSources = swift.filter((f) => f.path.endsWith(".swift") && !f.path.endsWith("Package.swift"));
+    expect(swiftSources.map((f) => f.path.split("/").pop()).sort()).toEqual(
+      [`${Name}.swift`, `${Name}Bundle.swift`, `${Name}Uniforms.swift`],
+    );
+    expect(swift.find((f) => f.path.endsWith(`/${Name}.swift`)).content).toBe(emitSwiftFactory(slug));
+
+    const android = await generateAndroidLibrary({ root, eff });
+    const ktSources = android.filter((f) => f.path.endsWith(".kt"));
+    expect(ktSources.map((f) => f.path.split("/").pop()).sort()).toEqual(
+      [`${Name}.kt`, `${Name}Shader.kt`],
+    );
+    expect(android.find((f) => f.path.endsWith(`/${Name}.kt`)).content).toBe(
+      emitKotlinFactory(slug, `ai.dopamine.effect.${slug}`),
+    );
+  });
+}
 
 test("a non-declarative effect without platform sources is rejected with a pointer", () => {
   // Strip the datafied sections: generation must refuse rather than emit a
