@@ -36,6 +36,12 @@ function transformBody(body, consts, chunks) {
  */
 export async function generateAndroidShaderKt({ root, dir, slug, namespace, shaderCfg }) {
   const Name = pascal(slug);
+  // The Android factory imports `<SLUG_UPPER>_{VERTEX,FRAGMENT}_SRC` (e.g. inkstroke →
+  // INKSTROKE_*, even though the web abbreviates it INK_*). Extract from the web by
+  // its own export names; EMIT under the slug-derived Android names the factory expects.
+  const UPPER = slug.toUpperCase();
+  const vertexName = `${UPPER}_VERTEX_SRC`;
+  const fragmentName = `${UPPER}_FRAGMENT_SRC`;
   const { srcText, consts } = await loadWebShaderSource(root, dir, shaderCfg);
   const chunks = new Set();
 
@@ -61,9 +67,9 @@ package ${namespace}
 
 ${imports}
 
-val ${shaderCfg.vertexExport}: String = """${vertexBody}"""
+val ${vertexName}: String = """${vertexBody}"""
 
-val ${shaderCfg.fragmentExport}: String = """${fragmentBody}"""
+val ${fragmentName}: String = """${fragmentBody}"""
 `;
   return { name: `${Name}Shader.kt`, content };
 }

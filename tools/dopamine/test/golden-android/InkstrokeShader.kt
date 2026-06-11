@@ -16,13 +16,13 @@ import ai.dopamine.core.GLSL_PARTICLES
 import ai.dopamine.core.GLSL_SD_SEG
 import ai.dopamine.core.GLSL_TONEMAP_ACES
 
-val INK_VERTEX_SRC: String = """#version 300 es
+val INKSTROKE_VERTEX_SRC: String = """#version 300 es
 void main() {
   vec2 pos = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
   gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
 }"""
 
-val INK_FRAGMENT_SRC: String = """#version 300 es
+val INKSTROKE_FRAGMENT_SRC: String = """#version 300 es
 precision highp float;
 out vec4 fragColor;
 
