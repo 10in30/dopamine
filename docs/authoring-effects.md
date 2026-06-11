@@ -6,39 +6,47 @@ multi-backend story, the Lottie lineage) read
 [`effect-format.md`](./effect-format.md) — this guide is the build instructions,
 that doc is the spec.
 
-> **Architecture (package-per-effect).** The monorepo is a slim runtime core plus
-> one installable package per effect:
+> **Architecture (one folder per effect).** The monorepo is a slim runtime core
+> plus one folder per effect:
 >
 > - **`packages/core`** (`@dopamine/core`) — the runtime ONLY: the conductor +
->   registries + `.dope` loader + the generic runners, and the SHARED engine bits
+>   registries + `.dope` loader + the generic runners + the per-frame expression
+>   evaluator (`framework/frame-expr.ts`), and the SHARED engine bits
 >   (`color`, `sdf`, `shadow`, `seed`, `context`, `gl`, the `look/*` GLSL chunks,
 >   and the tempo PRIMITIVES `clamp01`/`easeOutCubic`/`easeOutBack`/`envelope`/
 >   `NPR_TIME_STEP_MS`). Core imports + registers **no** effect.
-> - **`packages/effect-<name>`** (`@dopamine/effect-<name>`) — one per effect.
->   Each depends on `@dopamine/core` and carries its OWN code + data: its
->   `<name>.dope.json`, `<name>-shader.ts`, its bespoke `<name>-tempo.ts`, its
->   panel `draw()`/renderer + embedded fonts/SDF where applicable, and a factory
->   `index.ts` that **self-registers on import** (`registerEffect` +
->   `registerProgram`). It self-registers, so importing it is all it takes.
+> - **`effects/<name>/`** — one folder per effect: the canonical
+>   `<name>.dope.json` (the data + the `binding` contract + the per-platform
+>   `x-build` config) and the effect's platform sources. The **web workspace
+>   package** at `effects/<name>/web` (`@dopamine/effect-<name>`) carries the
+>   GLSL `<name>-shader.ts`, any per-effect timing code, panel `draw()`/renderer
+>   + embedded fonts/SDF where applicable, and a factory `index.ts` that
+>   **self-registers on import**. The `@dopamine/build` toolchain
+>   (`node tools/dopamine/src/cli.mjs build`) compiles the folder into
+>   standalone, installable packages under `dist/` (npm + SwiftPM + Gradle),
+>   each embedding a byte-identical portable `.dope`.
 > - **`packages/effects`** (`@dopamine/effects`) — the batteries-included
->   umbrella: depends on all ten, re-exports them, and hosts the `celebrate*`
->   conveniences, `builtinEffectNames`, and the `<dopamine-success>` element.
->   `import "@dopamine/effects"` registers everything.
+>   umbrella: depends on every built-in effect, re-exports them, and hosts the
+>   `celebrate*` conveniences, `builtinEffectNames`, and the
+>   `<dopamine-success>` element. `import "@dopamine/effects"` registers
+>   everything.
 >
-> Adding an effect means **scaffolding a new `packages/effect-<name>` package** —
-> NO core edits, NO shared-file edits, NO touching another package.
+> Adding an effect means **scaffolding a new `effects/<name>/` folder** —
+> NO core edits, NO shared-file edits, NO touching another effect.
 
-> **Other platforms.** This guide is the **web** how-to. The same effect also runs
+> **Other platforms.** This guide walks the **web** package; the same effect runs
 > from the *same `.dope` bytes* on Swift/Metal (`swift/`) and Android/OpenGL ES
-> (`android/`). Porting an effect there is its own per-package scaffold — see
-> `swift/README.md` and [`android/README.md`](../android/README.md). (The Android
-> shaders are this effect's GLSL near-verbatim, since OpenGL ES 3.0 is the same
-> GLSL ES 3.00 as WebGL2.)
+> (`android/`). For an effect whose `.dope` declares an `x-build.shader` block
+> and `tempo.frame`, the toolchain generates the MSL and Kotlin shader variants
+> and the other platforms need only thin registration shims; effects with
+> platform-specific behavior add sources under `effects/<name>/swift` and
+> `effects/<name>/android` — see `swift/README.md` and
+> [`android/README.md`](../android/README.md).
 
 By the end you will be able to add either kind of effect — a **pure-shader**
-effect or a **Canvas2D-hybrid** effect — by scaffolding a small package: a `.dope`
-data file, a fragment shader (and, for hybrids, a `draw()` function), and ~30
-lines of glue that self-registers. Most of what an effect "is" lives in data.
+effect or a **Canvas2D-hybrid** effect — with a `.dope` data file, a fragment
+shader (and, for hybrids, a `draw()` function), and a few lines of glue that
+self-register. Most of what an effect "is" lives in data.
 
 ---
 
@@ -87,6 +95,10 @@ lets a new effect be a small file, and keeps the library tree-shakeable.
   `loadEffect()` bind an arbitrary host-authored `.dope` to a bundled shader.
 - `framework/load-effect.ts` — `loadEffect()`: the public, no-code entry that
   loads/patches a `.dope` and returns a playable factory.
+- `framework/dope-pass.ts` — `registerDopeEffect(DOPE, shader, opts?)`: builds +
+  registers a fully data-driven effect from a `.dope` that carries `tempo.frame`
+  + the `binding` contract (deriving uniforms, bindings, `frame()`,
+  `shadowHeightFrac`, `usesOrigin` from the data).
 
 ### 1.3 The feeling API
 
@@ -134,7 +146,7 @@ for you from a small config.
 | Runner | `framework/pass-runner.ts` → `createPassInstance` | `framework/panel-runner.ts` → `createPanelInstance` |
 | What draws each frame | one full-screen-triangle fragment shader | a Canvas2D `draw()` rasterized to a texture, *then* a fragment shader |
 | Use when | the whole look is expressible analytically in GLSL (noise, SDFs, motes, gradients) | the look needs real vector/text layout the GPU can't easily do (hand-lettered words, complex paths) |
-| Examples | Solarbloom, Calligraphic Verdict (inkstroke), Fail | Comic Impact |
+| Example | ripple | comic |
 | Aux inputs | optional baked-SDF icon or rasterized glyph textures | the per-frame panel texture (+ optional aux) |
 
 Both runners share their plumbing via `framework/pass-common.ts` (scalar
@@ -151,11 +163,12 @@ every frame, so it is heavier.
 ## 3. The `.dope` schema, field by field
 
 A `.dope` is a standalone JSON document. The loader consumes the keys below;
-others (`meta`, `controls` UI hints) are for introspection/tooling. Use
-`packages/effect-solarbloom/src/solarbloom.dope.json` (pure-shader) and
-`packages/effect-comic/src/comic.dope.json` (hybrid) as live references.
-`parseDope()` validates the magic (`fmt: "dopamine-effect"`), the
-major version, the required keys, and the **standalone guard**.
+others (`meta`, `controls` UI hints) are for introspection/tooling, and
+`x-build` is toolchain-only. Use `effects/ripple/ripple.dope.json`
+(pure-shader, fully declarative) and `effects/comic/comic.dope.json` (hybrid)
+as live references. `parseDope()` validates the magic
+(`fmt: "dopamine-effect"`), the major version, the required keys, and the
+**standalone guard**.
 
 ### 3.1 Top-level
 
@@ -168,10 +181,13 @@ major version, the required keys, and the **standalone guard**.
   "controls":  { /* §3.2 */ },
   "baselines": { /* §3.3 — per-mood numeric table */ },
   "palette":   { /* §3.4 — OKLCH golden-angle rules */ },
-  "tempo":     { "durationMs": { /* §3.5 */ } },
+  "tempo":     { "durationMs": { /* §3.5 */ },
+                 "frame": { /* §3.5 — declarative per-frame logic (optional) */ },
+                 "reducedMotion": { /* optional */ } },
   "geometry":  { /* §3.7 — optional outline → baked SDF */ },
   "content":   { /* optional, §3.8 */ },
   "typography":{ /* optional, §3.8 */ },
+  "binding":   { /* the uniform-binding contract (format spec §8.2) */ },
   "render":    { "params": { /* §3.6 */ }, "backends": { /* §3.9 */ }, "fallbackOrder": [] }
 }
 ```
@@ -243,17 +259,26 @@ survives. Three linear-sRGB stops. Rules (all in `engine/color.ts → buildPalet
 > scatter offset (`rng() * 1000`). Do not reorder — a pinned seed must reproduce
 > byte-for-byte (the cross-platform parity grids assert this, §7.5).
 
-### 3.5 `tempo` — `durationMs`
+### 3.5 `tempo` — `durationMs` (+ optional `frame` / `reducedMotion`)
 
-Total effect length, as a mapping expression. Only `durationMs` is consumed by
-the loader here; the *shape* of time (envelopes, draw windows, the "on twos"
-grid) lives in `engine/tempo.ts` and is wired up in your effect's `frame()` hook
-(§4.4).
+`durationMs` is the total effect length, as a mapping expression:
 
 ```jsonc
 "tempo": { "durationMs": { "from": { "round": {
   "mul": [ {"baseline":"durationMs"}, {"lerp":["intensity",1.1,0.9]} ] } } } }
 ```
+
+The *shape* of time (envelopes, draw windows, the "on twos" grid) comes from
+the tempo primitives in `engine/tempo.ts`, reached one of two ways:
+
+- **Declarative (preferred where it fits):** a `tempo.frame` block — the
+  per-frame `amp` + `extras` as expression trees over `animMs`/`life`/
+  `elapsedMs` and the resolved params (format spec §7.1), evaluated by
+  `framework/frame-expr.ts`. Pair it with `tempo.reducedMotion`,
+  `render.shadowHeightFrac`/`consts`/`config`, and the `binding` contract, and
+  `registerDopeEffect` derives the entire runner config from the data (§5.3).
+- **Code:** a `frame()` hook in your runner config (§4.4) — for timing that is
+  genuinely code-shaped.
 
 ### 3.6 `render.params` + the mapping grammar
 
@@ -451,17 +476,18 @@ Available chunks: `GLSL_CONSTANTS` (`TAU`), `GLSL_HASH`, `GLSL_FBM`,
 `GLSL_IRIDESCENT`, `GLSL_DISPERSION`, `GLSL_SD_SEG` (`sdSeg`),
 `GLSL_TONEMAP_ACES`, `GLSL_DITHER` (`ditherAdd`), `GLSL_ROT2`, `GLSL_HALFTONE`
 (`benday`), and `GLSL_PARTICLES` (in `look/particles.glsl.ts`). If you `#define`
-a loop bound (e.g. `MAX_MOTES`), make the TS const that feeds the loader the
-**single source of truth** and interpolate it into the GLSL — see
-`effect-solarbloom/src/solarbloom-shader.ts`
-(`export const MAX_MOTES = 80; … #define MAX_MOTES ${MAX_MOTES}`).
+a loop bound (e.g. `MAX_MOTES`), declare the const once and interpolate it into
+the GLSL — see `effects/solarbloom/web/src/solarbloom-shader.ts`
+(`export const MAX_MOTES = 80; … #define MAX_MOTES ${MAX_MOTES}`); a fully
+declarative effect declares it in `render.consts` instead.
 
-### 4.4 The `frame()` hook — the only genuinely time-varying code
+### 4.4 The `frame()` hook — per-frame logic as code
 
-The config's `frame(info, params)` computes the per-frame, effect-specific
-uniforms (the envelope amplitude, draw/stamp progress, shake). It returns a map;
-the well-known key `amp` becomes `uAmp` **and** feeds the shadow geometry, every
-other key is its own uniform.
+If your effect's per-frame logic is not expressed as `tempo.frame` data
+(§3.5), the config's `frame(info, params)` computes the per-frame,
+effect-specific uniforms (the envelope amplitude, draw/stamp progress, shake).
+It returns a map; the well-known key `amp` becomes `uAmp` **and** feeds the
+shadow geometry, every other key is its own uniform.
 
 ```ts
 frame: ({ animMs, life }, params) => ({
@@ -472,43 +498,50 @@ frame: ({ animMs, life }, params) => ({
 
 The **generic** timing PRIMITIVES live in `@dopamine/core` and are imported from
 there: `envelope` (held-breath attack + overshoot + decay), `easeOutCubic`/
-`easeOutBack`, `clamp01`, and `NPR_TIME_STEP_MS`. Your effect's **bespoke**
-timing — its own draw window / slam / stamp / lub-dub / strike envelope — lives in
-*your package's* `<name>-tempo.ts`, built on top of those primitives (see e.g.
-`effect-solarbloom/src/solarbloom-tempo.ts → checkProgress`,
-`effect-comic/src/comic-tempo.ts → impactScale/impactPresence`,
-`effect-fail/src/fail-tempo.ts → failEnvelope/stampProgress/shakeOffset`). The
+`easeOutBack`, `clamp01`, and `NPR_TIME_STEP_MS`. An effect's **own** timing —
+a draw window / slam / stamp / lub-dub envelope — lives either in its
+`tempo.frame` expressions or in its package's `<name>-tempo.ts`, built on top
+of those primitives (see e.g.
+`effects/solarbloom/web/src/solarbloom-tempo.ts → checkProgress`,
+`effects/comic/web/src/comic-tempo.ts → impactScale/impactPresence`). The
 pass runner snaps `animMs` toward a 12 Hz grid as `style` rises (the
-**animate-on-twos** look); the panel runner uses the raw clock.
+**animate-on-twos** look — animating at ~12 fps like hand-drawn animation "on
+twos"); the panel runner uses the raw clock.
 
 ---
 
 ## 5. Step-by-step: add a NEW pure-shader effect
 
-We'll add a fictional `sparkle` effect. It's a NEW PACKAGE,
-`packages/effect-sparkle` — no core edits, no shared-file edits. The package is
-just: `package.json`, `tsconfig.json`, and `src/` (the dope + shader + bespoke
-tempo + factory) + a `test/`.
+We'll add a fictional `sparkle` effect. It's a NEW FOLDER, `effects/sparkle/` —
+no core edits, no shared-file edits. The folder is: the canonical
+`sparkle.dope.json`, plus a `web/` workspace package (`package.json`,
+`tsconfig.json`, `src/`, `test/`).
 
-### 5.0 Scaffold the package
+### 5.0 Scaffold the folder
 
 ```
-packages/effect-sparkle/
-  package.json        # name @dopamine/effect-sparkle, keyword "dopamine-effect",
-                      # dep @dopamine/core, build "tsc -p tsconfig.json",
-                      # "sideEffects": ["./src/index.ts", "./dist/index.js"]
-  tsconfig.json       # extends ../../tsconfig.base.json, outDir ./dist, rootDir ./src
-  src/
-    index.ts          # the factory — self-registers on import (§5.3)
-    sparkle.dope.json # the data (§5.1)
-    sparkle-shader.ts # the GLSL (§5.2)
-    sparkle-tempo.ts  # the bespoke envelope (only if it needs one)
-  test/
-    sparkle.test.ts   # pin a seed, assert params/look (§7.5)
+effects/sparkle/
+  sparkle.dope.json     # the CANONICAL data document (§5.1)
+  web/
+    package.json        # name @dopamine/effect-sparkle, keyword "dopamine-effect",
+                        # dep @dopamine/core, build "tsc -p tsconfig.json",
+                        # "sideEffects": ["./src/index.ts", "./dist/index.js"]
+    tsconfig.json       # extends ../../../tsconfig.base.json, outDir ./dist, rootDir ./src
+    src/
+      index.ts          # the factory — self-registers on import (§5.3)
+      sparkle-shader.ts # the GLSL (§5.2)
+      # sparkle.dope.json appears here too: the PORTABLE copy `dopamine build`
+      # syncs in (gitignored — never hand-edit it; edit the canonical one)
+    test/
+      sparkle.test.ts   # pin a seed, assert params/look (§7.5)
+  swift/                # optional: Swift sources (a thin shim for declarative effects)
+  android/              # optional: Kotlin sources (ditto)
 ```
 
-Copy an existing leaf package (`packages/effect-aurora` is the simplest
-pure-shader one) and rename. `package.json`:
+Copy an existing effect folder (`effects/ripple` is a simple pure-shader,
+fully declarative one) and rename. The root `workspaces` glob
+(`effects/*/web`) plus the auto-discovering vitest/Vite aliases pick the web
+package up with no alias edits. `web/package.json`:
 
 ```jsonc
 {
@@ -526,11 +559,18 @@ pure-shader one) and rename. `package.json`:
 }
 ```
 
-After scaffolding, run `npm install` once so the workspace symlink is created.
+After scaffolding, run `npm install` once so the workspace symlink is created,
+and `node tools/dopamine/src/cli.mjs build` to sync the portable `.dope` into
+`web/src/` (the root `pretest`/`build` scripts run it too).
 
-### 5.1 `src/sparkle.dope.json`
+### 5.1 `effects/sparkle/sparkle.dope.json`
 
-A minimal doc (one mood, one knob mapped). Copy `solarbloom.dope.json` and trim:
+A minimal doc. Copy an existing one (e.g. `effects/ripple/ripple.dope.json`)
+and trim. Beyond the blocks below, a fully declarative effect also carries
+`tempo.frame` + `tempo.reducedMotion` (§3.5), the `binding` contract,
+`render.shadowHeightFrac`/`consts`/`config`, and an `x-build` block telling the
+toolchain how to emit the platform packages (and, with `x-build.shader`, to
+generate the MSL + Kotlin shader variants from your GLSL):
 
 ```jsonc
 {
@@ -586,7 +626,32 @@ silhouette. Import the `GLSL_*` chunks from `@dopamine/core`.
 ### 5.3 `src/index.ts` — the factory, config, registration
 
 Everything is imported from `@dopamine/core`; the only local imports are this
-package's own shader + (optional) bespoke `<name>-tempo.ts`.
+package's own shader + (optional) `<name>-tempo.ts`.
+
+**The declarative path (preferred where it fits).** If the `.dope` carries
+`tempo.frame`, the `binding` contract, and `render.shadowHeightFrac`/`consts`/
+`config`, the whole factory is one call (see `effects/ripple/web/src/index.ts`
+for the live version):
+
+```ts
+import { SPARKLE_FRAGMENT_SRC, SPARKLE_VERTEX_SRC } from "./sparkle-shader.js";
+import { parseDope, registerDopeEffect } from "@dopamine/core";
+import doc from "./sparkle.dope.json";
+
+export const sparkle = registerDopeEffect(parseDope(doc as object), {
+  vertex: SPARKLE_VERTEX_SRC,
+  fragment: SPARKLE_FRAGMENT_SRC,
+});
+export default sparkle;
+```
+
+`registerDopeEffect` derives the `PassConfig` (uniforms, bindings, `frame()`,
+`shadowHeightFrac`, `usesOrigin`), registers the factory AND a bundled program.
+Genuinely code-shaped bits (aux textures, canvas-dependent pass uniforms — see
+`effects/fail/web/src/index.ts`) ride its `hooks` option.
+
+**The code path (supported for effects that need it).** Spell the config out
+yourself:
 
 ```ts
 import { SPARKLE_FRAGMENT_SRC, SPARKLE_VERTEX_SRC } from "./sparkle-shader.js";
@@ -655,9 +720,9 @@ being auto-bound. The factory's own `package.json` `"sideEffects"` entry for
 - **Root build.** Add `-w @dopamine/effect-sparkle` to the effects step of the
   root `package.json` `build` script (between core and the umbrella).
 - **Demo (optional).** Add the package to `examples/demo/package.json` deps and a
-  loader entry in `src/main.ts`; the demo's Vite alias
-  `^@dopamine\/effect-(.*)$ → packages/effect-$1/src/index.ts` already resolves it
-  to source (no new alias needed). The same alias is in `vitest.config.ts`.
+  loader entry in `src/main.ts`; the demo's auto-discovering Vite alias already
+  resolves `@dopamine/effect-sparkle` to `effects/sparkle/web/src/index.ts` (no
+  alias edit needed). The same auto-discovery is in `vitest.config.ts`.
 - **Umbrella (optional, for the batteries set).** Add it to
   `packages/effects/package.json` deps and `import { sparkle } from
   "@dopamine/effect-sparkle"` in `packages/effects/src/index.ts`, referencing it
@@ -687,7 +752,7 @@ Same shape as §5, but use the **panel runner**. The differences:
 
 ```ts
 import { createPanelInstance, type PanelConfig, type PassParams } from "@dopamine/core";
-import { impactPresence } from "./badge-tempo.js"; // this package's bespoke timing
+import { impactPresence } from "./badge-tempo.js"; // this package's own timing
 
 const CONFIG: PanelConfig<BadgeParams & PassParams> = {
   vertex: BADGE_VERTEX_SRC,
@@ -726,9 +791,9 @@ per-frame `draw()` → `texImage2D` upload into both light and shadow contexts
 `.dope` (you can add `content` / `typography` for words/lettering), shader
 scaffold (`GLSL_HALFTONE`/`GLSL_ROT2` are handy here), `registerEffect`,
 `registerProgram` (with a `composeParams` hook if you compose non-numeric params
-like Comic's word + typography). The Canvas2D `draw()` + embedded fonts live in
+like comic's word + typography). The Canvas2D `draw()` + embedded fonts live in
 your package too (e.g. `comic-renderer.ts` + `comic-fonts.ts`). See
-`packages/effect-comic/src/` (`index.ts` + `comic-shader.ts` + `comic-renderer.ts`
+`effects/comic/web/src/` (`index.ts` + `comic-shader.ts` + `comic-renderer.ts`
 + `comic-fonts.ts` + `comic-params.ts` + `comic-tempo.ts`) as the full reference.
 
 ---
@@ -738,9 +803,9 @@ your package too (e.g. `comic-renderer.ts` + `comic-fonts.ts`). See
 ### 7.1 Declaring your own moods + the default-mood fallback
 
 Your `.dope` declares the moods it supports as the **keys of `baselines`** (and
-the matching `palette.perMood` register). Each effect declares its OWN moods — the
-success trio declares serene/celebratory/electric; the Fail effect declares
-try-again/error/denied. There is no single global fallback mood.
+the matching `palette.perMood` register). Each effect declares its OWN moods —
+a success effect might declare serene/celebratory/electric; the fail effect
+declares try-again/error/denied. There is no single global fallback mood.
 
 When asked for a mood it doesn't declare, an effect degrades to its **own
 default** (`framework/loader.ts → defaultMoodKey`): `controls.mood.default` if
@@ -757,8 +822,8 @@ registerMood("triumphant", { hueCenter: 280, hueRange: 160, lightness: 0.8, chro
 
 An effect that has a tuned baseline for a mood uses it; an effect that doesn't can
 derive one from the register's `energy` (lerp the baseline fields by energy). The
-Fail effect registers its moods this way at module load
-(`packages/effect-fail/src/index.ts`).
+fail effect registers its moods this way at module load
+(`effects/fail/web/src/index.ts`).
 
 ### 7.2 Palette / colour
 
@@ -801,37 +866,46 @@ out with `castsShadow: false` on the factory if your effect casts no shadow.
   pattern). `npm test` discovers tests across all packages (see
   `vitest.config.ts`, which aliases every `@dopamine/*` to source).
 - **Cross-platform byte-parity** is gated by the Swift/Android 192-case grids
-  against the web-dumped fixture (`ParityTests.swift` / `ParityTest.kt`,
-  regenerated via `swift/Scripts/regen-parity.sh`), and the shader dialects by
-  the toolchain byte snapshots + the web↔Android Δ0 render check
+  (`ParityTests.swift` / `ParityTest.kt`), which assert against a shared
+  fixture regenerated by `swift/Scripts/regen-parity.sh`; the generated shader
+  variants are gated by the toolchain byte snapshots + the Δ0 render check
+  between the authored GLSL and the Android-derived GLSL
   (`scripts/shader-goldens.mjs`).
 
 ---
 
 ## 8. Checklist for a new effect
 
-Everything is inside the new `packages/effect-<name>` package — **no core edits,
+Everything is inside the new `effects/<name>/` folder — **no core edits,
 no shared-file edits**.
 
-1. [ ] **Scaffold** `packages/effect-<name>/` — `package.json` (name
-   `@dopamine/effect-<name>`, keyword `dopamine-effect`, dep `@dopamine/core`,
-   build script, `"sideEffects": ["./src/index.ts", "./dist/index.js"]`),
-   `tsconfig.json` (extends `../../tsconfig.base.json`), `src/`, `test/`. Run
+1. [ ] **Scaffold** `effects/<name>/` + `effects/<name>/web/` — `package.json`
+   (name `@dopamine/effect-<name>`, keyword `dopamine-effect`, dep
+   `@dopamine/core`, build script,
+   `"sideEffects": ["./src/index.ts", "./dist/index.js"]`),
+   `tsconfig.json` (extends `../../../tsconfig.base.json`), `src/`, `test/`. Run
    `npm install` once.
-2. [ ] `src/<name>.dope.json` — controls, baselines (per declared mood), palette
-   (perMood register), tempo.durationMs, render.params (mapping grammar),
-   render.backends.webgl2.shader.program = `<name>`, fallbackOrder.
+2. [ ] `effects/<name>/<name>.dope.json` (the canonical doc) — controls,
+   baselines (per declared mood), palette (perMood register), tempo.durationMs
+   (+ `tempo.frame`/`reducedMotion` for a declarative effect), render.params
+   (mapping grammar), the `binding` contract,
+   render.backends.webgl2.shader.program = `<name>`, fallbackOrder, and the
+   `x-build` block (web package name; optional swift/android modules; optional
+   `x-build.shader` for generated MSL/Kotlin). Run
+   `node tools/dopamine/src/cli.mjs build` to sync the portable copy into
+   `web/src/`.
 3. [ ] `src/<name>-shader.ts` — vertex (full-screen triangle) + fragment,
    composing the `GLSL_*` chunks imported from `@dopamine/core`; handle the
    `uShadow` pass; single-source any `#define` loop bound.
-4. [ ] `src/<name>-tempo.ts` — your effect's bespoke envelope/draw window, built
-   on the `@dopamine/core` primitives (skip if `envelope`/`easeOut*` suffice).
+4. [ ] `src/<name>-tempo.ts` — only if your timing is code-shaped (skip when
+   `tempo.frame` or the `envelope`/`easeOut*` primitives suffice).
 5. [ ] (geometry) author `geometry.outlines.*.svgPath` and run
-   `node scripts/bake-sdf.mjs packages/effect-<name>/src/<name>.dope.json` to
+   `node scripts/bake-sdf.mjs effects/<name>/<name>.dope.json` to
    inline the SDF. (Embedded fonts: keep them in your package, e.g.
    `<name>-fonts.ts`.)
-6. [ ] `src/index.ts` — `parseDope(doc)`, a `PassConfig`/`PanelConfig` (uniforms,
-   bindings, shadowHeightFrac, frame, and for hybrids draw/passUniforms), `resolve`
+6. [ ] `src/index.ts` — `parseDope(doc)` + `registerDopeEffect(DOPE, shader)`
+   (declarative), or a `PassConfig`/`PanelConfig` (uniforms, bindings,
+   shadowHeightFrac, frame, and for hybrids draw/passUniforms) with `resolve`
    via `resolveDopeParams`, `create` via `createPass/PanelInstance`,
    `registerEffect`, optional `registerProgram`. Imports come from `@dopamine/core`.
 7. [ ] **Wire the build**: add `-w @dopamine/effect-<name>` to the root
@@ -866,10 +940,11 @@ no shared-file edits**.
 ## See also
 
 - [`effect-format.md`](./effect-format.md) — the `.dope` format spec + design
-  rationale (multi-backend, Lottie lineage, the full migration history).
-- `effect-format.schema.json` — JSON Schema the CI validates shipped docs against.
-- Reference effect packages (each `packages/effect-<name>/src/index.ts`):
-  `effect-solarbloom` (pass + baked SDF + glyph fallback + embedded check fonts),
-  `effect-inkstroke` (pass, no origin), `effect-fail` (pass + own moods + SDF),
-  `effect-comic` (panel + content + typography + embedded display fonts),
-  `effect-aurora` (the simplest pure-shader package — a good copy-from template).
+  rationale (multi-backend, Lottie lineage).
+- `effect-format.schema.json` — the JSON Schema for `.dope` documents.
+- [`roadmap.md`](./roadmap.md) — planned format/runtime work.
+- Reference effects (each `effects/<name>/web/src/index.ts`): a declarative
+  pure-shader effect (e.g. `ripple`), one with code hooks for an aux SDF
+  texture and its own moods (`fail`), a hybrid with content + typography +
+  embedded display fonts (`comic`), and a pass effect with a baked SDF + glyph
+  fallback (`solarbloom`).

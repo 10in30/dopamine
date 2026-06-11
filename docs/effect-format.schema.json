@@ -34,7 +34,7 @@
 
     "baselines": {
       "type": "object",
-      "description": "Per-mood baseline table the mapping grammar's { baseline: X } nodes read (color register + the effect's own spatial/motion/typographic baselines). The loader (framework/loader.ts) resolves these. Keyed by mood name; built-in moods carry their exact tuned values so loader output is byte-identical to the legacy resolve*Params.",
+      "description": "Per-mood baseline table the mapping grammar's { baseline: X } nodes read (color register + the effect's own spatial/motion/typographic baselines). The loader (framework/loader.ts) resolves these. Keyed by mood name; each mood carries the effect's exact tuned values so loader output is byte-identical on every platform.",
       "additionalProperties": {
         "type": "object",
         "additionalProperties": { "type": "number" }
