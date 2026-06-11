@@ -394,6 +394,58 @@
       }
     },
     "shadowHeightFrac": 0.42,
+    "pass": {
+      "note": "PER-PASS uniforms (evaluated once per pass, never per frame): the ✗ box half-size + SDF stroke/range in device px, sized to the TARGETED element (targetMinDimPx falls back to the full canvas when untargeted). sdfRange/sdfViewBoxW come from the cross sampler's baked-SDF metadata; sdfOn is deliberately NOT here — the web aux-texture binding flips it, natives keep the analytic ✗ at 0.",
+      "boxPx": {
+        "mul": [
+          0.15,
+          {
+            "input": "targetMinDimPx"
+          }
+        ]
+      },
+      "sdfStrokePx": {
+        "mul": [
+          0.15,
+          {
+            "input": "targetMinDimPx"
+          },
+          0.13
+        ]
+      },
+      "sdfRangePx": {
+        "mul": [
+          {
+            "input": "sdfRange"
+          },
+          {
+            "div": [
+              {
+                "mul": [
+                  2,
+                  {
+                    "mul": [
+                      0.15,
+                      {
+                        "input": "targetMinDimPx"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "max": [
+                  {
+                    "input": "sdfViewBoxW"
+                  },
+                  0.000001
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
     "consts": {},
     "config": {
       "usesOrigin": true
@@ -461,7 +513,10 @@
       {
         "web": "uSdfTex",
         "name": "sdfTex",
-        "texture": 1
+        "texture": 1,
+        "outline": "cross",
+        "on": "sdfOn",
+        "note": "Declarative SDF source: the baked geometry.outlines.cross SDF binds here on web (flipping the sdfOn extra to 1); the native runtimes don't bind aux textures yet — sdfOn stays 0 and the shader's analytic two-bar ✗ renders."
       }
     ]
   }

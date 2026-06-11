@@ -38,10 +38,13 @@ public struct FrameExprCtx {
     public var phase: Double
     /// The resolved render-param bag (numeric entries are addressable).
     public var params: [String: DopeValue]
+    /// Pass-geometry inputs (`render.pass` only); see `PassExprInputs`.
+    public var pass: PassExprInputs?
     public init(
         animMs: Double, life: Double, elapsedMs: Double,
         loopS: Double = 0, phase: Double = 0,
-        params: [String: DopeValue]
+        params: [String: DopeValue],
+        pass: PassExprInputs? = nil
     ) {
         self.animMs = animMs
         self.life = life
@@ -49,13 +52,42 @@ public struct FrameExprCtx {
         self.loopS = loopS
         self.phase = phase
         self.params = params
+        self.pass = pass
     }
 }
+
+/// The pass-geometry inputs a `render.pass` expression may read (evaluated
+/// ONCE per pass by the runners, never per resolve or per frame) — mirror of
+/// the web `PassExprInputs`.
+public struct PassExprInputs {
+    /// Min dimension of the TARGETED element box in device px, falling back to
+    /// the full canvas when untargeted (the same box the standard `target`
+    /// uniform carries).
+    public var targetMinDimPx: Double
+    /// The declared `range` of the SDF behind the first `binding.samplers`
+    /// entry with an `outline` source; 0 when no sampler declares one.
+    public var sdfRange: Double
+    /// That SDF's `viewBox[2]` (author-units width); 0 when absent.
+    public var sdfViewBoxW: Double
+    public init(targetMinDimPx: Double, sdfRange: Double = 0, sdfViewBoxW: Double = 0) {
+        self.targetMinDimPx = targetMinDimPx
+        self.sdfRange = sdfRange
+        self.sdfViewBoxW = sdfViewBoxW
+    }
+}
+
+/// Which inputs an expression may read: the three evaluation entry points.
+private enum ExprMode { case frame, params, pass }
+
+private let frameInputs: Set<String> = ["animMs", "life", "elapsedMs", "loopS", "phase"]
+private let passInputs: Set<String> = ["targetMinDimPx", "sdfRange", "sdfViewBoxW"]
 
 /// Errors the per-frame grammar can raise. Messages mirror the web evaluator's.
 public enum FrameExprError: Error, CustomStringConvertible {
     case missingParam(String)
     case inputNotAllowed(String)
+    case frameInputInPass(String)
+    case passInputOutsidePass(String)
     case unknownInput(String)
     case unknownNode(String)
 
@@ -65,6 +97,10 @@ public enum FrameExprError: Error, CustomStringConvertible {
             return "dope: frame expr references missing/non-numeric param \"\(n)\""
         case let .inputNotAllowed(n):
             return "dope: {input} is not allowed in a params-only expression (got \"\(n)\")"
+        case let .frameInputInPass(n):
+            return "dope: frame input \"\(n)\" is not allowed in a render.pass expression (pass expressions are not frame-clocked)"
+        case let .passInputOutsidePass(n):
+            return "dope: pass input \"\(n)\" is only allowed in a render.pass expression"
         case let .unknownInput(n):
             return "dope: unknown frame input \"\(n)\""
         case let .unknownNode(n):
@@ -73,7 +109,31 @@ public enum FrameExprError: Error, CustomStringConvertible {
     }
 }
 
-private func evalNode(_ node: JSONValue, _ ctx: FrameExprCtx, _ allowInputs: Bool) throws -> Double {
+/// Resolve an `{input}` name under the given mode — the same gating (and the
+/// same error wording) as the web `evalInput`.
+private func evalInput(_ name: String, _ ctx: FrameExprCtx, _ mode: ExprMode) throws -> Double {
+    if mode == .pass {
+        if frameInputs.contains(name) { throw FrameExprError.frameInputInPass(name) }
+        switch name {
+        case "targetMinDimPx": return ctx.pass?.targetMinDimPx ?? 0
+        case "sdfRange": return ctx.pass?.sdfRange ?? 0
+        case "sdfViewBoxW": return ctx.pass?.sdfViewBoxW ?? 0
+        default: throw FrameExprError.unknownInput(name)
+        }
+    }
+    if passInputs.contains(name) { throw FrameExprError.passInputOutsidePass(name) }
+    if mode == .params { throw FrameExprError.inputNotAllowed(name) }
+    switch name {
+    case "animMs": return ctx.animMs
+    case "life": return ctx.life
+    case "elapsedMs": return ctx.elapsedMs
+    case "loopS": return ctx.loopS
+    case "phase": return ctx.phase
+    default: throw FrameExprError.unknownInput(name)
+    }
+}
+
+private func evalNode(_ node: JSONValue, _ ctx: FrameExprCtx, _ mode: ExprMode) throws -> Double {
     // Bare number literal.
     if case let .number(n) = node { return n }
     guard case .object = node else { throw FrameExprError.unknownNode("\(node)") }
@@ -83,7 +143,7 @@ private func evalNode(_ node: JSONValue, _ ctx: FrameExprCtx, _ allowInputs: Boo
         guard let arr = node[key]?.asArray else { throw FrameExprError.unknownNode(key) }
         return arr
     }
-    func eval(_ n: JSONValue) throws -> Double { try evalNode(n, ctx, allowInputs) }
+    func eval(_ n: JSONValue) throws -> Double { try evalNode(n, ctx, mode) }
 
     // Checked in the SAME key order as the web evaluator's `in`-chain.
     if let c = node["const"] { return c.asNumber ?? 0 }
@@ -95,16 +155,7 @@ private func evalNode(_ node: JSONValue, _ ctx: FrameExprCtx, _ allowInputs: Boo
         return v
     }
     if let i = node["input"] {
-        let name = i.asString ?? ""
-        if !allowInputs { throw FrameExprError.inputNotAllowed(name) }
-        switch name {
-        case "animMs": return ctx.animMs
-        case "life": return ctx.life
-        case "elapsedMs": return ctx.elapsedMs
-        case "loopS": return ctx.loopS
-        case "phase": return ctx.phase
-        default: throw FrameExprError.unknownInput(name)
-        }
+        return try evalInput(i.asString ?? "", ctx, mode)
     }
     if node["add"] != nil {
         // Fold left-to-right from 0 — `reduce((p, n) => p + eval(n), 0)`.
@@ -167,12 +218,22 @@ private func evalNode(_ node: JSONValue, _ ctx: FrameExprCtx, _ allowInputs: Boo
 
 /// Evaluate a per-frame grammar node to a number. Pure; throws outside the grammar.
 public func evalFrameExpr(_ node: JSONValue, _ ctx: FrameExprCtx) throws -> Double {
-    try evalNode(node, ctx, true)
+    try evalNode(node, ctx, .frame)
 }
 
 /// Evaluate a PARAMS-ONLY expression (e.g. `render.shadowHeightFrac`): the same
 /// grammar, but `{input}` nodes THROW — a shadow-geometry expression must be a
 /// pure function of the resolved params, never of the frame clock.
 public func evalParamExpr(_ node: JSONValue, _ params: [String: DopeValue]) throws -> Double {
-    try evalNode(node, FrameExprCtx(animMs: 0, life: 0, elapsedMs: 0, params: params), false)
+    try evalNode(node, FrameExprCtx(animMs: 0, life: 0, elapsedMs: 0, params: params), .params)
+}
+
+/// Evaluate a PER-PASS expression (`render.pass`): the same grammar over the
+/// resolved params plus the pass-geometry inputs (`targetMinDimPx` /
+/// `sdfRange` / `sdfViewBoxW`). Frame clocks THROW — a pass expression is
+/// evaluated once per pass, not per frame. Mirror of the web `evalPassExpr`.
+public func evalPassExpr(
+    _ node: JSONValue, _ params: [String: DopeValue], _ pass: PassExprInputs
+) throws -> Double {
+    try evalNode(node, FrameExprCtx(animMs: 0, life: 0, elapsedMs: 0, params: params, pass: pass), .pass)
 }

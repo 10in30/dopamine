@@ -120,7 +120,7 @@ final class DopeConfigTests: XCTestCase {
         }
     }
 
-    // ── fail ──
+    // ── fail (fully declarative: render.pass + the sampler SDF source) ──
     func testFailDopeConfig() throws {
         let doc = try loadCanonicalDope("fail")
         XCTAssertEqual(doc.consts, [:])
@@ -128,5 +128,22 @@ final class DopeConfigTests: XCTestCase {
         XCTAssertEqual(doc.usesOrigin, true)
         XCTAssertEqual(doc.reducedMotion, DopeReducedMotion(peakMs: 200, holdMs: 320))
         try assertResolveMatchesExplicitArgs(doc, consts: [:], scatterKey: "failSeed")
+
+        // The sampler's declarative SDF source (outline + on flag).
+        XCTAssertEqual(doc.binding?.samplers, [DopeBindingSampler(
+            web: "uSdfTex", name: "sdfTex", texture: 1, outline: "cross", on: "sdfOn")])
+
+        // render.pass: the ✗ box/stroke/range per-pass uniforms, by canonical
+        // extra name (the keys the generated Metal packer reads), carrying the
+        // baked SDF's declared metadata (range 18, viewBox width 100).
+        let pass = try XCTUnwrap(doc.renderPass)
+        XCTAssertEqual(pass.entries.map { $0.0 }, ["boxPx", "sdfStrokePx", "sdfRangePx"])
+        XCTAssertEqual(pass.sdfRange, 18)
+        XCTAssertEqual(pass.sdfViewBoxW, 100)
+        // Evaluated for a 400 px target min dim (the old packExtras math).
+        let values = Dictionary(uniqueKeysWithValues: pass.evaluate(targetMinDimPx: 400, params: [:]))
+        XCTAssertEqual(values["boxPx"], 0.15 * 400)
+        XCTAssertEqual(values["sdfStrokePx"], 0.15 * 400 * 0.13)
+        XCTAssertEqual(values["sdfRangePx"], 18 * ((2 * (0.15 * 400)) / 100))
     }
 }

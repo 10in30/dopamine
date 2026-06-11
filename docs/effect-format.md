@@ -521,8 +521,9 @@ authored once and interpreted identically on every platform.
 - **`frame.extras`** — every other time-varying uniform, keyed by canonical
   name; the `binding.extras` entry with the same `name` supplies each
   platform's uniform name (web `uDraw`, the Metal struct field, …). A
-  `binding.extras` entry with NO `tempo.frame` expression is host/code-filled
-  (e.g. fail's canvas-size-dependent SDF plumbing).
+  `binding.extras` entry with NO `tempo.frame` expression is filled elsewhere:
+  by a `render.pass` expression (§8.2, fail's box/stroke/range), by a sampler
+  `on` flag (§8.2), or by host code.
 - **`reducedMotion`** — the calm-peak `peakMs` + static-frame `holdMs` for the
   reduced-motion fallback.
 
@@ -545,6 +546,11 @@ same tempo primitives every platform ships, so evaluated output is
 bit-identical across platforms. Operation order is significant for float
 parity: an implementation must reduce `add`/`mul` left-to-right exactly as
 written. Anything outside the grammar **throws** (same posture as §4.1).
+
+The SAME grammar runs in two more modes: PARAMS-ONLY
+(`render.shadowHeightFrac` — every `{input}` throws) and PER-PASS
+(`render.pass`, §8.2 — the frame clocks throw and three pass-geometry inputs
+are available instead: `targetMinDimPx`, `sdfRange`, `sdfViewBoxW`).
 
 ### 7.2 Continuous effects — `tempo.loop`
 
@@ -622,10 +628,38 @@ An effect with declarative per-frame logic also carries, under `render`:
 - **`shadowHeightFrac`** — the shadow occluder height as a fraction of min
   canvas dim: a bare number or a PARAMS-ONLY §7.1 expression (`{input}` throws
   there — shadow geometry must not read the frame clock).
+- **`pass`** — PER-PASS scalar uniforms, keyed by CANONICAL extra name (each
+  must have a `binding.extras` entry — the platforms emit it under that
+  entry's web name / packed struct field). Each value is a §7.1 expression
+  evaluated ONCE PER PASS (not per resolve, not per frame) over the resolved
+  params plus three pass-geometry inputs; the frame clocks (`animMs`/`life`/
+  `elapsedMs`/`loopS`/`phase`) **throw** here. A `note` key is documentation,
+  like `binding.note`. The inputs:
+
+  | input | meaning |
+  |---|---|
+  | `targetMinDimPx` | min dimension of the TARGETED element box in device px, falling back to the full canvas when untargeted — the same box the standard `uTarget` carries, so a pass-sized centrepiece tracks the element |
+  | `sdfRange` | the declared `range` of the SDF behind the first `binding.samplers` entry with an `outline` source; 0 when none (declared metadata — no bitmap decode needed) |
+  | `sdfViewBoxW` | that SDF's `viewBox[2]` (author-units width); 0 when absent |
+
+  This is what datafied fail's box/stroke/range pixel hooks: e.g.
+  `"boxPx": { "mul": [0.15, { "input": "targetMinDimPx" }] }`.
 - **`consts`** — the loop-cap consts the §4.1 `clampMax`/`clampMin` flags
   reference (`MAX_RINGS`, `MAX_DROPS`, …).
 - **`config`** — runner config; today `usesOrigin` (whether the shader is
   anchored on `uOrigin`).
+
+**Sampler SDF sources.** A `binding.samplers` entry (plain web-name string, or
+the object form `{ web, name, texture }`) may additionally declare a
+DECLARATIVE SDF source: `"outline"` names a `geometry.outlines` entry whose
+baked SDF backs the sampler, and `"on"` names the `binding.extras` flag that
+reads 1 when the texture is bound. On web the runtime derives the whole aux
+texture from this (decode the baked SDF, upload R8, bind at `texture`, flip
+the `on` uniform to 1; absent/undecodable SDF → nothing bound, `on` stays 0 —
+the shader's analytic fallback). The native runtimes don't bind aux textures
+yet: the `on` extra stays 0 (Metal packs the missing extra as 0; the GL config
+pins the uniform off explicitly each pass, since GL programs are cached and
+reused across fires), so the analytic fallback renders there by design.
 
 An explicit `uniforms` table (below) is still the portable
 form for a non-bundled or cross-backend doc:

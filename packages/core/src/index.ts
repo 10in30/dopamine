@@ -63,6 +63,7 @@ export {
   type DopeDoc,
   type DopeOutline,
   type DopeBinding,
+  type DopeSampler,
   type DopeFrameSpec,
   type DopeLoopSpec,
 } from "./framework/loader.js";
@@ -76,8 +77,10 @@ export {
 export {
   evalFrameExpr,
   evalParamExpr,
+  evalPassExpr,
   type FrameExprNode,
   type FrameExprCtx,
+  type PassExprInputs,
 } from "./framework/frame-expr.js";
 export {
   pickFromList,

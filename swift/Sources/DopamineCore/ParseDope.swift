@@ -176,6 +176,42 @@ public func parseDope(_ src: String) throws -> DopeDoc {
     // render.shadowHeightFrac — a bare number or a params-only expression (raw).
     let shadowHeightFrac = renderObj["shadowHeightFrac"]
 
+    // binding.samplers — plain strings (web name only) or the object form,
+    // possibly with a declarative SDF source (`outline` + `on`).
+    var samplers: [DopeBindingSampler] = []
+    for s in json["binding"]?["samplers"]?.asArray ?? [] {
+        if let web = s.asString {
+            samplers.append(DopeBindingSampler(web: web))
+        } else if let web = s["web"]?.asString {
+            samplers.append(DopeBindingSampler(
+                web: web,
+                name: s["name"]?.asString,
+                texture: s["texture"]?.asNumber.map { Int($0) },
+                outline: s["outline"]?.asString,
+                on: s["on"]?.asString))
+        }
+    }
+
+    // render.pass — per-PASS uniform expressions, keyed by canonical extra name
+    // (a "note" key is documentation, same convention as binding.note). The
+    // SDF pass inputs come from the declared metadata of the first sampler
+    // with an `outline` source — read straight off the raw geometry JSON (no
+    // bitmap decode; portable on every platform).
+    var renderPass: DopePassSpec?
+    if let rp = renderObj["pass"]?.asObject {
+        var sdfRange = 0.0
+        var sdfViewBoxW = 0.0
+        if let outlineName = samplers.first(where: { $0.outline != nil })?.outline,
+           let sdf = json["geometry"]?["outlines"]?[outlineName]?["sdf"] {
+            sdfRange = sdf["range"]?.asNumber ?? 0
+            let vb = sdf["viewBox"]?.asArray ?? []
+            sdfViewBoxW = vb.count > 2 ? (vb[2].asNumber ?? 0) : 0
+        }
+        renderPass = DopePassSpec(
+            entries: rp.filter { $0.0 != "note" },
+            sdfRange: sdfRange, sdfViewBoxW: sdfViewBoxW)
+    }
+
     // render.consts — the loop-cap consts the clampMax/clampMin flags reference.
     var consts: [String: Double] = [:]
     for (name, value) in renderObj["consts"]?.asObject ?? [] {
@@ -202,7 +238,8 @@ public func parseDope(_ src: String) throws -> DopeDoc {
             excludeParams: excludeParams,
             scatterKey: b["scatterKey"]?.asString,
             scatterWeb: b["scatterWeb"]?.asString,
-            extras: extras)
+            extras: extras,
+            samplers: samplers)
     }
 
     return DopeDoc(
@@ -211,7 +248,7 @@ public func parseDope(_ src: String) throws -> DopeDoc {
         renderParams: renderParams, baselines: baselines,
         baselineOrder: baselineOrder, controlsMoodDefault: controlsMoodDefault,
         frame: frame, loop: loop, reducedMotion: reducedMotion,
-        shadowHeightFrac: shadowHeightFrac, consts: consts,
+        shadowHeightFrac: shadowHeightFrac, renderPass: renderPass, consts: consts,
         usesOrigin: usesOrigin, binding: binding,
         raw: json
     )

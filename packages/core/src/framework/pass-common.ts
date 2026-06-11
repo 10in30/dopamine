@@ -153,6 +153,23 @@ export const STANDARD_COMMON = [
 ] as const;
 
 /**
+ * The targeted element's box in DEVICE px, falling back to the full canvas
+ * when no element box was supplied (so untargeted fires are unchanged). The
+ * single formula behind the `uTarget` standard uniform AND the `render.pass`
+ * `targetMinDimPx` input — one fallback rule, never two.
+ */
+export function resolveTargetPx(
+  c: HTMLCanvasElement,
+  targetSize: { width: number; height: number } | undefined,
+  dpr: number,
+): { width: number; height: number } {
+  return {
+    width: targetSize ? targetSize.width * dpr : c.width,
+    height: targetSize ? targetSize.height * dpr : c.height,
+  };
+}
+
+/**
  * Bind `uTarget` — the targeted element's size (device px) the centrepiece is
  * sized to — falling back to the full canvas when no element box was supplied
  * (so untargeted fires are unchanged). Shared by both runners; a no-op for
@@ -166,7 +183,6 @@ export function bindTarget(
   dpr: number,
 ): void {
   if (!u.uTarget) return;
-  const w = targetSize ? targetSize.width * dpr : c.width;
-  const h = targetSize ? targetSize.height * dpr : c.height;
-  gl.uniform2f(u.uTarget, w, h);
+  const { width, height } = resolveTargetPx(c, targetSize, dpr);
+  gl.uniform2f(u.uTarget, width, height);
 }

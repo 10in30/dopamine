@@ -40,6 +40,7 @@ import {
   bindShadowGeometry,
   bindTarget,
   computeScalarBinds,
+  resolveTargetPx,
 } from "./pass-common.js";
 
 /** A resolved param bag (the loader's output + any composed fields). */
@@ -125,11 +126,17 @@ export interface PassConfig {
   /** Declared aux textures (baked SDF icons), uploaded to light + shadow. */
   auxTextures?(params: PassParams, ctx: EffectContext): AuxTextureSpec[];
   /**
-   * Extra per-pass scalar uniforms that depend on the live canvas size but are
-   * NOT tied to an aux texture (e.g. an icon box size the shader uses even in its
-   * SDF-less analytic fallback). Computed once per pass.
+   * Extra per-pass scalar uniforms that depend on the live canvas/target size
+   * but are NOT tied to an aux texture (e.g. an icon box size the shader uses
+   * even in its SDF-less analytic fallback). Computed once per pass.
+   * `targetPx` is the targeted element box in device px with the full-canvas
+   * fallback already applied (the same box `uTarget` binds).
    */
-  passUniforms?(canvas: HTMLCanvasElement, params: PassParams): Record<string, number>;
+  passUniforms?(
+    canvas: HTMLCanvasElement,
+    params: PassParams,
+    targetPx: { width: number; height: number },
+  ): Record<string, number>;
   /**
    * The shadow occluder "height" as a fraction of min canvas dim — Solarbloom's
    * bloom radius, Verdict's stroke scale, a constant for the Fail stamp.
@@ -304,8 +311,8 @@ export function createPassInstance(
       }
     }
 
-    // Extra per-pass scalar uniforms (canvas-size-dependent, non-aux).
-    applyFloatMap(gl, u, config.passUniforms?.(c, params));
+    // Extra per-pass scalar uniforms (canvas/target-size-dependent, non-aux).
+    applyFloatMap(gl, u, config.passUniforms?.(c, params, resolveTargetPx(c, ctx.targetSize, dpr)));
 
     // Standard uniforms.
     gl.uniform2f(u.uResolution, c.width, c.height);

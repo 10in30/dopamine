@@ -4,24 +4,29 @@
  *
  * For a datafied effect the `.dope` carries everything the hand-written
  * per-effect `PassConfig` used to: the per-frame logic (`tempo.frame`), the
- * shadow height (`render.shadowHeightFrac`), the loop-cap consts
- * (`render.consts`), the runner config (`render.config.usesOrigin`), the
- * reduced-motion peak/hold (`tempo.reducedMotion`) and the uniform-binding
- * contract (`binding`). This module derives the `PassConfig` from that data —
- * uniform names by the same `name → u<Name>` convention `computeScalarBinds`
- * applies, exceptions from the binding contract — so the only hand-written web
- * source left for such an effect is its GLSL.
+ * shadow height (`render.shadowHeightFrac`), the per-pass uniforms
+ * (`render.pass`), the SDF-sourced samplers (`binding.samplers[].outline`),
+ * the loop-cap consts (`render.consts`), the runner config
+ * (`render.config.usesOrigin`), the reduced-motion peak/hold
+ * (`tempo.reducedMotion`) and the uniform-binding contract (`binding`). This
+ * module derives the `PassConfig` from that data — uniform names by the same
+ * `name → u<Name>` convention `computeScalarBinds` applies, exceptions from
+ * the binding contract — so the only hand-written web source left for such an
+ * effect is its GLSL.
  *
- * The honest boundary stays honest: anything genuinely code-shaped (fail's SDF
- * aux texture + canvas-dependent pass uniforms, a sprite panel, frame arrays)
- * is passed through `hooks`, the same seams `PassConfig` always had.
+ * The honest boundary stays honest: anything genuinely code-shaped (a sprite
+ * panel, frame arrays, a host-rasterized aux texture) is passed through
+ * `hooks`, the same seams `PassConfig` always had — and a hook overrides the
+ * derived `auxTextures`/`passUniforms` when both exist.
  */
 
-import { evalFrameExpr, evalParamExpr, type FrameExprNode } from "./frame-expr.js";
-import { resolveDopeParams, type DopeDoc } from "./loader.js";
+import { decodeSdf } from "../engine/sdf.js";
+import { evalFrameExpr, evalParamExpr, evalPassExpr, type FrameExprNode } from "./frame-expr.js";
+import { getOutline, resolveDopeParams, type DopeDoc, type DopeSampler } from "./loader.js";
 import { cap } from "./pass-common.js";
 import {
   createPassInstance,
+  type AuxTextureSpec,
   type FrameInfo,
   type PassConfig,
   type PassParams,
@@ -63,6 +68,13 @@ export interface DopeShader {
  *     (extras keyed by canonical name, emitted under their `binding` web name).
  *   - `shadowHeightFrac`: `render.shadowHeightFrac` (bare number passes
  *     through; an expression is params-only — `{input}` throws).
+ *   - `passUniforms`: `render.pass` evaluated ONCE PER PASS (canonical names →
+ *     `binding` web names) over the resolved params + the pass-geometry inputs
+ *     (`targetMinDimPx`, plus `sdfRange`/`sdfViewBoxW` from the first sampler
+ *     with an `outline` source).
+ *   - `auxTextures`: every `binding.samplers` entry with an `outline` whose
+ *     baked SDF decodes → a `kind:"sdf"` spec at its `texture` unit, flipping
+ *     its `on` extra to 1; absent/undecodable → analytic fallback.
  *   - `usesOrigin`: `render.config.usesOrigin`.
  */
 export function dopePassConfig(doc: DopeDoc, shader: DopeShader, hooks: DopePassHooks = {}): PassConfig {
@@ -109,6 +121,62 @@ export function dopePassConfig(doc: DopeDoc, shader: DopeShader, hooks: DopePass
     },
   );
 
+  // --- per-PASS uniforms (`render.pass`): canonical name → web uniform name --
+  // (a "note" key is documentation, not an expression — same convention as
+  // `binding.note`.)
+  const passExprs: Array<[string, FrameExprNode]> = Object.entries(doc.render.pass ?? {})
+    .filter(([name]) => name !== "note")
+    .map(([name, expr]) => {
+      const def = extraDefs.find((e) => e.name === name);
+      if (!def?.web) {
+        throw new Error(`dope: ${doc.id} render.pass."${name}" has no binding.extras web name`);
+      }
+      return [def.web, expr] as [string, FrameExprNode];
+    });
+
+  // SDF-sourced samplers: the first `outline` sampler supplies the pass-expr
+  // SDF inputs (declared metadata — readable even where the bitmap isn't bound).
+  const samplerDefs = (binding.samplers ?? []).filter((s): s is DopeSampler => typeof s !== "string");
+  const sdfOutline = samplerDefs.find((s) => s.outline);
+  const sdfSrc = sdfOutline ? getOutline(doc, sdfOutline.outline!)?.sdf : undefined;
+  const sdfInputs = { range: sdfSrc?.range ?? 0, viewBoxW: sdfSrc?.viewBox?.[2] ?? 0 };
+
+  const derivedPassUniforms: PassConfig["passUniforms"] | undefined = passExprs.length
+    ? (_canvas, params, targetPx) => {
+        const pass = {
+          targetMinDimPx: Math.min(targetPx.width, targetPx.height),
+          sdfRange: sdfInputs.range,
+          sdfViewBoxW: sdfInputs.viewBoxW,
+        };
+        const out: Record<string, number> = {};
+        for (const [web, expr] of passExprs) out[web] = evalPassExpr(expr, params, pass);
+        return out;
+      }
+    : undefined;
+
+  // Declarative aux textures: each sampler with an `outline` whose baked SDF
+  // decodes becomes a kind:"sdf" spec (its `on` extra flips to 1 when bound);
+  // an absent/undecodable SDF contributes nothing — the analytic fallback.
+  const sdfAux: AuxTextureSpec[] = [];
+  for (const s of samplerDefs) {
+    if (!s.outline) continue;
+    const baked = getOutline(doc, s.outline)?.sdf;
+    if (!baked) continue;
+    try {
+      const onDef = s.on ? extraDefs.find((e) => e.name === s.on) : undefined;
+      sdfAux.push({
+        kind: "sdf",
+        unit: s.texture ?? 0,
+        sdf: decodeSdf(baked),
+        sampler: s.web,
+        onUniform: onDef?.web,
+      });
+    } catch {
+      /* undecodable → analytic fallback */
+    }
+  }
+  const derivedAux: PassConfig["auxTextures"] | undefined = sdfAux.length ? () => sdfAux : undefined;
+
   return {
     vertex: shader.vertex,
     fragment: shader.fragment,
@@ -136,8 +204,8 @@ export function dopePassConfig(doc: DopeDoc, shader: DopeShader, hooks: DopePass
       for (const [web, expr] of extraExprs) out[web] = evalFrameExpr(expr, ctx);
       return out;
     },
-    auxTextures: hooks.auxTextures,
-    passUniforms: hooks.passUniforms,
+    auxTextures: hooks.auxTextures ?? derivedAux,
+    passUniforms: hooks.passUniforms ?? derivedPassUniforms,
     panel: hooks.panel,
     frameArrays: hooks.frameArrays,
   };

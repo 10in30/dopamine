@@ -83,9 +83,11 @@ genuinely **per-effect**:
 For a declarative effect the WEB FACTORY IS A SHIM: the shader consts + one
 `registerDopeEffect(DOPE, shader, opts?)` call (`framework/dope-pass.ts`), which
 derives the whole `PassConfig` — uniforms, bindings, `frame()`,
-`shadowHeightFrac`, `usesOrigin` — from the `.dope` + its `binding` contract and
-registers the factory (+ a bundled program). Genuinely code-shaped bits (fail's
-SDF aux texture + canvas-dependent pass uniforms) ride the `hooks` escape hatch.
+`shadowHeightFrac`, the `render.pass` per-pass uniforms, the
+`binding.samplers[].outline`/`on` SDF aux textures (fail's ✗), `usesOrigin` —
+from the `.dope` + its `binding` contract and registers the factory (+ a
+bundled program). Genuinely code-shaped bits (a sprite panel, CPU frame
+geometry) ride the `hooks` escape hatch.
 **The Swift and Android factories are GENERATED entirely**: a fully declarative
 effect ships NO `effects/<name>/swift` or `effects/<name>/android` folder — the
 toolchain emits the Swift factory shell + resource-bundle accessor and the

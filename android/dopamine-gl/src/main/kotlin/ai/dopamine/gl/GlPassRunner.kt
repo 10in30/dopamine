@@ -56,8 +56,13 @@ class PassConfig(
     val bindings: Map<String, String?> = emptyMap(),
     /** Shadow occluder "height" as a fraction of min canvas dim (kept for portability). */
     val shadowHeightFrac: (Map<String, DopeValue>) -> Double = { 0.7 },
-    /** Extra per-pass scalar uniforms depending on the live canvas / density. */
-    val passUniforms: ((widthPx: Int, heightPx: Int, params: Map<String, DopeValue>, density: Float) -> Map<String, Float>)? = null,
+    /**
+     * Extra per-pass scalar uniforms depending on the live canvas / density /
+     * target geometry. `targetWidthPx`/`targetHeightPx` are the targeted
+     * element box in device px with the full-canvas fallback already applied
+     * (the same box `uTarget` binds).
+     */
+    val passUniforms: ((widthPx: Int, heightPx: Int, params: Map<String, DopeValue>, density: Float, targetWidthPx: Float, targetHeightPx: Float) -> Map<String, Float>)? = null,
     /**
      * Compute the genuinely effect-specific TIME-VARYING uniforms for a frame
      * (envelope amp, confirm/draw/stamp progress, …). Returns name → float; the
@@ -108,7 +113,11 @@ fun createPassInstance(config: PassConfig, params: Map<String, DopeValue>, ctx: 
         prog.resolve(config.uniforms)
         GLES30.glUseProgram(prog.id)
 
-        applyFloatMap(prog, config.passUniforms?.invoke(gl.width, gl.height, params, ctx.density))
+        // Target box (device px) with the full-canvas fallback — the SAME rule
+        // bindTarget applies for the uTarget standard uniform.
+        val targetW = if (ctx.targetWidthPx > 0f) ctx.targetWidthPx else gl.width.toFloat()
+        val targetH = if (ctx.targetHeightPx > 0f) ctx.targetHeightPx else gl.height.toFloat()
+        applyFloatMap(prog, config.passUniforms?.invoke(gl.width, gl.height, params, ctx.density, targetW, targetH))
 
         prog.uniform("uResolution").let { if (it >= 0) GLES30.glUniform2f(it, gl.width.toFloat(), gl.height.toFloat()) }
         bindTarget(prog, gl.width, gl.height, ctx.targetWidthPx, ctx.targetHeightPx)

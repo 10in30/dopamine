@@ -1,13 +1,15 @@
 // Generic DATA-DRIVEN pass factory — the GL half of the web
 // `framework/dope-pass.ts`. `ai.dopamine.core.dopePassPlan` derives everything
-// portable (uniforms / bindings / per-frame exprs / shadow / consts / reduced
-// motion) from the `.dope`; this wraps that plan into the runner's
-// `PassConfig`, so the only hand-written Android source left for a datafied
-// effect is its GLSL (toolchain-generated) plus any genuinely code-shaped hook.
+// portable (uniforms / bindings / per-frame exprs / per-pass exprs / shadow /
+// consts / reduced motion) from the `.dope`; this wraps that plan into the
+// runner's `PassConfig`, so the only hand-written Android source left for a
+// datafied effect is its GLSL (toolchain-generated) plus any genuinely
+// code-shaped hook.
 //
-// The honest boundary stays honest: anything code-shaped (fail's canvas-
-// dependent pass uniforms, a `frameArrays` precompute) is passed through the
-// same seams `PassConfig` always had.
+// The honest boundary stays honest: anything code-shaped (a hand pass-uniform
+// hook, a `frameArrays` precompute) is passed through the same seams
+// `PassConfig` always had — a supplied `passUniforms` hook overrides the
+// derived `render.pass` evaluation.
 
 package ai.dopamine.gl
 
@@ -15,6 +17,7 @@ import ai.dopamine.core.DopeDoc
 import ai.dopamine.core.DopePassPlan
 import ai.dopamine.core.DopeValue
 import ai.dopamine.core.dopePassPlan
+import kotlin.math.min
 
 /**
  * Build a {@link PassConfig} from a datafied `.dope` + its GLSL (+ optional code
@@ -29,7 +32,7 @@ fun dopePassConfig(
     vertex: String,
     fragment: String,
     plan: DopePassPlan = dopePassPlan(doc),
-    passUniforms: ((widthPx: Int, heightPx: Int, params: Map<String, DopeValue>, density: Float) -> Map<String, Float>)? = null,
+    passUniforms: ((widthPx: Int, heightPx: Int, params: Map<String, DopeValue>, density: Float, targetWidthPx: Float, targetHeightPx: Float) -> Map<String, Float>)? = null,
     frameArrays: ((FrameInfo, Map<String, DopeValue>, FrameGeom) -> List<UniformArray>)? = null,
 ): PassConfig = PassConfig(
     vertex = vertex,
@@ -39,7 +42,7 @@ fun dopePassConfig(
     loopPeriodMs = plan.loopPeriodMs,
     bindings = plan.bindings,
     shadowHeightFrac = { params -> plan.shadowHeightFrac(params) },
-    passUniforms = passUniforms,
+    passUniforms = passUniforms ?: derivePassUniforms(plan),
     frame = { info, params ->
         // The plan evaluates in Double (bit-parity with the old hand hooks, which
         // also computed Double); the runner consumes Float — the SAME single
@@ -52,3 +55,28 @@ fun dopePassConfig(
     },
     frameArrays = frameArrays,
 )
+
+/**
+ * The DECLARATIVE per-pass uniforms: `render.pass` evaluated against the live
+ * target geometry (min dim of the targeted element box, full-canvas fallback —
+ * the `targetMinDimPx` pass input), plus each sampler `on` flag pinned OFF.
+ *
+ * The on-flag pin is deliberate: the GL backbone has no aux-texture support,
+ * so the analytic fallback must render — and GL programs are CACHED per
+ * surface and reused across fires (`GlContext.program`), so uniform state
+ * persists between fires; an explicit per-pass 0 (rather than relying on the
+ * post-link zero-init) keeps a stale value from ever sticking.
+ */
+private fun derivePassUniforms(
+    plan: DopePassPlan,
+): ((Int, Int, Map<String, DopeValue>, Float, Float, Float) -> Map<String, Float>)? {
+    if (!plan.hasPassUniforms && plan.samplerOnUniforms.isEmpty()) return null
+    return { _, _, params, _, targetWidthPx, targetHeightPx ->
+        val out = LinkedHashMap<String, Float>()
+        for ((web, v) in plan.passUniforms(min(targetWidthPx, targetHeightPx).toDouble(), params)) {
+            out[web] = v.toFloat()
+        }
+        for (web in plan.samplerOnUniforms) out[web] = 0f
+        out
+    }
+}

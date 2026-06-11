@@ -118,5 +118,63 @@ class FrameExprTest {
     fun evalParamExprThrowsOnInput() {
         // Shadow geometry must not read the frame clock.
         assertThrows(DopeException::class.java) { evalParamExpr(expr("""{"input":"life"}"""), emptyMap()) }
+        // The pass-geometry inputs are render.pass-only, too.
+        assertThrows(DopeException::class.java) {
+            evalParamExpr(expr("""{"input":"targetMinDimPx"}"""), emptyMap())
+        }
+    }
+
+    @Test
+    fun evalPassExprEvaluatesThePassGeometryInputs() {
+        // The pass-geometry inputs, supplied by the runner once per pass.
+        val pass = PassExprInputs(targetMinDimPx = 400.0, sdfRange = 18.0, sdfViewBoxW = 100.0)
+        assertEquals(400.0, evalPassExpr(expr("""{"input":"targetMinDimPx"}"""), emptyMap(), pass), 0.0)
+        assertEquals(18.0, evalPassExpr(expr("""{"input":"sdfRange"}"""), emptyMap(), pass), 0.0)
+        assertEquals(100.0, evalPassExpr(expr("""{"input":"sdfViewBoxW"}"""), emptyMap(), pass), 0.0)
+        // fail's ✗ box: 0.15 × the target min dim; params address like any mode.
+        assertEquals(
+            0.15 * 400.0,
+            evalPassExpr(expr("""{"mul":[0.15,{"input":"targetMinDimPx"}]}"""), emptyMap(), pass),
+            0.0,
+        )
+        assertEquals(
+            200.0,
+            evalPassExpr(
+                expr("""{"mul":[{"param":"scale"},{"input":"targetMinDimPx"}]}"""),
+                mapOf("scale" to DopeValue.Number(0.5)),
+                pass,
+            ),
+            0.0,
+        )
+        // fail's SDF range mapping: range * (2*boxPx / viewBoxW).
+        assertEquals(
+            18.0 * ((2.0 * (0.15 * 400.0)) / 100.0),
+            evalPassExpr(
+                expr(
+                    """{"mul":[{"input":"sdfRange"},{"div":[{"mul":[2,{"mul":[0.15,{"input":"targetMinDimPx"}]}]},""" +
+                        """{"max":[{"input":"sdfViewBoxW"},1e-6]}]}]}""",
+                ),
+                emptyMap(),
+                pass,
+            ),
+            0.0,
+        )
+    }
+
+    @Test
+    fun evalPassExprRejectsFrameClocksAndViceVersa() {
+        val pass = PassExprInputs(targetMinDimPx = 400.0)
+        for (name in listOf("animMs", "life", "elapsedMs", "loopS", "phase")) {
+            assertThrows(DopeException::class.java) {
+                evalPassExpr(expr("""{"input":"$name"}"""), emptyMap(), pass)
+            }
+        }
+        assertThrows(DopeException::class.java) {
+            evalPassExpr(expr("""{"input":"wat"}"""), emptyMap(), pass)
+        }
+        // …and the pass inputs are rejected in frame expressions.
+        assertThrows(DopeException::class.java) {
+            evalFrameExpr(expr("""{"input":"targetMinDimPx"}"""), ctx())
+        }
     }
 }

@@ -13,8 +13,9 @@
  * The templates are seeded from — and byte-equivalent (modulo the header) to —
  * the historical hand-written shims of the datafied effects, which all
  * converged on this exact shape; the per-effect golden test pins the output.
- * Effects with genuinely code-shaped factory bits (fail's SDF hooks, the
- * panel hybrids) keep hand-written sources — a fully supported path.
+ * Effects with genuinely code-shaped factory bits (the panel hybrids, CPU
+ * frame-geometry precomputes) keep hand-written sources — a fully supported
+ * path.
  */
 
 const pascal = (s) => s.charAt(0).toUpperCase() + s.slice(1);

@@ -178,6 +178,14 @@
           "$ref": "#/$defs/frameExpr",
           "description": "Shadow occluder height as a fraction of min canvas dim: a bare number or a PARAMS-ONLY frame expression ({input} nodes are rejected at runtime)."
         },
+        "pass": {
+          "type": "object",
+          "description": "PER-PASS scalar uniforms (§8.2), keyed by the canonical binding.extras[].name: frame expressions evaluated once per pass over the resolved params + the pass-geometry inputs (targetMinDimPx / sdfRange / sdfViewBoxW). Frame clocks (animMs/life/elapsedMs/loopS/phase) are rejected at runtime. A `note` key is documentation.",
+          "properties": {
+            "note": { "type": "string" }
+          },
+          "additionalProperties": { "$ref": "#/$defs/frameExpr" }
+        },
         "consts": {
           "type": "object",
           "description": "Loop-cap constants the paramSpec clampMax/clampMin flags reference (MAX_RINGS, MAX_DROPS, ...).",
@@ -230,7 +238,10 @@
                 "properties": {
                   "web": { "type": "string" },
                   "name": { "type": "string" },
-                  "texture": { "type": "integer" }
+                  "texture": { "type": "integer" },
+                  "outline": { "type": "string", "description": "Declarative SDF source: a geometry.outlines key whose baked SDF backs this sampler (bound as an aux texture on web; native runtimes keep the analytic fallback)." },
+                  "on": { "type": "string", "description": "The canonical binding.extras name of the sampler's on flag (1 when the texture is bound, 0 = analytic fallback)." },
+                  "note": { "type": "string" }
                 }
               }
             ]
@@ -298,12 +309,12 @@
     "exprOrNumber": { "$ref": "#/$defs/expr" },
 
     "frameExpr": {
-      "description": "Per-FRAME expression grammar (§7.1): a non-Turing-complete arithmetic tree over the frame inputs (animMs/life/elapsedMs), the resolved params, and the tempo primitives. Evaluated every frame by framework/frame-expr.ts (and its Swift/Android ports); reduce order is significant for float parity.",
+      "description": "Per-FRAME expression grammar (§7.1): a non-Turing-complete arithmetic tree over the frame inputs (animMs/life/elapsedMs, the §7.2 loop clocks loopS/phase), the resolved params, and the tempo primitives. Evaluated every frame by framework/frame-expr.ts (and its Swift/Android ports); reduce order is significant for float parity. The same grammar serves render.shadowHeightFrac (params-only: every input rejected) and render.pass (the pass-geometry inputs targetMinDimPx/sdfRange/sdfViewBoxW allowed INSTEAD of the frame clocks) — which inputs are legal where is enforced at runtime.",
       "oneOf": [
         { "type": "number" },
         { "type": "object", "properties": { "const": { "type": "number" } }, "required": ["const"] },
         { "type": "object", "properties": { "param": { "type": "string" } }, "required": ["param"] },
-        { "type": "object", "properties": { "input": { "enum": ["animMs", "life", "elapsedMs"] } }, "required": ["input"] },
+        { "type": "object", "properties": { "input": { "enum": ["animMs", "life", "elapsedMs", "loopS", "phase", "targetMinDimPx", "sdfRange", "sdfViewBoxW"] } }, "required": ["input"] },
         { "type": "object", "properties": { "add": { "type": "array", "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["add"] },
         { "type": "object", "properties": { "sub": { "type": "array", "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["sub"] },
         { "type": "object", "properties": { "mul": { "type": "array", "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["mul"] },

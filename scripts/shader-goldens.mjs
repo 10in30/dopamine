@@ -28,6 +28,8 @@ const FIXTURES = {
   ripple: { mood: "celebratory", intensity: 0.85, whimsy: 0.4, seed: 12345, lifeFrac: 0.45 },
   inkstroke: { mood: "celebratory", intensity: 0.85, whimsy: 0.45, seed: 12345, lifeFrac: 0.45 },
   halo: { mood: "serene", intensity: 0.85, whimsy: 0.4, seed: 12345, lifeFrac: 0.45 },
+  // fail/solarbloom/confetti sample textures the harness can't bind standalone —
+  // see scripts/lib/shader-src.mjs (gated by the MSL/Android snapshots + CI).
 };
 
 /** Derive the Android fragment from the web GLSL: add dopLightOut + swap the emit. */
