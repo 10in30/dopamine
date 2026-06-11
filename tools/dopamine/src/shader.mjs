@@ -193,7 +193,18 @@ function rewriteCalls(code, sigs) {
     result += code.slice(i, start) + name + "(";
     const args = argText.trim() === "" ? [] : splitArgs(argText).map((a) => rewriteCalls(a, sigs));
 
-    if (name === "paletteMix") {
+    if (name === "atan" && args.length === 2) {
+      // GLSL 2-arg atan(y, x) is MSL atan2(y, x) (1-arg atan stays atan).
+      result = result.slice(0, -("atan(".length)) + "atan2(";
+      result += args.join(",");
+    } else if (/^float([234])x\1$/.test(name) && args.length === Number(name[5]) ** 2) {
+      // GLSL matN(scalars…) is COLUMN-major; MSL has no scalar matrix constructor,
+      // so group the N*N scalars into N floatN columns.
+      const N = Number(name[5]);
+      const cols = [];
+      for (let c = 0; c < N; c++) cols.push(`float${N}(${args.slice(c * N, c * N + N).map((s) => s.trim()).join(", ")})`);
+      result += cols.join(", ");
+    } else if (name === "paletteMix") {
       // dop_paletteMix(t, u.c0, u.c1, u.c2)
       result = result.slice(0, -("paletteMix(".length)) + "dop_paletteMix(";
       args.push(" u.c0", " u.c1", " u.c2");

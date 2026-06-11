@@ -18,6 +18,7 @@ export const SHADER_EXPORTS = {
   aurora: { file: "effects/aurora/web/src/aurora-shader.ts", vertex: "AURORA_VERTEX_SRC", fragment: "AURORA_FRAGMENT_SRC" },
   ripple: { file: "effects/ripple/web/src/ripple-shader.ts", vertex: "RIPPLE_VERTEX_SRC", fragment: "RIPPLE_FRAGMENT_SRC" },
   inkstroke: { file: "effects/inkstroke/web/src/inkstroke-shader.ts", vertex: "INK_VERTEX_SRC", fragment: "INK_FRAGMENT_SRC" },
+  halo: { file: "effects/halo/web/src/halo-shader.ts", vertex: "HALO_VERTEX_SRC", fragment: "HALO_FRAGMENT_SRC" },
 };
 
 /**

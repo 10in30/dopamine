@@ -34,6 +34,7 @@ const FIXTURES = {
   aurora: { mood: "serene", intensity: 0.85, whimsy: 0.4, seed: 12345, lifeFrac: 0.45 },
   ripple: { mood: "celebratory", intensity: 0.85, whimsy: 0.4, seed: 12345, lifeFrac: 0.45 },
   inkstroke: { mood: "celebratory", intensity: 0.85, whimsy: 0.45, seed: 12345, lifeFrac: 0.45 },
+  halo: { mood: "serene", intensity: 0.85, whimsy: 0.4, seed: 12345, lifeFrac: 0.45 },
 };
 
 /** Derive the Android fragment from the web GLSL: add dopLightOut + swap the emit. */
