@@ -102,6 +102,7 @@
     "note": "CROSS-PLATFORM uniform-binding contract (consumed by the @dopamine/build toolchain, not the runtime). Which render.params are NOT shader uniforms, the seed-keyed scatter field, the per-frame/host extras, and the texture samplers — one source of truth for the web u<Name> list, the Swift struct + packer, and the MSL struct. The toolchain STRIPS this (and `x-build`, `slug`, `kind`) from the .dope it embeds in each platform package, so the embedded runtime doc stays the portable, standalone-safe data spine.",
     "excludeParams": ["style", "overshoot", "durationMs"],
     "scatterKey": "auroraSeed",
+    "scatterWeb": "uSeed",
     "extras": [
       { "name": "sweep", "type": "float", "web": "uSweep", "note": "accumulated sideways sweep (fraction of width)" }
     ],
@@ -110,6 +111,13 @@
 
   "x-build": {
     "note": "TOOLCHAIN build config (vendor-namespaced `x-` so runtime parsers ignore it; stripped from the embedded .dope). One block per platform: how `dopamine build` assembles the standalone, installable package into dist/<platform>/.",
+    "shader": {
+      "note": "Single-source shader: the canonical web GLSL is the ONLY hand-written shader; the MSL is TRANSPILED from it (no hand-ported .metal to drift). See tools/dopamine/src/shader.mjs.",
+      "web": "web/src/aurora-shader.ts",
+      "vertexExport": "AURORA_VERTEX_SRC",
+      "fragmentExport": "AURORA_FRAGMENT_SRC",
+      "generateMSL": true
+    },
     "swift": {
       "module": "DopamineEffectAurora",
       "sources": "swift",

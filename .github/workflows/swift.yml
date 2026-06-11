@@ -104,6 +104,18 @@ jobs:
       # shared woff2 display faces → ttf (fonttools+brotli) and bundles them into the
       # package's Resources/fonts. Runs before xcodegen/xcodebuild, which reference
       # the dist package by path. ---
+      # The toolchain transpiles the single-source web GLSL → MSL via esbuild, so
+      # `dopamine build` needs the node deps installed. --ignore-scripts skips the
+      # Playwright/ffmpeg postinstall downloads this job doesn't need; esbuild's
+      # platform binary comes from its optional dep recorded in the lockfile.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install toolchain deps (esbuild for dopamine build)
+        run: npm ci --ignore-scripts
+
       - name: Build effect packages (dopamine build — woff2→ttf fonts)
         run: |
           set -x

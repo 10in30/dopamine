@@ -302,11 +302,19 @@
       "durationMs"
     ],
     "scatterKey": "rippleSeed",
+    "scatterWeb": "uSeed",
     "extras": [],
     "samplers": []
   },
   "x-build": {
     "note": "TOOLCHAIN build config (vendor-namespaced `x-` so runtime parsers ignore it; stripped from the embedded .dope). One block per platform: how `dopamine build` assembles the standalone, installable package into dist/<platform>/.",
+    "shader": {
+      "note": "Single-source shader: the canonical web GLSL is the ONLY hand-written shader; the MSL is TRANSPILED from it. See tools/dopamine/src/shader.mjs.",
+      "web": "web/src/ripple-shader.ts",
+      "vertexExport": "RIPPLE_VERTEX_SRC",
+      "fragmentExport": "RIPPLE_FRAGMENT_SRC",
+      "generateMSL": true
+    },
     "swift": {
       "module": "DopamineEffectRipple",
       "sources": "swift",

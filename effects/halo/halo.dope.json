@@ -126,6 +126,7 @@
   },
   "x-build": {
     "note": "TOOLCHAIN build config (vendor-namespaced `x-` so runtime parsers ignore it; stripped from the embedded .dope). One block per platform: how `dopamine build` assembles the standalone, installable package into dist/<platform>/.",
+    "shader": { "note": "Single-source shader: web GLSL is the only hand-written shader; MSL+Android generated from it.", "web": "web/src/halo-shader.ts", "vertexExport": "HALO_VERTEX_SRC", "fragmentExport": "HALO_FRAGMENT_SRC", "generateMSL": true },
     "swift": {
       "module": "DopamineEffectHalo",
       "sources": "swift",

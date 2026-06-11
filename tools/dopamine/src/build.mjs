@@ -81,7 +81,7 @@ export async function buildEffect({ root, effectDir, outDir }) {
     });
   }
   if (build.android) {
-    dist.push(...(await generateAndroidLibrary({ eff, fonts })));
+    dist.push(...(await generateAndroidLibrary({ root, eff, fonts })));
   }
 
   return { dist, sync };
