@@ -102,9 +102,11 @@ class DopeConfigTest {
 
     @Test
     fun haloDerivesTheExpectedConfig() {
-        val (_, plan) = load("halo")
+        val (doc, plan) = load("halo")
+        // No uPeriod: the loop clocks (uLoopS/uPhase) are STANDARD uniforms the
+        // runner derives from tempo.loop — no per-effect period plumbing.
         assertEquals(
-            setOf("uExposure", "uRingRadius", "uRingWidth", "uBreathe", "uSweepArc", "uSweepTurns", "uGlow", "uPeriod"),
+            setOf("uExposure", "uRingRadius", "uRingWidth", "uBreathe", "uSweepArc", "uSweepTurns", "uGlow"),
             plan.uniforms.toSet(),
         )
         // haloSeed feeds the seeded palette only — no scatterWeb, not a uniform.
@@ -114,6 +116,36 @@ class DopeConfigTest {
         assertEquals("haloSeed", plan.scatterKey)
         assertEquals(0.0, plan.reducedMotionPeakMs!!, 0.0)
         assertEquals(600.0, plan.reducedMotionHoldMs!!, 0.0)
+        // The first-class continuous-loop contract: 1.5 s period, snap-aligned.
+        assertEquals(DopeLoop(periodMs = 1500.0, snapAligned = true), doc.loop)
+        assertEquals(1500.0, plan.loopPeriodMs!!, 0.0)
+    }
+
+    // ── tempo.loop validation (the seam invariants, enforced at parse) ──
+
+    /** The bundled halo JSON with its loop period swapped, as raw text. */
+    private fun haloText(periodMs: String): String {
+        val text = resource("halo.dope.json")
+        require(text.contains("\"periodMs\": 1500"))
+        return text.replace("\"periodMs\": 1500", "\"periodMs\": $periodMs")
+    }
+
+    @Test
+    fun loopPeriodOffTheOnTwosGridIsRejected() {
+        // 100 ms is not a whole number of 1000/12 ms steps.
+        val err = org.junit.Assert.assertThrows(DopeException::class.java) {
+            parseDope(haloText("100"))
+        }
+        org.junit.Assert.assertTrue(err.message!!.contains("animate-on-twos"))
+    }
+
+    @Test
+    fun loopPeriodNotTilingDurationIsRejected() {
+        // 2250 ms = 27 on-twos steps (grid-aligned), but 6000 / 2250 isn't whole.
+        val err = org.junit.Assert.assertThrows(DopeException::class.java) {
+            parseDope(haloText("2250"))
+        }
+        org.junit.Assert.assertTrue(err.message!!.contains("whole number of tempo.loop periods"))
     }
 
     // ════════════════════════════════ fail ══════════════════════════════════

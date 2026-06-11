@@ -20,6 +20,7 @@
 
 import { buildPalette, oklchToLinearSrgb, type OKLCH, type RGB } from "../engine/color.js";
 import { mulberry32, type Rng } from "../engine/seed.js";
+import { NPR_TIME_STEP_MS } from "../engine/tempo.js";
 import type { BakedSdf } from "../engine/sdf.js";
 import type { FrameExprNode } from "./frame-expr.js";
 
@@ -35,6 +36,26 @@ const lerp = (a: number, b: number, t: number): number => a + (b - a) * clamp01(
 export interface DopeFrameSpec {
   amp: FrameExprNode;
   extras?: Record<string, FrameExprNode>;
+}
+
+/**
+ * The continuous-loop contract (`tempo.loop`): the effect repeats seamlessly
+ * with period `periodMs`. `parseDope` validates the two seam invariants that
+ * used to be per-effect convention: the period tiles the "animate on twos"
+ * grid (unless `snapAligned` is false) and every baseline `durationMs` is a
+ * whole number of periods — so the frame at `t == durationMs` matches `t == 0`
+ * at every whimsy. Runners surface the standard periodic clock uniforms
+ * `uLoopS` / `uPhase` (and the `loopS` / `phase` frame-expr inputs) from it,
+ * and conductors re-arm at `durationMs` instead of tearing down.
+ */
+export interface DopeLoopSpec {
+  /** The seamless loop period, ms. */
+  periodMs: number;
+  /**
+   * Whether `periodMs` must be a whole number of `NPR_TIME_STEP_MS` steps so
+   * the "animate on twos" snapped clock is also periodic. Default true.
+   */
+  snapAligned?: boolean;
 }
 
 /**
@@ -65,6 +86,8 @@ export interface DopeDoc {
   palette: DopePalette;
   tempo: {
     durationMs?: DopeParamSpec;
+    /** Continuous-loop contract (seamless period); see {@link DopeLoopSpec}. */
+    loop?: DopeLoopSpec;
     /** Per-frame logic (amp + extras) as frame-expression trees. */
     frame?: DopeFrameSpec;
     /** Reduced-motion peak/hold the factories used to hardcode. */
@@ -335,10 +358,43 @@ function assertStandalone(node: unknown, path = "$"): void {
   }
 }
 
+// Tolerance for the loop whole-multiple checks (the step 1000/12 is not exactly
+// representable, so an exact `% === 0` would be float-fragile).
+const LOOP_EPS = 1e-6;
+const isWhole = (x: number): boolean => Math.abs(x - Math.round(x)) < LOOP_EPS;
+
+/**
+ * Validate a `tempo.loop` block against the doc's baselines: the period must be
+ * positive, must tile the "animate on twos" grid (unless `snapAligned` is
+ * false), and every per-mood baseline `durationMs` must be a whole number of
+ * periods — the seam guarantee, moved from per-effect convention into the
+ * parser (identical on every platform).
+ */
+function assertValidLoop(loop: DopeLoopSpec, baselines: DopeDoc["baselines"]): void {
+  const p = loop.periodMs;
+  if (typeof p !== "number" || !Number.isFinite(p) || p <= 0) {
+    throw new Error(`dope: tempo.loop.periodMs must be a positive number (got ${JSON.stringify(p)})`);
+  }
+  if (loop.snapAligned !== false && !isWhole(p / NPR_TIME_STEP_MS)) {
+    throw new Error(
+      `dope: tempo.loop.periodMs (${p}) is not a whole number of animate-on-twos steps (1000/12 ms)`,
+    );
+  }
+  for (const [mood, row] of Object.entries(baselines)) {
+    const d = row.durationMs;
+    if (d !== undefined && !isWhole(d / p)) {
+      throw new Error(
+        `dope: baselines.${mood}.durationMs (${d}) is not a whole number of tempo.loop periods (${p} ms)`,
+      );
+    }
+  }
+}
+
 /**
  * Parse + validate a `.dope` document from a JSON string or already-parsed
- * object. Rejects a wrong/absent magic or major version, and any external
- * (remote / absolute-path) asset reference — a `.dope` must be self-contained.
+ * object. Rejects a wrong/absent magic or major version, any external
+ * (remote / absolute-path) asset reference — a `.dope` must be self-contained —
+ * and a `tempo.loop` that breaks the seam invariants.
  * (A fuller JSON-Schema validation lives in CI against effect-format.schema.json.)
  */
 export function parseDope(src: string | object): DopeDoc {
@@ -353,6 +409,7 @@ export function parseDope(src: string | object): DopeDoc {
   if (!doc.render?.params || !doc.palette?.perMood || !doc.baselines) {
     throw new Error("dope: document missing render.params / palette.perMood / baselines");
   }
+  if (doc.tempo?.loop) assertValidLoop(doc.tempo.loop, doc.baselines);
   assertStandalone(doc);
   return doc;
 }

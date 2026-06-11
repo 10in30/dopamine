@@ -85,7 +85,39 @@ final class DopeConfigTests: XCTestCase {
         XCTAssertEqual(doc.binding?.scatterKey, "haloSeed")
         XCTAssertEqual(doc.usesOrigin, true)
         XCTAssertEqual(doc.reducedMotion, DopeReducedMotion(peakMs: 0, holdMs: 600))
+        // The first-class continuous-loop contract: 1.5 s period, snap-aligned.
+        XCTAssertEqual(doc.loop, DopeLoopSpec(periodMs: 1500, snapAligned: true))
         try assertResolveMatchesExplicitArgs(doc, consts: [:], scatterKey: "haloSeed")
+    }
+
+    // ── tempo.loop validation (the seam invariants, enforced at parse) ──
+
+    /// The canonical halo JSON with its loop period swapped, as raw text — the
+    /// cheapest way to exercise the parser against an otherwise-valid doc.
+    private func haloText(periodMs: String) throws -> String {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("effects/halo/halo.dope.json")
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.contains("\"loop\": { \"periodMs\": 1500 }"))
+        return text.replacingOccurrences(
+            of: "\"loop\": { \"periodMs\": 1500 }",
+            with: "\"loop\": { \"periodMs\": \(periodMs) }")
+    }
+
+    func testLoopPeriodOffTheOnTwosGridIsRejected() throws {
+        // 100 ms is not a whole number of 1000/12 ms steps.
+        XCTAssertThrowsError(try parseDope(haloText(periodMs: "100"))) { err in
+            XCTAssertTrue("\(err)".contains("animate-on-twos"))
+        }
+    }
+
+    func testLoopPeriodNotTilingDurationIsRejected() throws {
+        // 2250 ms = 27 on-twos steps (grid-aligned), but 6000 / 2250 isn't whole.
+        XCTAssertThrowsError(try parseDope(haloText(periodMs: "2250"))) { err in
+            XCTAssertTrue("\(err)".contains("whole number of tempo.loop periods"))
+        }
     }
 
     // ── fail ──

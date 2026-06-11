@@ -129,6 +129,11 @@ fun parseDope(src: String): DopeDoc {
     // tempo.durationMs (optional).
     val durationMs = json["tempo"]?.get("durationMs")?.let { decodeParamSpec(it) }
 
+    // tempo.loop — the continuous-loop contract { periodMs, snapAligned }.
+    // Validated here (mirroring the web parseDope): the seam invariants move
+    // from per-effect convention into the parser on every platform.
+    val loop = json["tempo"]?.get("loop")?.let { decodeLoop(it, baselines) }
+
     val controlsMoodDefault = json["controls"]?.get("mood")?.get("default")?.asString
 
     return DopeDoc(
@@ -136,6 +141,36 @@ fun parseDope(src: String): DopeDoc {
         palette = palette, durationMs = durationMs,
         renderParams = renderParams, baselines = baselines,
         baselineOrder = baselineOrder, controlsMoodDefault = controlsMoodDefault,
+        loop = loop,
         raw = json,
     )
+}
+
+// MARK: - tempo.loop decode + validation (mirrors the web `assertValidLoop`).
+
+// Tolerance for the loop whole-multiple checks (the step 1000/12 is not exactly
+// representable, so an exact remainder check would be float-fragile).
+private const val LOOP_EPS = 1e-6
+private fun isWhole(x: Double): Boolean = kotlin.math.abs(x - kotlin.math.round(x)) < LOOP_EPS
+
+private fun decodeLoop(json: JsonValue, baselines: Map<String, Map<String, Double>>): DopeLoop {
+    val p = json["periodMs"]?.asNumber ?: 0.0
+    if (!p.isFinite() || p <= 0) {
+        throw DopeException("dope: tempo.loop.periodMs must be a positive number (got ${json["periodMs"]})")
+    }
+    val snapAligned = json["snapAligned"]?.asBool ?: true
+    if (snapAligned && !isWhole(p / NPR_TIME_STEP_MS)) {
+        throw DopeException(
+            "dope: tempo.loop.periodMs ($p) is not a whole number of animate-on-twos steps (1000/12 ms)",
+        )
+    }
+    for ((mood, row) in baselines) {
+        val d = row["durationMs"] ?: continue
+        if (!isWhole(d / p)) {
+            throw DopeException(
+                "dope: baselines.$mood.durationMs ($d) is not a whole number of tempo.loop periods ($p ms)",
+            )
+        }
+    }
+    return DopeLoop(periodMs = p, snapAligned = snapAligned)
 }

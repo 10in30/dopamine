@@ -5,8 +5,9 @@
  * The resolve-time grammar (`loader.ts` `evalExpr`) maps a feeling into the
  * resolved param bag ONCE per fire. This module is its per-frame sibling: it
  * evaluates the `.dope` `tempo.frame` / `render.shadowHeightFrac` expression
- * trees EVERY frame against the live clocks (`animMs` / `life` / `elapsedMs`)
- * and the resolved params — so the per-frame logic, like the resolve mapping,
+ * trees EVERY frame against the live clocks (`animMs` / `life` / `elapsedMs`,
+ * plus the `loopS` / `phase` loop clocks for effects with `tempo.loop`) and
+ * the resolved params — so the per-frame logic, like the resolve mapping,
  * is authored once in the `.dope` and interpreted identically on every
  * platform.
  *
@@ -24,7 +25,7 @@ export type FrameExprNode =
   | number
   | { const: number }
   | { param: string }
-  | { input: "animMs" | "life" | "elapsedMs" }
+  | { input: "animMs" | "life" | "elapsedMs" | "loopS" | "phase" }
   | { add: FrameExprNode[] }
   | { sub: FrameExprNode[] }
   | { mul: FrameExprNode[] }
@@ -50,6 +51,14 @@ export interface FrameExprCtx {
   elapsedMs: number;
   /** The resolved render-param bag (numeric entries are addressable). */
   params: Record<string, unknown>;
+  /**
+   * Seconds within the current loop (`(animMs % tempo.loop.periodMs) / 1000`).
+   * 0 for an effect with no `tempo.loop` — the caller (the dope-pass frame
+   * derivation) fills these from the doc's loop contract.
+   */
+  loopS?: number;
+  /** Normalized loop phase in [0, 1) (`animMs % periodMs / periodMs`); 0 without a loop. */
+  phase?: number;
 }
 
 function evalNode(node: FrameExprNode, ctx: FrameExprCtx, allowInputs: boolean): number {
@@ -69,6 +78,8 @@ function evalNode(node: FrameExprNode, ctx: FrameExprCtx, allowInputs: boolean):
     if (node.input === "animMs") return ctx.animMs;
     if (node.input === "life") return ctx.life;
     if (node.input === "elapsedMs") return ctx.elapsedMs;
+    if (node.input === "loopS") return ctx.loopS ?? 0;
+    if (node.input === "phase") return ctx.phase ?? 0;
     throw new Error(`dope: unknown frame input "${String(node.input)}"`);
   }
   if ("add" in node) return node.add.reduce((p: number, n) => p + evalNode(n, ctx, allowInputs), 0);

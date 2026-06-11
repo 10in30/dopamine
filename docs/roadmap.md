@@ -6,32 +6,20 @@ as possible** — a portable `.dope` document interpreted identically on every
 platform — while keeping per-platform sources a fully supported authoring path
 for the genuinely platform-shaped parts.
 
-## Looping as a first-class format/runner feature
+## Looping — remaining work
 
-Continuous effects (a calm "loading" ring like halo, a pulsing "recording"
-dot, a breathing skeleton placeholder) currently build their loop by hand:
-drive all motion off `uTimeS`, pick a period that tiles both `durationMs` and
-the 12 Hz animate-on-twos grid (so the seam survives at every whimsy), and
-supply a steady periodic `amp` instead of `envelope(life)`. Each of those
-choices is general math, not per-effect logic, so it belongs in the format and
-the runners:
+`tempo.loop` is now a first-class format/runner feature (see
+`docs/effect-format.md` §7.2): the parser validates the seam invariants, the
+runners derive the standard `uLoopS`/`uPhase` clocks (+ the `loopS`/`phase`
+frame-expr inputs), and the conductors re-arm at `durationMs` with a stop
+handle (halo rides it end to end). Still open:
 
-- **Format:** an optional `tempo.loop` block — `periodMs` (required) +
-  `snapAligned` (default true). `parseDope()` validates that `periodMs` is an
-  integer multiple of the on-twos step (`NPR_TIME_STEP_MS`) and that
-  `durationMs` is a whole number of periods, so the seam guarantee moves from
-  convention into the parser. A schema'd contract also gives hosts a
-  machine-readable way to know an effect loops and what its period is.
-- **Runners:** standard seamless periodic clock uniforms — `uLoopS`
-  (seconds within the current loop) and `uPhase` (normalized phase in
-  `[0, 1)`) — computed once in the shared pass-runner layer so all platforms
-  get them from one place. Shaders then use `sin(TAU * uPhase)` for a breathe
-  and `uPhase` for a sweep, with no per-effect period plumbing.
-- **Conductor:** for a looping effect, re-arm at `durationMs` instead of
-  tearing down; the host stops it via a returned handle / `dispose()`. The
-  reduced-motion fallback renders ONE calm phase and holds (never loops);
-  background-tab pausing and an idle/visibility stop keep a perpetual loop
-  from costing battery.
+- **Idle/visibility economics:** the web conductor already skips GPU work on
+  hidden tabs and the loop re-arm is drift-free across stalls, but a perpetual
+  loop in a long-lived background view (native hosts especially) should get an
+  explicit idle/visibility pause so it never costs battery.
+- **More continuous effects** (a pulsing "recording" dot, a breathing skeleton
+  placeholder) to exercise the contract beyond halo.
 
 ## A transpiler for CPU-precomputed per-frame geometry
 

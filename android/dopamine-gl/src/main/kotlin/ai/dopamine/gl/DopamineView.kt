@@ -40,6 +40,25 @@ data class PlayOptions(
     val targetHeightPx: Float = 0f,
 )
 
+/**
+ * What `DopamineView.play` returns: a `stop()` for CONTINUOUS effects (whose
+ * `.dope` declares `tempo.loop` — the conductor re-arms them at every
+ * `durationMs` seam until stopped). Calling `stop()` on a one-shot ends it
+ * early; on an already-finished effect it is a no-op.
+ */
+class PlayHandle internal constructor(
+    private val view: DopamineView,
+    /** Whether the played effect is CONTINUOUS (loops until stopped). */
+    val looping: Boolean,
+) {
+    /** Set on the GL thread when the drawable starts; read/written there only. */
+    internal var active: Any? = null
+
+    fun stop() {
+        view.queueEvent { view.requestStop(this) }
+    }
+}
+
 class DopamineView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -49,8 +68,22 @@ class DopamineView @JvmOverloads constructor(
     private val density: Float = resources.displayMetrics.density
 
     /** Live effects, mutated ONLY on the GL thread (via onDrawFrame / queueEvent). */
-    private class Active(val instance: EffectInstance, val startedAtNanos: Long, val durationMs: Double)
+    private class Active(
+        val instance: EffectInstance,
+        var startedAtNanos: Long,
+        val durationMs: Double,
+        /** CONTINUOUS effect: re-arm at durationMs instead of teardown. */
+        val loops: Boolean,
+    ) {
+        /** Set by the play handle's `stop()`; the next frame disposes. */
+        var stopRequested: Boolean = false
+    }
     private val active = ArrayList<Active>()
+
+    /** GL-thread side of `PlayHandle.stop()`. */
+    internal fun requestStop(handle: PlayHandle) {
+        (handle.active as? Active)?.stopRequested = true
+    }
 
     /** Slow-motion time scale (1.0 = real time); 0.25 plays at quarter speed. */
     @Volatile var timeScale: Double = 1.0
@@ -67,16 +100,19 @@ class DopamineView @JvmOverloads constructor(
 
     /**
      * Fire a registered effect by name. Resolves the feeling on the caller thread
-     * (pure), then builds the drawable + starts its clock on the GL thread. The
-     * effect auto-removes when it has fully played out.
+     * (pure), then builds the drawable + starts its clock on the GL thread. A
+     * one-shot auto-removes when it has fully played out; a CONTINUOUS effect
+     * (`tempo.loop`) re-arms at every `durationMs` seam until the returned
+     * handle's `stop()` is called.
      */
-    fun play(effect: String, options: PlayOptions = PlayOptions()) {
+    fun play(effect: String, options: PlayOptions = PlayOptions()): PlayHandle {
         val factory = EffectRegistry.get(effect)
             ?: throw IllegalArgumentException("dopamine: unknown effect \"$effect\" (registered: ${EffectRegistry.names()})")
         val drawable = factory as? DrawableEffect
             ?: throw IllegalStateException("dopamine: effect \"$effect\" is not drawable on Android")
         val seed = options.seed ?: randomSeed()
         val params = drawable.resolve(DopeResolveInput(options.mood, options.intensity, options.whimsy, seed))
+        val handle = PlayHandle(this, looping = drawable.loop != null)
 
         queueEvent {
             val w = glContext.width
@@ -91,13 +127,16 @@ class DopamineView @JvmOverloads constructor(
             )
             try {
                 val instance = drawable.create(params, ctx)
-                active.add(Active(instance, System.nanoTime(), instance.durationMs))
+                val fx = Active(instance, System.nanoTime(), instance.durationMs, loops = handle.looping)
+                handle.active = fx
+                active.add(fx)
                 renderMode = RENDERMODE_CONTINUOUSLY
                 requestRender()
             } catch (e: Exception) {
                 android.util.Log.e("Dopamine", "create failed for $effect", e)
             }
         }
+        return handle
     }
 
     private inner class Renderer : GLSurfaceView.Renderer {
@@ -135,9 +174,22 @@ class DopamineView @JvmOverloads constructor(
                 val fx = it.next()
                 val elapsedMs = (now - fx.startedAtNanos) / 1_000_000.0 * timeScale
                 fx.instance.renderAt(minOf(elapsedMs, fx.durationMs))
-                if (elapsedMs >= fx.durationMs) {
+                if (fx.stopRequested) {
                     fx.instance.dispose()
                     it.remove()
+                } else if (elapsedMs >= fx.durationMs) {
+                    if (fx.loops) {
+                        // CONTINUOUS effect: re-arm at the seam instead of teardown.
+                        // The .dope loop contract guarantees t == durationMs renders
+                        // as t == 0, so advancing the start by whole durations
+                        // (several at once if frames stalled) is seamless. The
+                        // advance is in REAL nanos, so it respects timeScale.
+                        val cycles = Math.floor(elapsedMs / fx.durationMs)
+                        fx.startedAtNanos += (cycles * fx.durationMs / timeScale * 1_000_000.0).toLong()
+                    } else {
+                        fx.instance.dispose()
+                        it.remove()
+                    }
                 }
             }
             if (active.isEmpty()) renderMode = RENDERMODE_WHEN_DIRTY

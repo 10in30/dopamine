@@ -43,6 +43,10 @@ interface ActiveEffect {
   startedAt: number;
   durationMs: number;
   resolve: () => void;
+  /** CONTINUOUS effect: re-arm at durationMs instead of tearing down. */
+  loop: boolean;
+  /** Set by the play handle's `stop()`; the next frame disposes + resolves. */
+  stopRequested: boolean;
 }
 
 /** A persistent overlay + GL contexts + RAF loop bound to one target element. */
@@ -184,10 +188,22 @@ function ensureLoop(host: Host): void {
       const elapsed = now - fx.startedAt;
       // Skip the (invisible) draw on hidden tabs, but keep the timeline moving.
       if (!hidden) fx.renderAt(Math.min(elapsed, fx.durationMs));
-      if (elapsed >= fx.durationMs) {
+      if (fx.stopRequested) {
         host.active.delete(fx);
         fx.dispose();
         fx.resolve();
+      } else if (elapsed >= fx.durationMs) {
+        if (fx.loop) {
+          // CONTINUOUS effect: re-arm at the seam instead of tearing down. The
+          // .dope loop contract guarantees t == durationMs renders as t == 0, so
+          // advancing startedAt by whole durations (several at once if frames
+          // stalled, e.g. a backgrounded tab) is seamless and drift-free.
+          fx.startedAt += Math.floor(elapsed / fx.durationMs) * fx.durationMs;
+        } else {
+          host.active.delete(fx);
+          fx.dispose();
+          fx.resolve();
+        }
       }
     }
     if (host.active.size > 0) {
@@ -255,12 +271,24 @@ export interface PlayRequest {
 }
 
 /**
- * Play an effect in real time. Resolves when it has fully played out. The host
+ * What `play()` returns: awaitable as before (resolves when the effect has
+ * fully played out — or, for a CONTINUOUS effect, when the host stops it), plus
+ * a `stop()` for looping effects. `stop()` on a one-shot ends it early; on an
+ * already-finished effect it is a no-op.
+ */
+export type PlayHandle = Promise<void> & { stop(): void };
+
+const resolvedHandle = (): PlayHandle => Object.assign(Promise.resolve(), { stop() {} });
+
+/**
+ * Play an effect in real time. Resolves when it has fully played out. A
+ * CONTINUOUS effect (`factory.loop`) instead re-arms at every `durationMs`
+ * seam and plays until the host calls the returned handle's `stop()`. The host
  * (overlay + contexts + loop) is created lazily and kept warm for reuse when
  * idle; the RAF loop stops between fires. Call {@link teardown} to release it.
  */
-export function play(req: PlayRequest): Promise<void> {
-  if (!isBrowser()) return Promise.resolve();
+export function play(req: PlayRequest): PlayHandle {
+  if (!isBrowser()) return resolvedHandle();
 
   const wantShadow = req.factory.castsShadow !== false;
   const host = getHost(req.target, wantShadow);
@@ -272,32 +300,36 @@ export function play(req: PlayRequest): Promise<void> {
     instance = req.factory.create(params, buildEffectContext(host, req.anchor, req.targetSize));
   } catch (err) {
     if (host.active.size === 0) quiesce(host);
-    return Promise.reject(err);
+    return Object.assign(Promise.reject(err), { stop() {} });
   }
 
-  // Reduced motion: draw one calm frame, hold briefly, done — no animation.
+  // Reduced motion: draw one calm frame, hold briefly (a looping effect holds
+  // until stopped — it never animates, let alone loops), done.
   if (prefersReducedMotion()) {
     return playReduced(host, instance, req.factory);
   }
 
   let resolve!: () => void;
   const done = new Promise<void>((res) => (resolve = res));
-  host.active.add({
+  const fx: ActiveEffect = {
     renderAt: (ms) => instance.renderAt(ms),
     dispose: () => instance.dispose(),
     startedAt: performance.now(),
     durationMs: instance.durationMs,
     resolve,
-  });
+    loop: !!req.factory.loop,
+    stopRequested: false,
+  };
+  host.active.add(fx);
   ensureLoop(host);
-  return done;
+  return Object.assign(done, { stop: () => { fx.stopRequested = true; } });
 }
 
 function playReduced(
   host: Host,
   instance: { renderAt(ms: number): void; dispose(): void; durationMs: number },
   factory: EffectFactory,
-): Promise<void> {
+): PlayHandle {
   const rm = factory.reducedMotion ?? {};
   const peakMs = rm.peakMs ?? Math.min(260, instance.durationMs * 0.18);
   const holdMs = rm.holdMs ?? 360;
@@ -307,14 +339,21 @@ function playReduced(
     beginShadow(host);
     instance.renderAt(peakMs);
   }
-  return new Promise<void>((resolve) => {
-    setTimeout(() => {
-      instance.dispose();
-      // Clear the held frame; keep the (reusable) host alive but quiesced.
-      if (host.active.size === 0) quiesce(host);
-      resolve();
-    }, holdMs);
-  });
+  let resolve!: () => void;
+  const done = new Promise<void>((res) => (resolve = res));
+  let finished = false;
+  const finish = (): void => {
+    if (finished) return;
+    finished = true;
+    instance.dispose();
+    // Clear the held frame; keep the (reusable) host alive but quiesced.
+    if (host.active.size === 0) quiesce(host);
+    resolve();
+  };
+  // A CONTINUOUS effect's calm frame holds until the host stops it (the
+  // reduced-motion analog of the loop); a one-shot's holds for holdMs.
+  if (!factory.loop) setTimeout(finish, holdMs);
+  return Object.assign(done, { stop: finish });
 }
 
 /**

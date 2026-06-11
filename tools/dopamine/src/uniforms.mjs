@@ -29,6 +29,8 @@ export const STANDARD = [
   { name: "target", type: "float2", web: "uTarget" },
   { name: "life", type: "float", web: "uLife" },
   { name: "timeS", type: "float", web: "uTimeS" },
+  { name: "loopS", type: "float", web: "uLoopS" },
+  { name: "phase", type: "float", web: "uPhase" },
   { name: "style", type: "float", web: "uStyle" },
   { name: "amp", type: "float", web: "uAmp" },
   { name: "c0", type: "float3", web: "uC0" },

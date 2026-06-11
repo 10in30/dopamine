@@ -51,6 +51,8 @@ public struct StandardUniforms {
     public var target: SIMD2<Float> = .zero      // targeted element size, device px
     public var life: Float = 0
     public var timeS: Float = 0
+    public var loopS: Float = 0                  // seconds within the current tempo.loop period
+    public var phase: Float = 0                  // normalized loop phase [0, 1); 0 without a loop
     public var style: Float = 0
     public var amp: Float = 0
     public var c0: SIMD3<Float> = .zero
@@ -75,6 +77,12 @@ public protocol PassConfig {
     var fragmentFunction: String { get }
     /// Whether the shader reads `origin` (anchored radial effects do).
     var usesOrigin: Bool { get }
+    /// The seamless loop period in ms (`tempo.loop.periodMs`) for a CONTINUOUS
+    /// effect; nil (the default) for one-shots. When set, the runner computes
+    /// the standard periodic clock uniforms (`loopS`/`phase`) each frame and
+    /// wraps the effect clock at `durationMs`, so a perpetually-ticking host
+    /// loops seamlessly with no per-effect period plumbing.
+    var loopPeriodMs: Double? { get }
     /// The shadow occluder "height" as a fraction of min canvas dim.
     func shadowHeightFrac(_ params: [String: DopeValue]) -> Double
     /// Compute the effect-specific time-varying values; MUST return `amp` (fed to
@@ -117,6 +125,8 @@ public struct PassFrameArray {
 }
 
 public extension PassConfig {
+    /// Default: a one-shot effect (no `tempo.loop`).
+    var loopPeriodMs: Double? { nil }
     /// Default: pure-shader effects bind no extra arrays.
     func frameArrays(
         _ info: FrameInfo,
@@ -260,6 +270,13 @@ public final class MetalPassRunner<Config: PassConfig> {
         s.target = SIMD2(tw, th)
         s.life = Float(info.life)
         s.timeS = Float(info.animMs / 1000)
+        if let p = config.loopPeriodMs, p > 0 {
+            // Standard periodic clocks for a looping effect, off the SAME snapped
+            // clock as timeS (so the on-twos seam guarantee carries over).
+            let loopMs = info.animMs.truncatingRemainder(dividingBy: p)
+            s.loopS = Float(loopMs / 1000)
+            s.phase = Float(loopMs / p)
+        }
         s.style = (params["style"].flatMap { if case let .number(v) = $0 { return Float(v) } else { return nil } }) ?? 0
         s.amp = Float(amp)
         if case let .palette(pal)? = params["palette"], pal.count >= 3 {
@@ -315,6 +332,14 @@ public final class MetalPassRunner<Config: PassConfig> {
         shadowEncoder: MTLRenderCommandEncoder?,
         panel: MTLTexture? = nil
     ) {
+        // CONTINUOUS effects: wrap the clock at durationMs — the runner-level
+        // re-arm. The tempo.loop contract guarantees t == durationMs renders as
+        // t == 0, so a host that keeps ticking loops seamlessly forever (and the
+        // clock stays small, preserving float precision in the shader).
+        var elapsedMs = elapsedMs
+        if config.loopPeriodMs != nil, durationMs > 0, elapsedMs > 0 {
+            elapsedMs = elapsedMs.truncatingRemainder(dividingBy: durationMs)
+        }
         // "Animate on twos": snap the clock toward a coarse grid as style rises.
         let style = Double(standardStyle())
         let stepped = (elapsedMs / NPR_TIME_STEP_MS).rounded(.down) * NPR_TIME_STEP_MS

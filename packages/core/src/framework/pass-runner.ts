@@ -108,6 +108,14 @@ export interface PassConfig {
    */
   usesOrigin?: boolean;
   /**
+   * The seamless loop period in ms (`tempo.loop.periodMs`) for a CONTINUOUS
+   * effect. When set, the runner computes the standard periodic clock uniforms
+   * each frame from the snapped clock: `uLoopS` (seconds within the current
+   * loop) and `uPhase` (normalized [0, 1)) — so a looping shader needs no
+   * per-effect period plumbing. Absent for one-shot effects.
+   */
+  loopPeriodMs?: number;
+  /**
    * Explicit `param name → uniform name` overrides for the auto scalar binding.
    * By convention a numeric param `bloomRadius` binds to `uBloomRadius`; list an
    * entry here only for exceptions (e.g. `inkSeed → uSeed`). Map to `null` to
@@ -308,6 +316,13 @@ export function createPassInstance(
     }
     gl.uniform1f(u.uLife, info.life);
     gl.uniform1f(u.uTimeS, info.animMs / 1000);
+    if (config.loopPeriodMs) {
+      // Standard periodic clocks for a looping effect, off the SAME snapped
+      // clock as uTimeS (so the on-twos seam guarantee carries over).
+      const loopMs = info.animMs % config.loopPeriodMs;
+      gl.uniform1f(u.uLoopS, loopMs / 1000);
+      gl.uniform1f(u.uPhase, loopMs / config.loopPeriodMs);
+    }
     gl.uniform1f(u.uStyle, params.style);
     bindPalette(gl, u, pal);
     bindScalars(gl, u, params, scalarBinds);

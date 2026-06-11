@@ -107,6 +107,15 @@
             }
           }
         },
+        "loop": {
+          "type": "object",
+          "description": "Continuous-loop contract (§7.2): the effect repeats seamlessly with period periodMs. Parsers validate the seam invariants: unless snapAligned is false, periodMs must be a whole number of animate-on-twos steps (1000/12 ms), and every baseline durationMs must be a whole number of periods. Runners derive the standard periodic clocks (uLoopS/uPhase + the loopS/phase frame inputs) from it; conductors re-arm at durationMs instead of tearing down.",
+          "required": ["periodMs"],
+          "properties": {
+            "periodMs": { "type": "number", "exclusiveMinimum": 0 },
+            "snapAligned": { "type": "boolean", "default": true }
+          }
+        },
         "reducedMotion": {
           "type": "object",
           "description": "Reduced-motion handling: the calm-peak elapsedMs and how long to hold that single static frame.",

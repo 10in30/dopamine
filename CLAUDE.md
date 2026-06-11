@@ -14,11 +14,12 @@ of the code** — the code on every platform is an interpreter for that data.
 
 > **One-shot vs continuous.** Most effects are one-shot reward moments
 > (`amp = envelope(life)`, a 0→peak→0 fade). `halo` is a continuous effect — a
-> calm ambient "loading" ring that LOOPS SEAMLESSLY. It departs from the
-> envelope convention: all motion is periodic in `uTimeS` (period 1.5 s) and
-> `tempo.durationMs` (6000) is an integer number of periods, so the frame at
-> `t == durationMs` matches `t == 0` at every whimsy. See `docs/roadmap.md` for
-> the plan to make looping a first-class format/runner feature.
+> calm ambient "loading" ring that LOOPS SEAMLESSLY via the first-class
+> `tempo.loop` contract (`docs/effect-format.md` §7.2): the parser validates
+> the seam invariants (the period tiles the on-twos grid; `durationMs` is a
+> whole number of periods), the runners derive the standard periodic clocks
+> `uPhase`/`uLoopS` (+ the `loopS`/`phase` frame-expr inputs), and the
+> conductors re-arm at `durationMs` until the host stops the play handle.
 
 ## The shared `.dope` format
 

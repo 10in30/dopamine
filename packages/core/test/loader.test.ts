@@ -34,6 +34,49 @@ describe(".dope loader validation", () => {
   });
 });
 
+describe("tempo.loop validation (the continuous-loop seam invariants)", () => {
+  type Mutable = {
+    tempo: { loop?: { periodMs?: unknown; snapAligned?: boolean } };
+    baselines: Record<string, Record<string, number>>;
+  };
+  const withLoop = (loop: object, durationMs?: number): Mutable => {
+    const doc = JSON.parse(JSON.stringify(sampleDoc)) as Mutable;
+    doc.tempo.loop = loop;
+    if (durationMs !== undefined) {
+      for (const row of Object.values(doc.baselines)) row.durationMs = durationMs;
+    }
+    return doc;
+  };
+
+  it("rejects a missing/non-positive periodMs", () => {
+    expect(() => parseDope(withLoop({}))).toThrow(/periodMs/);
+    expect(() => parseDope(withLoop({ periodMs: 0 }))).toThrow(/periodMs/);
+    expect(() => parseDope(withLoop({ periodMs: -1500 }))).toThrow(/periodMs/);
+  });
+
+  it("rejects a period off the animate-on-twos grid (snapAligned defaults true)", () => {
+    // 100 ms is not a whole number of 1000/12 ms steps.
+    expect(() => parseDope(withLoop({ periodMs: 100 }))).toThrow(/animate-on-twos/);
+  });
+
+  it("accepts an off-grid period when snapAligned is explicitly false", () => {
+    // The fixture's durations (2400/1800/1300) are all whole multiples of 100.
+    expect(() => parseDope(withLoop({ periodMs: 100, snapAligned: false }))).not.toThrow();
+  });
+
+  it("rejects a baseline durationMs that is not a whole number of periods", () => {
+    // 250 ms = 3 on-twos steps (grid-aligned), but 2400 / 250 = 9.6 periods.
+    expect(() => parseDope(withLoop({ periodMs: 250 }))).toThrow(
+      /durationMs.*whole number of tempo.loop periods/,
+    );
+  });
+
+  it("accepts a grid-aligned period that tiles every baseline duration", () => {
+    // halo's contract: 1500 ms = 18 steps; 6000 ms = 4 whole periods.
+    expect(() => parseDope(withLoop({ periodMs: 1500 }, 6000))).not.toThrow();
+  });
+});
+
 describe("standalone guard", () => {
   it("accepts the bundled self-contained doc", () => {
     expect(() => parseDope(sampleDoc as object)).not.toThrow();

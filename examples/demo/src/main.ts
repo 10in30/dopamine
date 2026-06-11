@@ -5,8 +5,10 @@
 // of all nine, so it preloads them during init; a real app would import only the
 // ones it fires (or pull the whole set from the `@dopamine/effects` umbrella).
 import {
+  getEffect,
   play,
   prepare as preparePlay,
+  type PlayHandle,
   type PreparedEffect,
   type DopamineMood,
 } from "@dopamine/core";
@@ -113,17 +115,34 @@ function originTarget(): {
   };
 }
 
+// A CONTINUOUS effect (halo) loops until stopped — Fire becomes a toggle for it:
+// the first click starts the loading ring, the next click stops it (the way a
+// real host would stop it when its work completes).
+let loopingHandle: PlayHandle | null = null;
+
 function fire(overrides: Partial<typeof state> = {}): Promise<void> {
   const mood = overrides.mood ?? state.mood;
   const intensity = overrides.intensity ?? state.intensity;
   const whimsy = overrides.whimsy ?? state.whimsy;
   const effect = (overrides.effect ?? state.effect) as EffectName;
-  return play(effect, {
+  if (loopingHandle) {
+    loopingHandle.stop();
+    loopingHandle = null;
+    return Promise.resolve();
+  }
+  const handle = play(effect, {
     mood: moodFor(effect, mood),
     intensity,
     whimsy,
     ...originTarget(),
   });
+  if (getEffect(effect)?.loop) {
+    loopingHandle = handle;
+    void handle.then(() => {
+      if (loopingHandle === handle) loopingHandle = null;
+    });
+  }
+  return handle;
 }
 fireBtn.addEventListener("click", () => void fire());
 

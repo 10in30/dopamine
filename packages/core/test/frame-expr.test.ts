@@ -28,6 +28,14 @@ describe("evalFrameExpr (the per-frame grammar)", () => {
     expect(evalFrameExpr({ input: "elapsedMs" }, ctx())).toBe(300);
   });
 
+  it("evaluates the loop clocks (tempo.loop): supplied by the caller, 0 without a loop", () => {
+    expect(evalFrameExpr({ input: "loopS" }, ctx({ loopS: 0.25, phase: 1 / 6 }))).toBe(0.25);
+    expect(evalFrameExpr({ input: "phase" }, ctx({ loopS: 0.25, phase: 1 / 6 }))).toBe(1 / 6);
+    // A doc without tempo.loop gets the calm defaults, not a throw.
+    expect(evalFrameExpr({ input: "loopS" }, ctx())).toBe(0);
+    expect(evalFrameExpr({ input: "phase" }, ctx())).toBe(0);
+  });
+
   it("throws on a missing/non-numeric param and an unknown input", () => {
     expect(() => evalFrameExpr({ param: "nope" }, ctx())).toThrow(/param/);
     expect(() => evalFrameExpr({ param: "palette" }, ctx({ params: { palette: [1] } }))).toThrow(/param/);

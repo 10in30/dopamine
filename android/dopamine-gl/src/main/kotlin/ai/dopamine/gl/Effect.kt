@@ -7,6 +7,7 @@
 
 package ai.dopamine.gl
 
+import ai.dopamine.core.DopeLoop
 import ai.dopamine.core.DopeValue
 import ai.dopamine.core.EffectFactory
 
@@ -79,4 +80,11 @@ interface DrawableEffect : EffectFactory {
     /** Reduced-motion peak/hold (ms). Sensible defaults if null. */
     val reducedMotionPeakMs: Double? get() = null
     val reducedMotionHoldMs: Double? get() = null
+
+    /**
+     * CONTINUOUS-loop contract (the parsed `tempo.loop`): the conductor re-arms
+     * the effect at `durationMs` instead of tearing down — the host stops it
+     * via the handle `DopamineView.play` returns. Null for one-shot effects.
+     */
+    val loop: DopeLoop? get() = null
 }
