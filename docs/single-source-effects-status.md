@@ -57,7 +57,7 @@ fixpoint threads them) with `texture(uX,uv)`→`<name>.sample(texSampler,uv)`; `
 
 ---
 
-## P2: datafy the LOGIC hooks — WEB + FORMAT + TOOLCHAIN **DONE**; Swift + Android in flight
+## P2: datafy the LOGIC hooks — **DONE on all three stacks**
 
 Goal: move each effect's per-frame `frame()` + `shadowHeightFrac` + consts out of the
 hand-written per-platform factories into the `.dope`, evaluated by a generic data-driven
@@ -94,19 +94,33 @@ clock (`elapsedMs`) on web — matching what the Swift/Android ports always did.
 pre-P2 web factory fed them the on-twos-snapped `animMs`, so at whimsy > 0 web pixels
 shift slightly toward the (already-shipped) native behavior.
 
-### IN FLIGHT — the Swift + Android halves (same branch)
+### DONE — the Swift pillar (same branch)
 
-Port the per-frame evaluator + the generic `(dope, shader, hooks)` factory to
-`swift/Sources/DopamineCore/` (MetalPassRunner/Loader/Tempo) and
-`android/dopamine-core` + `android/dopamine-gl`, replace the five effects'
-hand-written `frame()`/shadow hooks with the datafied eval, and add the analogous
-frame-parity micro-tests to the Swift grid + the Android JVM grid. Reduce order in
-the evaluator is significant for float parity — port `add`/`mul` reduces
-left-to-right exactly. Note the `binding` block now arrives in the portable doc
-both runtimes load (parsers must tolerate + may consume it), and
-`binding.scatterKey` is now set for ALL five (halo `haloSeed`, fail `failSeed` —
-neither has a `scatterWeb`, i.e. neither is a shader uniform; fail also excludes
-the raw `seed`).
+`swift/Sources/DopamineCore/FrameExpr.swift` (portable, evaluates the RAW JSON
+trees like web, calls the same `Tempo.swift` primitives, identical reduce order)
++ the Metal-guarded `DopePassConfig<U>` generic built from
+`(doc, vertex/fragment fn, packUniforms, packExtras?)`. The five effects' Swift
+sources are thin shims (`<Effect>.passConfig()`); `InkstrokeTempo.swift`,
+`FailTempo.swift`, `haloBreathe`, `SWEEP_SPEED` and the per-effect consts are
+deleted (consts come from `render.consts`, scatterKey from `binding.scatterKey`).
+Fail keeps its boxPx/sdfStrokePx `packExtras` hook. `FrameParityTests.swift`
+pins the datafied eval EXACTLY (`==`) against frozen pre-P2 oracles over the
+feeling × clock grid, loading the canonical `.dope`s via `#filePath`. Linux
+`swift test`: 20/20 (incl. the 192-case grid). Extras evaluate under their
+CANONICAL names ("sweep"/"draw"/…) — the keys the generated packers read.
+
+### DONE — the Android pillar (same branch)
+
+`android/dopamine-core` gains `FrameExpr.kt` (typed decode + eval, same fold
+order/primitives) and `DopePass.kt` — a pure-JVM `dopePassPlan(doc)` deriving
+uniforms/bindings/shadow/frame/consts/scatterKey/reducedMotion (the web
+`dope-pass.ts` rules; `cap()` moved from gl into core). `dopamine-gl`'s
+`dopePassConfig(...)` wraps the plan into a `PassConfig`; the five effects'
+`<Name>.kt` are thin shims and all five `*Tempo.kt` files are deleted.
+`FrameExprTest.kt` + `FrameParityTest.kt` (frozen-oracle grid + derived
+uniforms/bindings vs the old hand literals) run with NO Android SDK:
+`./gradlew :dopamine-core:test` → 21/21. The five test-resource `.dope`s are
+byte-identical to the dist embeds (the android.yml md5 gate covers them).
 
 ## TODO — P3: lightning's logic transpiler
 
