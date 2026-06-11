@@ -60,6 +60,12 @@ export {
   type DopeOutline,
 } from "./framework/loader.js";
 export {
+  evalFrameExpr,
+  evalParamExpr,
+  type FrameExprNode,
+  type FrameExprCtx,
+} from "./framework/frame-expr.js";
+export {
   pickFromList,
   pickBand,
   resolveTypography,
