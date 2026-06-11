@@ -1,24 +1,27 @@
-# Dopamine — Swift / Metal port
+# Dopamine — Swift / Metal stack
 
-This SwiftPM package ships the shared **`DopamineCore`** runtime for iOS/macOS and
-**reuses the web `.dope` data verbatim**. Every effect lives in the consolidated
-single-folder model at `effects/<name>/` (repo root) and is compiled by the
-`@dopamine/build` toolchain into a STANDALONE `dist/swift/DopamineEffect<Name>`
-SwiftPM package — so this package is just the runtime + its parity test; the iOS
-demo consumes each effect from its `dist/` package by path.
+This SwiftPM package ships the shared **`DopamineCore`** runtime for iOS/macOS,
+driven by the same portable `.dope` data as every other stack. Each effect
+lives in the single-folder model at `effects/<name>/` (repo root) and is
+compiled by the `@dopamine/build` toolchain into a STANDALONE
+`dist/swift/DopamineEffect<Name>` SwiftPM package — so this package is just the
+runtime + its tests; the iOS demo consumes each effect from its `dist/` package
+by path.
 
 ## Layout
 
 ```
 swift/
-├─ Package.swift                       # DopamineCore library + the parity test target
+├─ Package.swift                       # DopamineCore library + the test target
 ├─ Sources/
 │  ├─ DopamineCore/                    # the shared runtime (mirrors packages/core)
-│  │  ├─ Seed.swift                    # mulberry32 (bit-exact JS port)            [PORTABLE]
+│  │  ├─ Seed.swift                    # mulberry32 (bit-exact across platforms)  [PORTABLE]
 │  │  ├─ Color.swift                   # OKLCH → linear sRGB, golden-angle palette [PORTABLE]
 │  │  ├─ Tempo.swift                   # easeOutCubic/Back, envelope, NPR step     [PORTABLE]
 │  │  ├─ Loader.swift                  # DopeDoc + evalExpr + resolveDopeParams    [PORTABLE]
 │  │  ├─ ParseDope.swift               # parse/validate + ExprNode decode          [PORTABLE]
+│  │  ├─ FrameExpr.swift               # tempo.frame per-frame expression eval     [PORTABLE]
+│  │  ├─ DopePassConfig.swift          # data-driven pass config from a .dope      [METAL-ONLY]
 │  │  ├─ JSONOrdered.swift             # order-preserving JSON (authored mood order)[PORTABLE]
 │  │  ├─ MoodRegistry.swift            # shared mood register                       [PORTABLE]
 │  │  ├─ Registry.swift                # effect registry                           [PORTABLE]
@@ -27,20 +30,25 @@ swift/
 │  │  ├─ Resources.swift               # bundled-.dope loader (effect-agnostic)     [PORTABLE]
 │  │  ├─ MetalPassRunner.swift         # generic pass-runner + uniform binding     [METAL-ONLY]
 │  │  └─ MetalOverlayHost.swift        # CAMetalLayer screen/multiply overlay      [METAL-ONLY]
-│  └─ DopamineDemoiOS/                 # iOS demo app SKELETON (UIKit+Metal, CI-built only)
+│  └─ DopamineDemoiOS/                 # intentionally empty (see its README); the demo is swift/Demo/
 ├─ Tests/DopamineCoreTests/
 │  ├─ CoreUnitTests.swift              # PRNG/OKLCH/tempo/grammar                   [PORTABLE]
 │  ├─ ParityTests.swift                # cross-platform byte + resolve parity       [PORTABLE]
+│  ├─ FrameExprTests.swift             # the per-frame expression evaluator         [PORTABLE]
+│  ├─ DopeConfigTests.swift            # per-effect .dope config contract pins      [PORTABLE]
 │  └─ Fixtures/
 │     ├─ solarbloom.dope.json          # parity vector (portable bytes; refreshed by regen-parity.sh)
-│     └─ solarbloom-parity.json        # web loader's expected grid output
-└─ Scripts/{dump-parity.ts,regen-parity.sh}   # regenerate the fixtures from web code
+│     └─ solarbloom-parity.json        # the expected 192-case grid output
+└─ Scripts/{dump-parity.ts,regen-parity.sh}   # regenerate the parity fixtures
 ```
 
-Each effect's hand-written Swift + `.metal` sources live at
-`effects/<name>/swift/`; `dopamine build` emits them — plus the generated
-`<Name>Uniforms.{swift,metal}` and the bundled `.dope` — into
-`dist/swift/DopamineEffect<Name>` (a real, installable SwiftPM package).
+Each effect's Swift sources live at `effects/<name>/swift/` (a thin
+registration shim for declarative effects; fuller sources — including `.metal`
+shaders — for effects with platform-specific behavior). `dopamine build` emits
+them — plus the generated `<Name>Uniforms.{swift,metal}`, any generated
+`<Name>.metal` (from the effect's single GLSL source, via `x-build.shader`),
+and the bundled `.dope` — into `dist/swift/DopamineEffect<Name>` (a real,
+installable SwiftPM package).
 
 ## Portability
 
@@ -52,9 +60,10 @@ effect's `.metal` shaders are verified only on macOS (see CI). `DopamineCore` is
 
 ## The shared `.dope`
 
-The canonical `effects/solarbloom/solarbloom.dope.json` is the single source of
-truth. The toolchain embeds a byte-identical PORTABLE copy into the dist package
-(and `regen-parity.sh` mirrors the same bytes into `Tests/.../Fixtures` as the
-parity vector). `Tests/.../ParityTests` loads that `.dope`, resolves a **mood ×
-intensity × whimsy × seed** grid, and asserts the numbers equal the web loader's
-dumped output. Same data, same math, two platforms.
+There is one canonical `.dope` per effect —
+`effects/<name>/<name>.dope.json`. The toolchain embeds a byte-identical
+PORTABLE copy into the dist package (and `regen-parity.sh` mirrors the same
+bytes into `Tests/.../Fixtures` as the parity vector). `Tests/.../ParityTests`
+loads that `.dope`, resolves a **mood × intensity × whimsy × seed** grid, and
+asserts the numbers equal the shared fixture (`solarbloom-parity.json`,
+regenerated by `regen-parity.sh`). Same data, same math, every platform.

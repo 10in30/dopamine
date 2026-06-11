@@ -21,9 +21,40 @@
 import { buildPalette, oklchToLinearSrgb, type OKLCH, type RGB } from "../engine/color.js";
 import { mulberry32, type Rng } from "../engine/seed.js";
 import type { BakedSdf } from "../engine/sdf.js";
+import type { FrameExprNode } from "./frame-expr.js";
 
 const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * clamp01(t);
+
+/**
+ * The per-frame logic spec (`tempo.frame`): the datafied form of an effect's
+ * hand-written `frame()` hook. `amp` feeds shadowGeometry; `extras` are keyed by
+ * the CANONICAL extra name (matching `binding.extras[].name`) and map to each
+ * platform's uniform via the binding contract.
+ */
+export interface DopeFrameSpec {
+  amp: FrameExprNode;
+  extras?: Record<string, FrameExprNode>;
+}
+
+/**
+ * The cross-platform uniform-binding contract. SHIPS in the portable doc: the
+ * runtime derives which resolved params bind to which shader uniforms from it
+ * (and the toolchain consumes it for the Metal struct codegen).
+ */
+export interface DopeBinding {
+  note?: string;
+  /** `render.params` (or resolved-bag) names that are NOT shader uniforms. */
+  excludeParams?: string[];
+  /** The per-fire seed-keyed scatter field (auroraSeed / inkSeed / …). */
+  scatterKey?: string | null;
+  /** The web uniform the scatter binds to (absent = not a shader uniform). */
+  scatterWeb?: string;
+  /** Per-frame/host extras (filled by `tempo.frame.extras` or host hooks). */
+  extras?: Array<{ name: string; type?: string; web?: string; note?: string }>;
+  /** Texture samplers the shader reads. */
+  samplers?: Array<string | { web: string; name?: string; texture?: number }>;
+}
 
 /** A `.dope` document (the parts the loader consumes — others are ignored). */
 export interface DopeDoc {
@@ -32,8 +63,26 @@ export interface DopeDoc {
   id: string;
   meta?: { name?: string; description?: string; tags?: string[] };
   palette: DopePalette;
-  tempo: { durationMs?: DopeParamSpec };
-  render: { params: Record<string, DopeParamSpec>; backends?: unknown; fallbackOrder?: string[] };
+  tempo: {
+    durationMs?: DopeParamSpec;
+    /** Per-frame logic (amp + extras) as frame-expression trees. */
+    frame?: DopeFrameSpec;
+    /** Reduced-motion peak/hold the factories used to hardcode. */
+    reducedMotion?: { peakMs?: number; holdMs?: number };
+  };
+  render: {
+    params: Record<string, DopeParamSpec>;
+    /** Shadow occluder height: a params-only frame expression (or a bare number). */
+    shadowHeightFrac?: FrameExprNode;
+    /** Loop-cap consts the param mapping's clampMax/clampMin reference. */
+    consts?: Record<string, number>;
+    /** Runner config (today: whether the shader reads `uOrigin`). */
+    config?: { usesOrigin?: boolean };
+    backends?: unknown;
+    fallbackOrder?: string[];
+  };
+  /** The uniform-binding contract (see {@link DopeBinding}). */
+  binding?: DopeBinding;
   /** Per-mood baseline table (color + non-color baselines), keyed by mood name. */
   baselines: Record<string, Record<string, number>>;
   /** Outline geometry — icon paths + (after the pack/bake step) baked SDFs. */

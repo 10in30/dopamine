@@ -2,8 +2,8 @@
  * Backbone tests: the effect + mood registries and SSR-safety of the public API.
  * The WebGL conductor's lifecycle is exercised in `conductor.test.ts` with a
  * minimal GL stub; here we cover the pure logic. Core registers NO effect, so we
- * use fake effects; the per-effect byte-parity guards live in each effect
- * package's `parity.test.ts`.
+ * use fake effects; the per-effect functional checks live in each effect
+ * package's own tests.
  */
 
 import { describe, expect, it } from "vitest";

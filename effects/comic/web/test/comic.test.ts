@@ -1,22 +1,31 @@
 import { describe, expect, it } from "vitest";
+import { parseDope, pickFromList, resolveMood, type DopamineMood } from "@dopamine/core";
 import {
-  resolveComicParams,
-  pickWord,
   isCheckmark,
   COMIC_WORDS,
   COMIC_GLYPHS,
   COMIC_CHECK,
-} from "../src/comic-oracle.js";
+  type ComicWord,
+} from "../src/comic-params.js";
 import {
   impactScale,
   impactPresence,
   IMPACT_MS,
 } from "../src/comic-tempo.js";
-import type { DopamineMood } from "@dopamine/core";
 // Importing the effect registers it (self-registers on import).
-import "../src/index.js";
+import { comic } from "../src/index.js";
+import comicDoc from "../src/comic.dope.json";
 
 const MOODS: DopamineMood[] = ["serene", "celebratory", "electric"];
+
+// The production word pool ships in comic.dope.json (`content.pool`); the
+// production picker is the core content resolver `pickFromList`.
+const POOL = (parseDope(comicDoc as object).content as { pool: string[] }).pool;
+const pickWord = (seed: number): ComicWord => pickFromList(POOL, seed) as ComicWord;
+
+/** The production path: the factory's `.dope`-driven resolve. */
+const resolve = (mood: DopamineMood, intensity: number, whimsy: number, seed: number) =>
+  comic.resolve({ mood, intensity, whimsy, seed }, resolveMood(mood));
 
 describe("success-affirmation set + checkmark", () => {
   it("uses success affirmations, not fight onomatopoeia", () => {
@@ -28,7 +37,8 @@ describe("success-affirmation set + checkmark", () => {
     }
   });
 
-  it("the selection pool is the words plus the checkmark", () => {
+  it("the .dope content pool is the words plus the checkmark", () => {
+    expect(POOL).toEqual([...COMIC_GLYPHS]);
     expect(COMIC_GLYPHS).toContain(COMIC_CHECK);
     expect(COMIC_GLYPHS.length).toBe(COMIC_WORDS.length + 1);
   });
@@ -39,7 +49,7 @@ describe("success-affirmation set + checkmark", () => {
   });
 });
 
-describe("pickWord (affirmation / checkmark selection)", () => {
+describe("word pick (affirmation / checkmark selection from content.pool)", () => {
   it("is deterministic for a fixed seed", () => {
     expect(pickWord(42)).toBe(pickWord(42));
     expect(pickWord(123456)).toBe(pickWord(123456));
@@ -47,7 +57,7 @@ describe("pickWord (affirmation / checkmark selection)", () => {
 
   it("always returns a glyph from the published pool", () => {
     for (let s = 0; s < 500; s++) {
-      expect(COMIC_GLYPHS).toContain(pickWord(s));
+      expect(POOL).toContain(pickWord(s));
     }
   });
 
@@ -55,7 +65,7 @@ describe("pickWord (affirmation / checkmark selection)", () => {
     const seen = new Set<string>();
     for (let s = 0; s < 2000; s++) seen.add(pickWord(s));
     // Should hit every glyph — every affirmation AND the checkmark.
-    expect(seen.size).toBe(COMIC_GLYPHS.length);
+    expect(seen.size).toBe(POOL.length);
   });
 
   it("can select the checkmark (it's a real per-fire outcome)", () => {
@@ -65,21 +75,21 @@ describe("pickWord (affirmation / checkmark selection)", () => {
   });
 });
 
-describe("resolveComicParams (Comic Impact)", () => {
+describe("comic resolve (Comic Impact)", () => {
   it("is deterministic for a fixed seed", () => {
-    const a = resolveComicParams({ mood: "celebratory", intensity: 0.7, whimsy: 0.5, seed: 42 });
-    const b = resolveComicParams({ mood: "celebratory", intensity: 0.7, whimsy: 0.5, seed: 42 });
+    const a = resolve("celebratory", 0.7, 0.5, 42);
+    const b = resolve("celebratory", 0.7, 0.5, 42);
     expect(a).toEqual(b);
   });
 
   it("ties the word to the seed (same word the picker gives)", () => {
-    const p = resolveComicParams({ mood: "electric", intensity: 0.8, whimsy: 0.9, seed: 99 });
+    const p = resolve("electric", 0.8, 0.9, 99);
     expect(p.word).toBe(pickWord(99));
   });
 
   it("produces sane, in-range params for every mood", () => {
     for (const mood of MOODS) {
-      const p = resolveComicParams({ mood, intensity: 0.7, whimsy: 0.5, seed: 7 });
+      const p = resolve(mood, 0.7, 0.5, 7);
       expect(p.palette).toHaveLength(3);
       expect(p.durationMs).toBeGreaterThan(0);
       expect(Number.isInteger(p.burstPoints)).toBe(true);
@@ -101,16 +111,16 @@ describe("resolveComicParams (Comic Impact)", () => {
   });
 
   it("higher intensity raises exposure and slam overshoot", () => {
-    const lo = resolveComicParams({ mood: "celebratory", intensity: 0.1, whimsy: 0.5, seed: 5 });
-    const hi = resolveComicParams({ mood: "celebratory", intensity: 0.95, whimsy: 0.5, seed: 5 });
+    const lo = resolve("celebratory", 0.1, 0.5, 5);
+    const hi = resolve("celebratory", 0.95, 0.5, 5);
     expect(hi.exposure).toBeGreaterThan(lo.exposure);
     expect(hi.overshoot).toBeGreaterThan(lo.overshoot);
     expect(hi.scale).toBeGreaterThan(lo.scale);
   });
 
   it("whimsy is the NOIR->POP-ART axis: louder halftone + more saturation + style", () => {
-    const noir = resolveComicParams({ mood: "celebratory", intensity: 0.7, whimsy: 0.0, seed: 5 });
-    const pop = resolveComicParams({ mood: "celebratory", intensity: 0.7, whimsy: 1.0, seed: 5 });
+    const noir = resolve("celebratory", 0.7, 0.0, 5);
+    const pop = resolve("celebratory", 0.7, 1.0, 5);
     expect(noir.style).toBe(0);
     expect(pop.style).toBe(1);
     // Toward pop-art the Ben-Day dots scream and color floods in.
@@ -121,9 +131,9 @@ describe("resolveComicParams (Comic Impact)", () => {
   });
 
   it("typography differs by MOOD (distinct faces + character)", () => {
-    const e = resolveComicParams({ mood: "electric", intensity: 0.7, whimsy: 0.5, seed: 3 });
-    const c = resolveComicParams({ mood: "celebratory", intensity: 0.7, whimsy: 0.5, seed: 3 });
-    const s = resolveComicParams({ mood: "serene", intensity: 0.7, whimsy: 0.5, seed: 3 });
+    const e = resolve("electric", 0.7, 0.5, 3);
+    const c = resolve("celebratory", 0.7, 0.5, 3);
+    const s = resolve("serene", 0.7, 0.5, 3);
     // Each mood leads with its own bundled display face.
     expect(e.fontStack).toContain("Anton");
     expect(c.fontStack).toContain("Bangers");
@@ -136,8 +146,8 @@ describe("resolveComicParams (Comic Impact)", () => {
   });
 
   it("typography differs by WHIMSY (noir restrained -> pop-art inflated)", () => {
-    const noir = resolveComicParams({ mood: "celebratory", intensity: 0.7, whimsy: 0.0, seed: 3 });
-    const pop = resolveComicParams({ mood: "celebratory", intensity: 0.7, whimsy: 1.0, seed: 3 });
+    const noir = resolve("celebratory", 0.7, 0.0, 3);
+    const pop = resolve("celebratory", 0.7, 1.0, 3);
     // Noir = clean single inked contour, flat, composed.
     expect(noir.outlineLayers).toBe(1);
     expect(noir.extrudeDepth).toBeCloseTo(0, 5);
@@ -152,8 +162,8 @@ describe("resolveComicParams (Comic Impact)", () => {
   });
 
   it("electric is faster and punchier than serene (mood character)", () => {
-    const electric = resolveComicParams({ mood: "electric", intensity: 0.7, whimsy: 0.5, seed: 1 });
-    const serene = resolveComicParams({ mood: "serene", intensity: 0.7, whimsy: 0.5, seed: 1 });
+    const electric = resolve("electric", 0.7, 0.5, 1);
+    const serene = resolve("serene", 0.7, 0.5, 1);
     expect(electric.durationMs).toBeLessThan(serene.durationMs);
     expect(electric.burstPoints).toBeGreaterThan(serene.burstPoints);
     expect(electric.actionLines).toBeGreaterThan(serene.actionLines);

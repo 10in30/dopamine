@@ -5,34 +5,27 @@
  * hit + damped shake, then desaturates and collapses. Short and punchy, not a
  * celebratory bloom.
  *
- * Phase 1: this is now a DATA + a-few-lines-of-code effect. Its params/palette/
- * tempo come from fail.dope.json via the loader; its ✗ icon comes from the .dope
- * `svgPath` via the geometry→SDF seam; and ALL renderer/texture/upload/shadow
- * plumbing is the shared `createPassInstance` generic fullscreen-pass runner. The
- * only code that remains is the fail SHADER (a distinct negative feel) + a tiny
- * `config` that names the shader's uniforms, the SDF aux texture, the shadow
- * height, and the per-frame timing (stamp + shake + collapse envelope). No
- * bespoke per-effect renderer.
+ * FULLY DATA-DRIVEN (P2) where data can reach: the params/palette/tempo come
+ * from fail.dope.json via the loader, AND the per-frame logic that was
+ * fail-tempo.ts — the slam/hold/collapse `amp`, the 170 ms stamp and the damped
+ * recoil shake — is `tempo.frame` (stamp/shake run on the REAL un-stepped
+ * `elapsedMs`, matching the Swift/Android ports), with
+ * `render.shadowHeightFrac`/`config` and the uniform `binding` contract
+ * alongside. What stays CODE (the honest boundary, passed as hooks): the fail
+ * SHADER, plus the canvas-dependent ✗ plumbing — the baked-SDF aux texture
+ * (geometry seam) and the box/stroke pass uniforms the analytic fallback needs.
  */
 
-import { failEnvelope, stampProgress, shakeOffset } from "./fail-tempo.js";
 import { FAIL_FRAGMENT_SRC, FAIL_VERTEX_SRC } from "./fail-shader.js";
 import {
   decodeSdf,
-  registerEffect,
-  registerProgram,
+  registerDopeEffect,
   registerMood,
   parseDope,
-  resolveDopeParams,
   getOutline,
-  createPassInstance,
   type RGB,
   type DecodedSdf,
-  type EffectContext,
   type EffectFactory,
-  type EffectInstance,
-  type FeelingInput,
-  type PassConfig,
   type PassParams,
 } from "@dopamine/core";
 import doc from "./fail.dope.json";
@@ -56,7 +49,7 @@ const CROSS_SDF: DecodedSdf | null = (() => {
 })();
 
 /** The fail render params (the loader bag + the typed fields the shader reads). */
-interface FailParams extends PassParams {
+export interface FailParams extends PassParams {
   seed: number;
   palette: [RGB, RGB, RGB];
   exposure: number;
@@ -66,74 +59,43 @@ interface FailParams extends PassParams {
   failSeed: number;
 }
 
-function resolveFromDope(feeling: FeelingInput): FailParams {
-  return resolveDopeParams(DOPE, feeling, {}, "failSeed") as unknown as FailParams;
-}
-
 /** Half-size of the ✗ box as a fraction of min viewport dim. */
 const CROSS_BOX_FRAC = 0.15;
 
-/** The data-driven pass config: shader + uniforms + SDF aux + per-frame timing. */
-const CONFIG: PassConfig = {
-  vertex: FAIL_VERTEX_SRC,
-  fragment: FAIL_FRAGMENT_SRC,
-  uniforms: [
-    "uStamp", "uShake", "uExposure", "uSeverity",
-    "uSdfTex", "uSdfOn", "uSdfRangePx", "uSdfStrokePx", "uBoxPx",
-  ],
-  usesOrigin: true,
-  // shakeAmount feeds the shake math (below), not a uniform; failSeed is unused.
-  bindings: { shakeAmount: null, failSeed: null, seed: null },
-  shadowHeightFrac: 0.42,
-  // The ✗ box + stroke px are needed even in the analytic (SDF-less) fallback.
-  passUniforms: (canvas) => {
-    const px = CROSS_BOX_FRAC * Math.min(canvas.width, canvas.height);
-    return { uBoxPx: px, uSdfStrokePx: px * 0.13 };
+// The factory (resolve / frame / shadow / bindings / program registration) is
+// data: fail.dope.json interpreted by the core backbone. The hooks carry the
+// genuinely code-shaped ✗ plumbing (canvas-size-dependent, SDF-backed).
+export const fail = registerDopeEffect(
+  DOPE,
+  { vertex: FAIL_VERTEX_SRC, fragment: FAIL_FRAGMENT_SRC },
+  {
+    hooks: {
+      // The ✗ box + stroke px are needed even in the analytic (SDF-less) fallback.
+      passUniforms: (canvas) => {
+        const px = CROSS_BOX_FRAC * Math.min(canvas.width, canvas.height);
+        return { uBoxPx: px, uSdfStrokePx: px * 0.13 };
+      },
+      // The baked ✗ SDF (geometry seam), bound to TEXTURE1; uSdfOn + uSdfRangePx
+      // are derived per pass. Absent → empty list (uSdfOn stays 0, analytic fallback).
+      auxTextures: () =>
+        CROSS_SDF
+          ? [
+              {
+                kind: "sdf" as const,
+                unit: 1,
+                sdf: CROSS_SDF,
+                sampler: "uSdfTex",
+                onUniform: "uSdfOn",
+                uniforms: (canvas) => {
+                  const px = CROSS_BOX_FRAC * Math.min(canvas.width, canvas.height);
+                  const vbW = CROSS_SDF.viewBox[2] || 100;
+                  return { uSdfRangePx: CROSS_SDF.range * ((2 * px) / vbW) };
+                },
+              },
+            ]
+          : [],
+    },
   },
-  // The baked ✗ SDF (geometry seam), bound to TEXTURE1; uSdfOn + uSdfRangePx are
-  // derived per pass. Absent → empty list (uSdfOn stays 0, analytic fallback).
-  auxTextures: () =>
-    CROSS_SDF
-      ? [
-          {
-            kind: "sdf" as const,
-            unit: 1,
-            sdf: CROSS_SDF,
-            sampler: "uSdfTex",
-            onUniform: "uSdfOn",
-            uniforms: (canvas) => {
-              const px = CROSS_BOX_FRAC * Math.min(canvas.width, canvas.height);
-              const vbW = CROSS_SDF.viewBox[2] || 100;
-              return { uSdfRangePx: CROSS_SDF.range * ((2 * px) / vbW) };
-            },
-          },
-        ]
-      : [],
-  frame: ({ animMs, life }, params) => ({
-    amp: failEnvelope(life),
-    uStamp: stampProgress(animMs),
-    uShake: shakeOffset(animMs, (params as FailParams).shakeAmount),
-  }),
-};
+) as EffectFactory<PassParams> as EffectFactory<FailParams>;
 
-function createInstance(params: FailParams, ctx: EffectContext): EffectInstance {
-  return createPassInstance(CONFIG, params, ctx);
-}
-
-export const fail: EffectFactory<FailParams> = {
-  name: "fail",
-  resolve: (feeling) => resolveFromDope(feeling),
-  create: createInstance,
-  reducedMotion: { peakMs: 200, holdMs: 320 },
-};
-
-// Bundled program so the public loadEffect() can bind a host-authored fail
-// variant (recolor / re-icon / retime) to this shader with no code.
-registerProgram<FailParams>("fail", {
-  create: createInstance,
-  scatterKey: "failSeed",
-  consts: {},
-  reducedMotion: { peakMs: 200, holdMs: 320 },
-});
-
-export default registerEffect(fail);
+export default fail;

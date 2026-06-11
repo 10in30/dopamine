@@ -1,7 +1,7 @@
 # Dopamine ✨
 
-**Gorgeous, cross-platform visual effects — one shared data spine, three native
-stacks.** Algorithmic color (unique every fire), motion informed by the natural
+**Gorgeous, cross-platform visual effects — one shared, portable format, three
+native stacks.** Algorithmic color (unique every fire), motion informed by the natural
 world, hardware-accelerated, and usable as a component that sits in your page
 *and* casts real light onto the UI beneath it. You pick a **mood**, an
 **intensity**, and an amount of **whimsy** — not raw parameters.
@@ -21,8 +21,8 @@ whimsy controls, every effect, in your browser.
 
 ## Gallery
 
-Ten effects, all from the same `.dope` spine. (Animated previews — rendered
-headlessly in CI; `npm run media` regenerates them.)
+The built-in effects, all driven by the same `.dope` format. (Animated
+previews — rendered headlessly in CI; `npm run media` regenerates them.)
 
 |  |  |
 |:---:|:---:|
@@ -49,7 +49,7 @@ headlessly in CI; `npm run media` regenerates them.)
 </p>
 </details>
 
-## The ten effects
+## The built-in effects
 
 | Effect | Feeling | What it does |
 |---|---|---|
@@ -62,12 +62,14 @@ headlessly in CI; `npm run media` regenerates them.)
 | **inkstroke** | success | a calligraphic ink-stroke "verdict" signature |
 | **lightning** | power-up | a high-energy lightning strike |
 | **ripple** | success | concentric water ripples |
-| **halo** | loading | a calm ambient ring of light that breathes + sweeps — the first CONTINUOUS effect, loops seamlessly |
+| **halo** | loading | a calm ambient ring of light that breathes + sweeps — a CONTINUOUS effect, loops seamlessly |
 
-We plan to add many more and expand the mechanisms in every effect. **All three
-stacks ship all ten effects** from the same `.dope` spine (byte-parity-tested
-across web, Swift, and Android). The effects are grounded in research on dopamine
-reward responses, modern aesthetics, and a sense of whimsy.
+We plan to add many more and expand the mechanisms in every effect; effects can
+also live in other repositories and ship as standalone packages. **All three
+stacks ship every built-in effect** from the same `.dope` document
+(byte-parity-tested across web, Swift, and Android). The effects are grounded
+in research on dopamine reward responses, modern aesthetics, and a sense of
+whimsy.
 
 ## Repository layout
 
@@ -77,7 +79,7 @@ reward responses, modern aesthetics, and a sense of whimsy.
 │  ├─ core/                   # @dopamine/core — slim runtime (conductor, registries, .dope loader, pass/panel runners, engine)
 │  ├─ effects/                # @dopamine/effects — batteries-included umbrella + <dopamine-success> element
 │  └─ react/                  # @dopamine/react — <DopamineSuccess> + useDopamine()
-├─ effects/<name>/            # SINGLE-FOLDER effects (all ten): one unified .dope + the hand-written
+├─ effects/<name>/            # SINGLE-FOLDER effects: one unified .dope + the effect's
 │                             #   web/swift/android sources (+ fonts/ if any), compiled by the toolchain
 │                             #   into standalone dist/ packages per platform (npm + SwiftPM + Gradle)
 ├─ tools/dopamine/            # @dopamine/build — `dopamine build` emits installable Swift/npm/Android packages from one folder
@@ -90,15 +92,15 @@ reward responses, modern aesthetics, and a sense of whimsy.
 │  ├─ Demo/                   # XcodeGen project.yml for the iOS-Simulator demo app (consumes the dist/ packages)
 │  └─ Tests/                  # portable + the cross-platform parity suite (effect-agnostic)
 ├─ android/                   # ANDROID port (Gradle multi-module)
-│  ├─ dopamine-core/          # PURE-Kotlin/JVM spine (mirrors packages/core) + the 192-case parity test — no Android SDK needed
-│  ├─ dopamine-gl/            # OpenGL ES 3.0 backbone: GLSurfaceView overlay host + generic pass/panel runners
-│  ├─ dopamine-effects/       # umbrella that registers all ten (consumes each effect's dist/ module)
+│  ├─ dopamine-core/          # PURE-Kotlin/JVM portable core (mirrors packages/core) + the 192-case parity test — no Android SDK needed
+│  ├─ dopamine-gl/            # OpenGL ES 3.0 rendering layer: GLSurfaceView overlay host + generic pass/panel runners
+│  ├─ dopamine-effects/       # umbrella that registers every built-in effect (consumes each effect's dist/ module)
 │  └─ demo/                   # Android demo app
 └─ .github/workflows/         # swift.yml (Metal/iOS CI) + web-reel.yml (reel CI) + android.yml (GL/JVM CI)
 ```
 
-> **Every effect now lives in the single-folder model** (`effects/<name>/`): one
-> unified `.dope` + the hand-written sources for all three platforms, built by
+> **Every effect lives in the single-folder model** (`effects/<name>/`): one
+> unified `.dope` + the effect's per-platform sources, built by
 > `tools/dopamine` into standalone, installable packages under `dist/` (gitignored)
 > — an npm package, a SwiftPM package, and a Gradle library, each embedding a
 > byte-identical portable `.dope`. This is how a third-party effect ships, too.
@@ -176,15 +178,15 @@ xcodebuild -project DopamineDemo.xcodeproj -scheme DopamineDemo \
 ```bash
 cd android
 ./gradlew :dopamine-core:test     # the 192-case byte-parity grid (NO Android SDK needed)
-./gradlew assembleDebug           # build the GL backbone + effects + the demo APK (needs the SDK)
+./gradlew assembleDebug           # build the GL runtime + effects + the demo APK (needs the SDK)
 ```
 
 `dopamine-core` is **pure Kotlin/JVM** — it builds + runs the parity grid on a
-plain JVM with no Android SDK (the analog of swift's Linux job). The GL backbone
-+ effect packages + demo are Android-library/app modules (they need the SDK).
-Android uses **OpenGL ES 3.0 — the same GLSL ES 3.00 as the web's WebGL2** — so
-the shaders port near-verbatim and uniforms bind by name (no Metal-style struct
-codegen). Fire an effect:
+plain JVM with no Android SDK (the analog of the Swift Linux CI job). The GL
+runtime + effect packages + demo are Android-library/app modules (they need the
+SDK). Android uses **OpenGL ES 3.0 — GLSL ES 3.00, the same shading language as
+WebGL2** — so each effect's single GLSL source serves both stacks and uniforms
+bind by name (no Metal-style struct codegen). Fire an effect:
 
 ```kotlin
 val view = DopamineView(context)               // a translucent overlay
@@ -217,8 +219,8 @@ Every effect is rendered headlessly so the previews stay honest and reproducible
 | Workflow | Runner(s) | What it does | Artifact |
 |---|---|---|---|
 | [`web-reel.yml`](.github/workflows/web-reel.yml) | ubuntu | publish the demo to GitHub Pages, then render + stitch the reel | `dopamine-web-reel` → `e2e/output/dopamine-suite.mp4` |
-| [`swift.yml`](.github/workflows/swift.yml) | macOS (`macos-15-xlarge`, M2) + ubuntu (`swift:6.0.3`) | macOS: `dopamine build` (incl. woff2→ttf fonts) → `swift build`/`test` (Metal), the **`dopamine build --check` staleness gate**, XcodeGen → build the iOS demo (from the dist/ packages), boot a sim, autoplay all ten, screen-record. Linux: portability build + the 192-case parity suite with no Apple SDK | `solarbloom-sim-clip` (the recorded sequence) |
-| [`android.yml`](.github/workflows/android.yml) | ubuntu ×3 | **jvm**: the 192-case parity grid + a `.dope` byte-parity check (every effect's three dist/ embeds identical) on a free runner (no SDK). **build**: install the SDK + `assembleDebug` the GL backbone + effects + demo. **emulator** (best-effort): boot an emulator, autoplay, `screenrecord` a clip | `dopamine-demo-apk`, `dopamine-android-clip` |
+| [`swift.yml`](.github/workflows/swift.yml) | macOS (`macos-15-xlarge`, M2) + ubuntu (`swift:6.0.3`) | macOS: `dopamine build` (incl. woff2→ttf fonts) → `swift build`/`test` (Metal), the **`dopamine build --check` staleness gate**, XcodeGen → build the iOS demo (from the dist/ packages), boot a sim, autoplay every effect, screen-record. Linux: portability build + the 192-case parity suite with no Apple SDK | `solarbloom-sim-clip` (the recorded sequence) |
+| [`android.yml`](.github/workflows/android.yml) | ubuntu ×3 | **jvm**: the 192-case parity grid + a `.dope` byte-parity check (every effect's three dist/ embeds identical) on a free runner (no SDK). **build**: install the SDK + `assembleDebug` the GL runtime + effects + demo. **emulator** (best-effort): boot an emulator, autoplay, `screenrecord` a clip | `dopamine-demo-apk`, `dopamine-android-clip` |
 
 > **Note:** the macOS job needs the `macos-15-xlarge` (M2) larger runner and a
 > non-zero GitHub Actions spending limit on the owning account. The web-reel and
@@ -229,14 +231,16 @@ Download artifacts from the **Actions** tab → the latest run → *Artifacts*.
 ## How it works (short version)
 
 `@dopamine/core` (web), `DopamineCore` (Swift), and `dopamine-core` (Android) are
-thin **backbones**; each effect plugs in from its own package with only what's
-genuinely per-effect — its **shader**, its **bespoke tempo**, and its **uniform
+thin **shared runtimes**; each effect plugs in from its own package with only
+what's genuinely per-effect — its **shader**, its **timing**, and its **uniform
 config**. Everything else (color, mood model, the `.dope` loader/grammar, the
 pass/overlay runners, the PRNG order) is shared and generalized. The stacks stay
 byte-identical because they consume the *same* `.dope` document: the
 [`tools/dopamine`](tools/dopamine) build toolchain reads each effect's `.dope`
-`binding` contract to emit the Swift + Metal uniform structs, then compiles the
-single effect folder into standalone, installable packages for every platform.
+`binding` contract to emit the Swift + Metal uniform structs (and, for effects
+that opt in, generates the MSL + Kotlin shader variants from the effect's one
+GLSL ES 3.00 source), then compiles the single effect folder into standalone,
+installable packages for every platform.
 
 See [`CLAUDE.md`](CLAUDE.md) for the full architecture, the generalization
 boundary, the parity/staleness gates, and the conventions for adding effects.

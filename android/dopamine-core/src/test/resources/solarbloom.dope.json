@@ -383,5 +383,56 @@
     "fallbackOrder": [
       "webgl2"
     ]
+  },
+  "binding": {
+    "note": "CROSS-PLATFORM uniform-binding contract. Which render.params are NOT shader uniforms, the seed-keyed scatter field, the per-frame/host extras, and the texture samplers — one source of truth for the web u<Name> list, the Swift struct + packer, and the MSL struct. SHIPS in the portable .dope (the runtime derives its uniform bindings from it); the toolchain consumes it too for the Metal struct codegen. Only `x-build`, `slug` and `kind` stay toolchain-only.",
+    "excludeParams": [
+      "style",
+      "overshoot",
+      "durationMs"
+    ],
+    "scatterKey": "moteSeed",
+    "extras": [
+      {
+        "name": "check",
+        "type": "float",
+        "web": "uCheck",
+        "note": "checkProgress(animMs)"
+      },
+      {
+        "name": "checkBox",
+        "type": "float",
+        "web": "uCheckBox",
+        "note": "half-size (device px) of glyph box"
+      },
+      {
+        "name": "checkTexOn",
+        "type": "float",
+        "web": "uCheckTexOn",
+        "note": "1 = sample the font glyph texture"
+      },
+      {
+        "name": "sdfOn",
+        "type": "float",
+        "web": "uSdfOn",
+        "note": "1 = sample baked SDF"
+      },
+      {
+        "name": "sdfRangePx",
+        "type": "float",
+        "web": "uSdfRangePx",
+        "note": ""
+      },
+      {
+        "name": "sdfStrokePx",
+        "type": "float",
+        "web": "uSdfStrokePx",
+        "note": ""
+      }
+    ],
+    "samplers": [
+      "uCheckTex",
+      "uSdfTex"
+    ]
   }
 }

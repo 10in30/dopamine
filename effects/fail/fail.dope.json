@@ -172,7 +172,21 @@
         }
       }
     },
-    "note": "Stamp + recoil/shake + collapse envelopes live in engine/tempo.ts (FAIL_STAMP_MS / stampProgress / failEnvelope / shakeOffset) — the negative, punchy counterpart to the held-breath success envelope."
+    "frame": {
+      "amp": { "lt": [{ "clamp01": { "input": "life" } }, 0.05,
+          { "easeOutCubic": { "div": [{ "clamp01": { "input": "life" } }, 0.05] } },
+          { "lt": [{ "clamp01": { "input": "life" } }, 0.55, 1,
+              { "pow": [{ "clamp01": { "sub": [1, { "div": [{ "sub": [{ "clamp01": { "input": "life" } }, 0.55] }, 0.45] }] } }, 1.7] }] }] },
+      "extras": {
+        "stamp": { "sub": [1, { "pow": [{ "sub": [1, { "clamp01": { "div": [{ "input": "elapsedMs" }, 170] } }] }, 5] }] },
+        "shake": { "lt": [0, { "input": "elapsedMs" },
+            { "mul": [ { "sin": { "mul": [{ "div": [{ "input": "elapsedMs" }, 300] }, 3.141592653589793, 7] } },
+                       { "exp": { "div": [{ "sub": [0, { "input": "elapsedMs" }] }, { "mul": [300, 0.35] }] } },
+                       { "param": "shakeAmount" } ] }, 0] }
+      }
+    },
+    "reducedMotion": { "peakMs": 200, "holdMs": 320 },
+    "note": "The negative, punchy counterpart to the held-breath success envelope: frame.amp is the slam/hold/collapse fail envelope; stamp (the ✗ slash-in over 170 ms) and shake (a damped ~3.5-oscillation recoil over 300 ms) run on the REAL un-stepped clock (elapsedMs) on every platform."
   },
   "geometry": {
     "kind": "radial",
@@ -250,6 +264,9 @@
         }
       }
     },
+    "shadowHeightFrac": 0.42,
+    "consts": {},
+    "config": { "usesOrigin": true },
     "backends": {
       "webgl2": {
         "stage": "fullscreen-triangle",
@@ -264,9 +281,9 @@
     ]
   },
   "binding": {
-    "note": "CROSS-PLATFORM uniform-binding contract (consumed by the @dopamine/build toolchain, not the runtime). Which render.params are NOT shader uniforms, the seed-keyed scatter field (null — the fail shader reads no seed uniform), the per-frame/host extras, and the texture samplers — one source of truth for the web u<Name> list, the Swift struct + packer, and the MSL struct. The toolchain STRIPS this (and `x-build`, `slug`, `kind`) from the .dope it embeds in each platform package, so the embedded runtime doc stays the portable, standalone-safe data spine.",
-    "excludeParams": ["style", "shakeAmount"],
-    "scatterKey": null,
+    "note": "CROSS-PLATFORM uniform-binding contract. Which render.params are NOT shader uniforms, the seed-keyed scatter field (no scatterWeb — the fail shader reads no seed uniform), the per-frame/host extras, and the texture samplers — one source of truth for the web u<Name> list, the Swift struct + packer, and the MSL struct. SHIPS in the portable .dope (the runtime derives its uniform bindings from it); the toolchain consumes it too for the Metal struct codegen. Only `x-build`, `slug` and `kind` stay toolchain-only.",
+    "excludeParams": ["style", "shakeAmount", "seed"],
+    "scatterKey": "failSeed",
     "extras": [
       { "name": "stamp", "type": "float", "web": "uStamp", "note": "stampProgress(animMs)" },
       { "name": "shake", "type": "float", "web": "uShake", "note": "signed recoil shake (-1..1)" },

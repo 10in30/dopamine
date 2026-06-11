@@ -12,11 +12,13 @@ package ai.dopamine.gl
 import ai.dopamine.core.DopeValue
 import ai.dopamine.core.RGB
 import ai.dopamine.core.ShadowInput
+import ai.dopamine.core.cap
 import ai.dopamine.core.shadowGeometry
 import android.opengl.GLES30
 
-/** `bloomRadius` → `uBloomRadius` — the auto-binding name convention. */
-fun cap(s: String): String = "u" + s.replaceFirstChar { it.uppercase() }
+// NOTE: the `name → u<Name>` convention (`cap`) moved to `ai.dopamine.core`
+// (DopePass.kt) so the pure-JVM uniform derivation can share it — mirroring the
+// web, where `cap` lives in core's pass-common.ts.
 
 /**
  * The numeric `render.params` that auto-bind to a uniform: each `name → u<Name>`

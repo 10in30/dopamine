@@ -316,7 +316,7 @@
     ]
   },
   "binding": {
-    "note": "CROSS-PLATFORM uniform-binding contract (consumed by the @dopamine/build toolchain, not the runtime). Which render.params are NOT shader uniforms, the seed-keyed scatter field, the per-frame/host extras, and the texture samplers — one source of truth for the web u<Name> list, the Swift struct + packer, and the MSL struct. The toolchain STRIPS this (and `x-build`, `slug`, `kind`) from the .dope it embeds in each platform package, so the embedded runtime doc stays the portable, standalone-safe data spine. lightning's CPU-precomputed bolt polyline rides the frameArrays seam (uVerts/uBoltMeta), not the uniform struct.",
+    "note": "CROSS-PLATFORM uniform-binding contract. Which render.params are NOT shader uniforms, the seed-keyed scatter field, the per-frame/host extras, and the texture samplers — one source of truth for the web u<Name> list, the Swift struct + packer, and the MSL struct. SHIPS in the portable .dope (the runtime derives its uniform bindings from it); the toolchain consumes it too for the Metal struct codegen. Only `x-build`, `slug` and `kind` stay toolchain-only. lightning's CPU-precomputed bolt polyline rides the frameArrays seam (uVerts/uBoltMeta), not the uniform struct.",
     "excludeParams": [
       "style",
       "overshoot",

@@ -3,9 +3,8 @@ import { parseDope, resolveDopeParams } from "@dopamine/core";
 import { MAX_RINGS } from "../src/ripple-shader.js";
 import doc from "../src/ripple.dope.json";
 
-// Ripple is a brand-new effect with NO legacy oracle (per the authoring guide,
-// §7.5): we exercise the production loader path directly and pin a seed to assert
-// the params + mood/intensity/whimsy mapping we expect.
+// Per the authoring guide (§7.5) we exercise the production loader path directly
+// and pin a seed to assert the params + mood/intensity/whimsy mapping we expect.
 const DOPE = parseDope(doc as object);
 const MIN_RINGS = 2;
 const CONSTS = { MAX_RINGS, MIN_RINGS };

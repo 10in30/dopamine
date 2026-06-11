@@ -145,11 +145,66 @@ public func parseDope(_ src: String) throws -> DopeDoc {
 
     let controlsMoodDefault = json["controls"]?["mood"]?["default"]?.asString
 
+    // ── P2 — the datafied per-frame logic + the shipped binding contract. All
+    //         OPTIONAL (tolerated absent), so older / not-yet-datafied docs still
+    //         parse. The frame/shadow expressions stay RAW JSONValue trees — the
+    //         per-frame evaluator (FrameExpr.swift) interprets them with no
+    //         decode step, matching the web. ──
+
+    // tempo.frame — { amp: <expr>, extras: { <canonical name>: <expr> } }.
+    var frame: DopeFrameSpec?
+    if let f = json["tempo"]?["frame"], let amp = f["amp"] {
+        frame = DopeFrameSpec(amp: amp, extras: f["extras"]?.asObject ?? [])
+    }
+
+    // tempo.reducedMotion — { peakMs, holdMs }.
+    var reducedMotion: DopeReducedMotion?
+    if let rm = json["tempo"]?["reducedMotion"] {
+        reducedMotion = DopeReducedMotion(
+            peakMs: rm["peakMs"]?.asNumber ?? 0,
+            holdMs: rm["holdMs"]?.asNumber ?? 0)
+    }
+
+    // render.shadowHeightFrac — a bare number or a params-only expression (raw).
+    let shadowHeightFrac = renderObj["shadowHeightFrac"]
+
+    // render.consts — the loop-cap consts the clampMax/clampMin flags reference.
+    var consts: [String: Double] = [:]
+    for (name, value) in renderObj["consts"]?.asObject ?? [] {
+        if let n = value.asNumber { consts[name] = n }
+    }
+
+    // render.config — runner config (today: usesOrigin).
+    let usesOrigin = renderObj["config"]?["usesOrigin"]?.asBool
+
+    // binding — the uniform-binding contract (now SHIPS in the portable doc).
+    var binding: DopeBinding?
+    if let b = json["binding"] {
+        var excludeParams: [String] = []
+        for v in b["excludeParams"]?.asArray ?? [] {
+            if let s = v.asString { excludeParams.append(s) }
+        }
+        var extras: [DopeBindingExtra] = []
+        for e in b["extras"]?.asArray ?? [] {
+            guard let name = e["name"]?.asString else { continue }
+            extras.append(DopeBindingExtra(
+                name: name, type: e["type"]?.asString, web: e["web"]?.asString))
+        }
+        binding = DopeBinding(
+            excludeParams: excludeParams,
+            scatterKey: b["scatterKey"]?.asString,
+            scatterWeb: b["scatterWeb"]?.asString,
+            extras: extras)
+    }
+
     return DopeDoc(
         fmt: fmt, v: v, id: json["id"]?.asString ?? "",
         palette: palette, durationMs: durationMs,
         renderParams: renderParams, baselines: baselines,
         baselineOrder: baselineOrder, controlsMoodDefault: controlsMoodDefault,
+        frame: frame, reducedMotion: reducedMotion,
+        shadowHeightFrac: shadowHeightFrac, consts: consts,
+        usesOrigin: usesOrigin, binding: binding,
         raw: json
     )
 }

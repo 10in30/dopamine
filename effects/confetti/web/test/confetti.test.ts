@@ -1,8 +1,7 @@
 /**
  * Confetti effect — params resolution + determinism guard.
  *
- * Confetti is a brand-new effect (no legacy oracle), so per the authoring guide
- * (§7.5) we pin a seed and assert the shape/look of the resolved params: every
+ * Per the authoring guide (§7.5) we pin a seed and assert the shape/look of the resolved params: every
  * declared mood resolves, intensity scales count/spread/launch, whimsy drives
  * style, and a pinned seed reproduces byte-for-byte (PRNG order is load-bearing —
  * palette base hue first, then the per-fire pieceSeed scatter offset).

@@ -2,8 +2,7 @@
  * Solarbloom as an `EffectFactory` on the Dopamine backbone.
  *
  * Phase 1: now DATA + a-few-lines. Its mood→params mapping + checkmark glyph
- * band live in solarbloom.dope.json (loader-resolved, byte-identical to the
- * legacy resolveParams / pickCheckGlyph). ALL renderer plumbing — program/VAO,
+ * band live in solarbloom.dope.json (loader-resolved). ALL renderer plumbing — program/VAO,
  * standard uniforms, the baked-SDF icon AND the font-glyph fallback texture
  * (uploaded to light + shadow), the light+shadow loop, dispose — is the shared
  * `createPassInstance` generic fullscreen-pass runner. The only code that

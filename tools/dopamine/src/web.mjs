@@ -78,7 +78,7 @@ export async function generateNpmPackage({ eff }) {
   const out = [];
 
   // (1) hand-written web sources (src/*.ts — the factory, tempo, renderer, shader,
-  //     fonts, params; the test-only oracle ships as the package shipped it before).
+  //     fonts, params).
   for (const name of (await readdir(srcAbs)).sort()) {
     if (name.endsWith(".ts")) {
       out.push({ path: join(pkgRel, "src", name), content: await readFile(join(srcAbs, name), "utf8") });

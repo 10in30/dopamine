@@ -170,12 +170,13 @@ jobs:
       - name: Build the web packages + demo
         run: npm run build
 
-      # Golden mid-frame shader gate (MUST-PASS): render each effect's canonical
-      # GLSL through headless Chromium/SwiftShader (WebGL2 == the Android GLSL ES
-      # 3.00 dialect) and diff against the committed e2e/goldens/*.png, asserting
-      # web↔android RGB parity too. The pixel safety-net for the single-source /
-      # generated-shader work — regenerated shaders must leave the goldens unchanged.
-      - name: Shader golden gate
+      # Web↔Android shader-dialect mid-frame gate (MUST-PASS): render each
+      # effect's canonical web GLSL AND its Android-derived variant (the
+      # dopLightOut emit) through headless Chromium/SwiftShader (WebGL2 == the
+      # Android GLSL ES 3.00 dialect) and assert the RGB outputs match with Δ0.
+      # Self-contained (no committed golden images) — the pixel safety-net for
+      # the single-source / generated-shader work.
+      - name: Web↔Android shader parity gate
         run: npm run shader-goldens
 
       # Restore previously-rendered per-effect clips. The key is unique per commit

@@ -12,11 +12,25 @@
 
 import { describe, expect, it } from "vitest";
 
-import { parseDope, resolveDopeParams, getOutline, decodeSdf, hasMood, loadEffectSync } from "@dopamine/core";
-import { failEnvelope, stampProgress, shakeOffset } from "../src/fail-tempo.js";
+import { clamp01, easeOutCubic, parseDope, resolveDopeParams, getOutline, decodeSdf, hasMood, loadEffectSync } from "@dopamine/core";
 // Importing the effect registers its moods + program.
 import "../src/index.js";
 import failDoc from "../src/fail.dope.json";
+
+// The fail tempo lives in fail.dope.json (`tempo.frame` — amp/stamp/shake
+// expression trees, evaluated by the generic dope factory). Local mirrors for
+// the property checks below.
+const failEnvelope = (life: number): number => {
+  const t = clamp01(life);
+  if (t < 0.05) return easeOutCubic(t / 0.05);
+  if (t < 0.55) return 1;
+  return Math.pow(clamp01(1 - (t - 0.55) / 0.45), 1.7);
+};
+const stampProgress = (elapsedMs: number): number => 1 - Math.pow(1 - clamp01(elapsedMs / 170), 5);
+const shakeOffset = (elapsedMs: number, amount = 1): number =>
+  elapsedMs <= 0
+    ? 0
+    : Math.sin((elapsedMs / 300) * Math.PI * 7.0) * Math.exp(-elapsedMs / (300 * 0.35)) * amount;
 
 describe("fail .dope", () => {
   const doc = parseDope(failDoc as object); // standalone guard passes

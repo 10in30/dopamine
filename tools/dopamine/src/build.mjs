@@ -2,8 +2,9 @@
  * dopamine toolchain — the build orchestrator.
  *
  * The single file `effects/<id>/<slug>.dope.json` is the source of truth: the
- * portable runtime data + the cross-platform `binding` contract + the `x-build`
- * per-platform config, in ONE document. This loads it and produces:
+ * portable runtime data (including the cross-platform `binding` contract the
+ * runtimes derive their uniform bindings from) + the `x-build` per-platform
+ * config, in ONE document. This loads it and produces:
  *
  *   • dist artifacts  — the standalone, installable platform packages under
  *     `dist/<platform>/` (a SwiftPM package, an npm package; Android next).
@@ -23,8 +24,13 @@ import { generateNpmPackage } from "./web.mjs";
 import { generateAndroidLibrary } from "./android.mjs";
 import { convertFonts } from "./fonts.mjs";
 
-/** Top-level `.dope` keys that are TOOLCHAIN-only — consumed here, never shipped. */
-export const TOOLCHAIN_KEYS = ["slug", "kind", "binding", "x-build"];
+/**
+ * Top-level `.dope` keys that are TOOLCHAIN-only — consumed here, never shipped.
+ * NOTE: `binding` is NOT in this list — it SHIPS in the portable doc, because the
+ * runtimes derive their uniform bindings from it (the toolchain also consumes it
+ * for the Metal struct codegen).
+ */
+export const TOOLCHAIN_KEYS = ["slug", "kind", "x-build"];
 
 /**
  * The portable runtime `.dope` (the embedded resource): the source document minus

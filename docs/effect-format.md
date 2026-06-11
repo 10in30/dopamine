@@ -1,19 +1,13 @@
-# Dopamine Effect Format (`.dope`) — Design Doc
+# Dopamine Effect Format (`.dope`) — Specification & rationale
 
-Status: DRAFT / RFC. Author: principal eng. Date: 2026-06-06.
 Scope: a **declarative file format** that lets Dopamine effects be embedded and
-customized in host projects **without code**, and that survives the move from the
-web (WebGL2) to iOS (Metal) and other backends.
+customized in host projects **without code**, and that runs unchanged across
+backends (WebGL2, Metal, OpenGL ES 3.0, and declared fallbacks).
 
 > **Looking to ADD an effect?** This doc is the format *spec + rationale*. For the
 > practical, copy-pasteable how-to (write a `.dope`, a shader / `draw()`, register,
 > code-split), read **[`authoring-effects.md`](./authoring-effects.md)** — it is
 > the build instructions; this is the reference.
-
-> A note on the brief: the owner wrote "Loggy." There is no animation format by
-> that name. In context — "an extension of, or inspired by, the Bodymovin/Airbnb
-> JSON animation format" — this is unambiguously **Lottie**. The rest of this doc
-> reads it as Lottie, and §2 justifies that choice against the real alternatives.
 
 ---
 
@@ -50,24 +44,27 @@ Why, in three lines:
   overrides controls (palette, ranges, icon path), and fires it.
 - **Introspectable controls.** A host can render a UI for an effect (sliders,
   swatches, pickers) purely from the file — no per-effect code.
-- **Renderer-agnostic.** One file, multiple backends (WebGL2 today; Metal, then
-  Canvas2D/SVG fallbacks). Portable intent; backend-specific shader bodies are
-  *referenced*, not the source of truth.
+- **Renderer-agnostic.** One file, multiple backends (WebGL2, Metal,
+  OpenGL ES 3.0; Canvas2D/SVG fallbacks are declared in the format). Portable
+  intent; shader bodies are *referenced*, not embedded as the document's data.
 - **Deterministic + generative.** Preserve the "unique palette every fire" lever
   (seeded OKLCH golden-angle) while keeping pinned-seed reproducibility.
-- **Faithful to the existing engine.** Everything in `resolveParams` /
-  `resolveInkParams` / `color.ts` / `tempo.ts` must round-trip into the format
-  and back out to the same `RenderParams` / `InkRenderParams`.
+- **Faithful to the runtime.** The loader's resolve (`resolveDopeParams`), the
+  palette rules (`engine/color.ts`), and the tempo primitives (`engine/tempo.ts`)
+  produce exactly the render params the shaders consume — byte-identically on
+  every platform.
 - **Versioned & validated** (JSON Schema), with a clear extensibility story for
-  future effects (progress, error, attention) and a migration path off the
-  hardcoded `resolve*Params`.
+  future effects (progress, error, attention).
 
 ### Non-goals
 - Not a general-purpose animation authoring format. Dopamine effects are short,
-  one-shot, feeling-driven reward moments — not arbitrary timelines.
-- Not a shader transpiler. We don't promise to cross-compile GLSL→MSL inside the
-  loader; we promise a *binding contract* (uniform names + semantics) that each
-  backend's hand-written/ported shader honors.
+  feeling-driven moments (one-shot or looping) — not arbitrary timelines.
+- Not a runtime shader transpiler. The loader does not cross-compile shader
+  source; it promises a *binding contract* (uniform names + semantics) that each
+  backend's shader honors. (Separately, at **build time**, the `@dopamine/build`
+  toolchain generates MSL and Kotlin shader variants from a single GLSL ES 3.00
+  source for effects that opt in via `x-build.shader` — a build step, not part
+  of the format or the loader.)
 
 ---
 
@@ -101,7 +98,7 @@ on any `http(s)://`, protocol-relative `//host`, or absolute-path value), so a
 - **Single JSON** — everything inline: a bundled-program **key**
   (`render.backends.webgl2.shader = { "program": "solarbloom" }`, resolved to a
   shader the runtime ships), inline GLSL, or `data:` URIs for small binaries.
-  This is what the three built-ins use today.
+  The built-in effects use this form.
 - **`.dope` zip** (dotLottie-style) — for binary assets (baked SDF textures,
   fonts) without base64 bloat: a zip whose entry is `effect.json` plus an
   `assets/` dir referenced by **relative** paths only. The loader reads the zip
@@ -153,7 +150,7 @@ A `.dope` document is JSON (UTF-8). Top-level keys:
 }
 ```
 
-Mental model of the pipeline (mirrors the current engine exactly):
+Mental model of the pipeline (mirrors the runtime exactly):
 
 ```
 controls (mood, intensity, whimsy, seed)
@@ -164,13 +161,13 @@ resolved render params (palette, exposure, durations, knobs, style)
    │  tempo (envelope, confirm, stepping)      ── §7  (tempo.ts)
    │  geometry (icon outline + easing/step)    ── §5
    ▼
-uniform binding per backend                    ── §8.2 (renderer*.ts)
+uniform binding per backend                    ── §8.2 (the pass/panel runners)
    ▼
-WebGL2 | Metal | Canvas2D | SVG
+WebGL2 | Metal | OpenGL ES | Canvas2D | SVG
 ```
 
-This is the same shape as today: `ResolveInput → RenderParams → uniforms`. The
-format just makes the *middle box* data instead of TypeScript.
+The runtime's shape is `ResolveInput → RenderParams → uniforms`; the format
+makes the *middle box* data instead of code.
 
 ---
 
@@ -208,17 +205,17 @@ so a host can both (a) render UI and (b) compute params with no Dopamine code.
 ```
 
 Each control declares enough for a generic inspector: `type`, `label`, range,
-`ui` hint, `help`, and an optional `appliesWhen` (so `origin` is hidden for the
-directional Verdict, matching how `index.ts` ignores `origin` for ink). Hosts MAY
+`ui` hint, `help`, and an optional `appliesWhen` (so `origin` is hidden for a
+directional effect that ignores it, e.g. inkstroke). Hosts MAY
 **clamp** ranges (§9) — e.g. lock `intensity` to `[0.3, 0.8]` to keep a brand
 calm — by overriding `min`/`max`/`default` without touching the effect logic.
 
 ### 4.1 Control → param mappings
 
-The mood **baselines** (`BASELINES` / `INK_BASELINES` in `mood.ts`) and the
-**lerp ranges** become declarative tables. Two kinds of entries:
+The per-mood **baselines** and the **lerp ranges** are declarative tables. Two
+kinds of entries:
 
-- `baseline[mood]`: a constant per mood (the `MoodBaseline` fields).
+- `baseline[mood]`: a constant per mood (the effect's tuned per-mood values).
 - `map`: a transform from a control onto a multiplier/curve.
 
 ```jsonc
@@ -259,12 +256,12 @@ The mood **baselines** (`BASELINES` / `INK_BASELINES` in `mood.ts`) and the
 ```
 
 **Mapping mini-grammar** (an expression tree; the loader is a tiny evaluator —
-see §12):
+see §11):
 
-| Node | Meaning | Engine equivalent |
+| Node | Meaning | Runtime equivalent |
 |---|---|---|
 | `{ "control": "intensity" }` | raw control value (clamped per its range) | `clamp01(intensity)` |
-| `{ "baseline": "X" }` | `baseline[currentMood].X` | `BASELINES[mood].X` |
+| `{ "baseline": "X" }` | `baseline[currentMood].X` | `baselines[mood].X` |
 | `{ "lerp": [ctrl, a, b] }` | `a + (b-a)*clamp01(ctrl)` | `lerp(a,b,i)` |
 | `{ "mul": [x, y, …] }` | product | `*` |
 | `{ "add" / "sub": […] }` | sum / difference | `+ / -` |
@@ -274,9 +271,9 @@ see §12):
 | flags: `clamp01`, `clampMax`, `clampMin` | post-clamp | `clamp01`, `Math.min` |
 
 This grammar is intentionally tiny and **non-Turing-complete** (no loops, no user
-functions) so it is safe to evaluate from an untrusted file and trivial to port
-to Swift. It captures every relationship in `resolveParams` /
-`resolveInkParams` (see §11 for the full mapping).
+functions) so it is safe to evaluate from an untrusted file and trivial to
+implement on every platform. It captures every relationship an effect's
+`resolve` needs (control → param, per-mood baselines, clamps).
 
 ---
 
@@ -321,21 +318,20 @@ Why offer both: `svgPath` is what a designer copies out of Figma/Illustrator in
 two seconds; the `lottie` form is what Bodymovin emits and is lossless for
 tangents. The loader normalizes either into a list of cubic-bezier segments.
 
-How the **current engine** uses this (IMPLEMENTED — the geometry seam is live):
-Solarbloom's checkmark icon is an outline entry (`role: "confirm-glyph"`) whose
-`svgPath` is **baked at build time into an inline SDF** (`scripts/bake-sdf.mjs` /
-`scripts/pack-dope.mjs` → `engine/sdf.ts`) and stored under
-`geometry.outlines.checkmark.sdf`. At runtime the effect `decodeSdf`s it once and
-the shader only SAMPLES it (`uSdfTex` in `engine/shader.ts`). A host can **swap
-the icon path** (checkmark → star → custom logo) by overriding
-`geometry.outlines.checkmark.svgPath` and re-baking — no shader edits. If the
-baked `sdf` is absent the effect falls back to a bundled font glyph, then to an
-analytic in-shader SDF, so the confirm always renders. The Fail effect uses the
-same seam for its ✗ cross. (The Verdict stroke remains analytic in
-`engine/inkstroke-shader.ts` — it has no swappable outline yet.)
+How the runtime uses this (the geometry seam): solarbloom's checkmark icon is
+an outline entry (`role: "confirm-glyph"`) whose `svgPath` is **baked at build
+time into an inline SDF** (`scripts/bake-sdf.mjs` / `scripts/pack-dope.mjs` →
+`engine/sdf.ts`) and stored under `geometry.outlines.checkmark.sdf`. At runtime
+the effect `decodeSdf`s it once and the shader only SAMPLES it (the `uSdfTex`
+sampler). A host can **swap the icon path** (checkmark → star → custom logo) by
+overriding `geometry.outlines.checkmark.svgPath` and re-baking — no shader
+edits. If the baked `sdf` is absent the effect falls back to a bundled font
+glyph, then to an analytic in-shader SDF, so the confirm always renders. The
+fail effect uses the same seam for its ✗ cross. (Inkstroke's stroke is analytic
+in its shader — it has no swappable outline.)
 
-We also ship the explicitly-requested comic shapes as outline entries:
-`starburst`, `onomatopoeia.pow`, `onomatopoeia.zap` (see the example file).
+Comic ships its shapes as outline entries too: `starburst`,
+`onomatopoeia.pow`, `onomatopoeia.zap` (see the example file).
 
 ### 5.2 Animation curves as paths (easing, envelope, STEP functions)
 
@@ -371,7 +367,7 @@ the held-breath envelope, AND the "animate on twos" step function.
         { "t": 1.0,  "s": [0],
           "i": { "x": [0.4], "y": [0] }, "o": { "x": [0.2], "y": [0] } }
       ],
-      "note": "Reference encoding. The analytic envelope() in tempo.ts remains the source of truth for backends that prefer it; this curve is the portable approximation + the authoring handle."
+      "note": "Reference encoding. Backends evaluate the analytic envelope() tempo primitive; this curve is the portable approximation + the authoring handle."
     },
 
     // (c) STEP FUNCTION — "animate on twos". This is the path-file-for-a-step-
@@ -443,7 +439,7 @@ the "unique every fire" novelty lever survives.
     "deterministic": true,
     "source": "controls.seed",         // null → randomSeed() per fire
     "prng": "mulberry32",              // matches seed.ts exactly
-    "note": "Palette base hue + per-fire scatter (moteSeed/inkSeed) draw from the SAME mulberry32(seed) stream, in the SAME order as mood.ts, so a pinned seed reproduces byte-for-byte."
+    "note": "Palette base hue + per-fire scatter (moteSeed/inkSeed) draw from the SAME mulberry32(seed) stream, in a FIXED order, so a pinned seed reproduces byte-for-byte on every platform."
   },
 
   "perMood": {                          // the color register columns of BASELINES
@@ -492,7 +488,61 @@ Key facts encoded: the **fast confirm** window is *independent of total
 duration* (the glyph draws in ≤240/360 ms no matter how long the afterglow), the
 **held-breath envelope** has a fast attack (18%) + overshoot + long decay, and
 the **stepping grid** is 12 Hz blended by whimsy. This is exactly the two-layer
-timing the README/`tempo.ts` describe.
+timing the runtime implements (`engine/tempo.ts`).
+
+### 7.1 Per-frame logic — `tempo.frame` + `tempo.reducedMotion`
+
+The §4.1 grammar runs ONCE per fire (feeling → params). `tempo.frame` is its
+per-frame sibling: the effect's per-frame logic — the envelope amp, a
+stroke-draw progress, a stamp/shake — as expression trees the runtime
+evaluates EVERY frame (web: `framework/frame-expr.ts`; the Swift and Android
+cores implement the same evaluator). With it, the *logic*, like the mapping, is
+authored once and interpreted identically on every platform.
+
+```jsonc
+"tempo": {
+  "durationMs": { /* §7 */ },
+  "frame": {
+    "amp": { "envelope": [{ "input": "life" }, { "param": "overshoot" }] },
+    "extras": {                       // keyed by the CANONICAL extra name —
+      "draw": {                       // must match a binding.extras[].name (§8.2)
+        "easeOutCubic": { "div": [{ "input": "animMs" }, 360] }
+      }
+    }
+  },
+  "reducedMotion": { "peakMs": 300, "holdMs": 360 }
+}
+```
+
+- **`frame.amp`** — the per-frame amplitude. The well-known value: it feeds the
+  shadow geometry and binds to `uAmp`. One-shot effects use
+  `envelope(life, overshoot)`; halo (continuous) uses a periodic sine of
+  `animMs` so its loop seam survives.
+- **`frame.extras`** — every other time-varying uniform, keyed by canonical
+  name; the `binding.extras` entry with the same `name` supplies each
+  platform's uniform name (web `uDraw`, the Metal struct field, …). A
+  `binding.extras` entry with NO `tempo.frame` expression is host/code-filled
+  (e.g. fail's canvas-size-dependent SDF plumbing).
+- **`reducedMotion`** — the calm-peak `peakMs` + static-frame `holdMs` for the
+  reduced-motion fallback.
+
+**Evaluation context.** Three inputs, addressed as `{ "input": "<name>" }`:
+
+| input | meaning |
+|---|---|
+| `animMs` | the "animate on twos"-snapped clock, ms (stepping applied) |
+| `life` | normalized 0..1 (`animMs / durationMs`, clamped) |
+| `elapsedMs` | the REAL un-stepped wall clock, ms (fail's stamp/shake — identical on every platform) |
+
+plus `{ "param": "<name>" }` (a resolved render param) and the nodes: number
+literal, `const`, `add`, `sub` (left fold), `mul`, `div` (left fold, plain IEEE),
+`min`, `max`, `pow: [a, b]`, `sin`, `exp`, `clamp01`,
+`lt: [a, b, then, else]` (lazy branches), and the tempo primitives
+`envelope: [t, overshoot]`, `easeOutCubic`, `easeOutBack: [x, overshoot]` — the
+same tempo primitives every platform ships, so evaluated output is
+bit-identical across platforms. Operation order is significant for float
+parity: an implementation must reduce `add`/`mul` left-to-right exactly as
+written. Anything outside the grammar **throws** (same posture as §4.1).
 
 ---
 
@@ -508,13 +558,36 @@ interface. Backends differ only in *how* they consume it.
 ### 8.2 Uniform mapping (the shader binding)
 
 `render.backends[*].uniforms` maps param names → backend uniform names. In the
-current runtime this mapping is **implicit by convention**: the generic runners
+runtime this mapping is **implicit by convention**: the generic runners
 (`framework/pass-runner.ts` / `framework/panel-runner.ts`, sharing
 `framework/pass-common.ts`) auto-bind each numeric param `x` to the uniform `uX`,
 with a per-effect `bindings` map for the exceptions — so a built-in's `.dope`
 references its shader by a bundled `program` KEY
 (`render.backends.webgl2.shader = { "program": "solarbloom" }`) rather than an
-explicit uniform table. An explicit `uniforms` table (below) is still the portable
+explicit uniform table.
+
+**The `binding` contract ships in the portable doc.** The
+exceptions to the auto-bind convention live in the top-level `binding` block —
+`excludeParams` (resolved params that are NOT shader uniforms), `scatterKey` +
+`scatterWeb` (the per-fire seed-keyed field and, when the shader reads it, its
+web uniform name), `extras` (the per-frame/host-filled uniforms, by canonical
+name; see §7.1) and `samplers` (texture units). The runtime derives its uniform
+bindings from it at load time (web: `framework/dope-pass.ts`), and the
+`@dopamine/build` toolchain consumes the same contract to generate the Metal
+`Uniforms` struct + packer. Only `slug`, `kind` and `x-build` stay
+toolchain-only.
+
+An effect with declarative per-frame logic also carries, under `render`:
+
+- **`shadowHeightFrac`** — the shadow occluder height as a fraction of min
+  canvas dim: a bare number or a PARAMS-ONLY §7.1 expression (`{input}` throws
+  there — shadow geometry must not read the frame clock).
+- **`consts`** — the loop-cap consts the §4.1 `clampMax`/`clampMin` flags
+  reference (`MAX_RINGS`, `MAX_DROPS`, …).
+- **`config`** — runner config; today `usesOrigin` (whether the shader is
+  anchored on `uOrigin`).
+
+An explicit `uniforms` table (below) is still the portable
 form for a non-bundled or cross-backend doc:
 
 ```jsonc
@@ -570,29 +643,32 @@ form for a non-bundled or cross-backend doc:
 | Controls, mappings | ✅ fully | — |
 | Palette intent (OKLCH, seed stream) | ✅ | OKLab→RGB math is a fixed lib per platform |
 | Tempo curves (easing/envelope/step) | ✅ | sampling impl |
+| Per-frame logic (`tempo.frame`, `shadowHeightFrac`) | ✅ expression trees (§7.1) | the evaluator is a fixed lib per platform |
+| Uniform-binding contract (`binding`) | ✅ ships in the portable doc | Metal struct codegen consumes it at build time |
 | Outline geometry | ✅ | how an SDF/path is built from it |
 | Uniform *names + semantics* | ✅ (the binding table) | uniform *transport* (GL uniforms vs MTLBuffer struct) |
-| **Shader source body** | ❌ referenced by `$ref` | hand-written/ported per backend (`.glsl`, `.metal`) |
+| **Shader source body** | ❌ referenced (bundled `program` key or `$ref`) | authored once in GLSL ES 3.00; MSL/Kotlin variants generated at build time (`x-build.shader`), or authored per platform |
 | Capability fallback | ✅ declared (`fallbackOrder`, `strategy`) | implemented per backend |
 
-**Shader source handling.** GLSL and MSL are NOT embedded as the canonical
-source (cross-compiling is out of scope, §1 non-goals). Instead each backend
-`$ref`s its own shader file inside the `.dope` zip (§9). The *contract* the
-shaders must honor — uniform names, units (device pixels, gl-y-up origin),
-blend mode — lives in the file and is validated. A host on a platform with no
-matching shader walks `fallbackOrder` down to a raster/outline approximation.
-This is exactly how the same params already drive two different shaders today
-(Solarbloom vs Verdict share the mood/tempo/color model but ship distinct GLSL).
+**Shader source handling.** Shader source is NOT embedded as the document's
+canonical data (runtime cross-compiling is out of scope, §1 non-goals). Instead
+each backend references its own shader — a bundled `program` key, or a `$ref`
+inside the `.dope` zip (§9). The *contract* the shaders must honor — uniform
+names, units (device pixels, gl-y-up origin), blend mode — lives in the file
+and is validated. A host on a platform with no matching shader walks
+`fallbackOrder` down to a raster/outline approximation. This is how the same
+params drive distinct shaders (solarbloom and inkstroke share the
+mood/tempo/color model but ship different GLSL).
 
-**The Metal story in one paragraph (matches the roadmap).** The iOS port reads
+**The Metal story in one paragraph.** The Metal backend reads
 the *same* `.dope`: it evaluates `controls`+mappings to the identical param bag
-(the mapping grammar is trivially portable to Swift — it's arithmetic), runs the
-same OKLCH/golden-angle palette with `mulberry32(seed)` (so a pinned seed matches
-web byte-for-byte), samples the same tempo curves, and binds the params into an
-`MTLBuffer` whose struct fields are the `uniforms` map, against a hand-ported
-`solarbloom.metal` full-screen pass composited with a screen-equivalent blend.
-Nothing in the *file* changes between web and iOS except which `backends.*.shader`
-is selected.
+(the mapping grammar is arithmetic, implemented in Swift), runs the
+same OKLCH/golden-angle palette with `mulberry32(seed)` (so a pinned seed
+matches byte-for-byte across platforms), samples the same tempo curves, and
+binds the params into an `MTLBuffer` whose struct fields are the `uniforms`
+map, against the effect's MSL full-screen pass composited with a
+screen-equivalent blend. Nothing in the *file* changes between backends except
+which `backends.*.shader` is selected.
 
 ---
 
@@ -660,8 +736,8 @@ to the zip root (or http(s) for remote, with same-origin/allowlist rules).
   straight from a Bodymovin export; conversely our outlines export back to Lottie
   shape layers.
 - **Compose effects**: `extends` (§10) plus a future `compose` block (sequence /
-  overlay multiple effect ids on a shared clock) — e.g. Verdict stroke + a small
-  Solarbloom punctuation. Out of scope for v1 schema but reserved.
+  overlay multiple effect ids on a shared clock) — e.g. an inkstroke + a small
+  solarbloom punctuation. Out of scope for v1 schema but reserved.
 
 ---
 
@@ -669,10 +745,12 @@ to the zip root (or http(s) for remote, with same-origin/allowlist rules).
 
 - **Format version** `v` (semver). Loader policy: accept same major; warn on
   newer minor (ignore unknown keys → forward-compatible); reject newer major.
-- **JSON Schema** at `docs/effect-format.schema.json` (Draft 2020-12). CI
-  validates every shipped `.dope`. The schema covers the document, the control
-  descriptors, the mapping mini-grammar (recursive `$defs/expr`), palette, tempo
-  curves (Lottie keyframe + step), geometry, and backends.
+- **JSON Schema** at `docs/effect-format.schema.json` (Draft 2020-12). The
+  schema covers the document, the control descriptors, the mapping mini-grammar
+  (recursive `$defs/expr`), palette, tempo curves (Lottie keyframe + step),
+  geometry, and backends. The loader independently validates the magic, the
+  major version, the required keys, and the standalone guard
+  (`packages/core/test/loader.test.ts` exercises those rules).
 - **Extensibility:**
   - New effects = new documents (e.g. `dopamine.progress.*`), reusing
     `controls`/`palette`/`tempo` blocks. `extends` lets a family share a base.
@@ -685,88 +763,20 @@ to the zip root (or http(s) for remote, with same-origin/allowlist rules).
 
 ---
 
-## 11. Migration plan (off hardcoded `resolve*Params`) — IMPLEMENTED
+## 11. The public loader — `loadEffect`
 
-The format is designed so today's engine is the *reference implementation*. The
-plan below is now built (`@dopamine/core`'s `framework/loader.ts` + each effect's
-bundled `packages/effect-<name>/src/<name>.dope.json`):
+The public `loadEffect(doc | JSON | .dope zip, { overrides })`
+(`framework/load-effect.ts`) returns a registered, playable effect from an
+arbitrary `.dope`: it parses + (optionally) patches the doc (clamp control
+ranges, pin a brand `palette`/`seed`, swap an outline `svgPath` — re-baked to
+an SDF), re-validates the merged doc (magic/version + the standalone guard),
+and binds it to the bundled render program its
+`render.backends.webgl2.shader.program` key names (`framework/programs.ts`).
+The content/typography tables (comic's words + lettering, solarbloom's glyph
+bands) are data-driven too (`framework/content.ts`). Bodymovin import for
+`outlines` is future work (see [`roadmap.md`](./roadmap.md)).
 
-> **Authoring note (package-per-effect).** Effects ship as separate
-> `@dopamine/effect-<name>` packages on top of the slim `@dopamine/core` runtime;
-> the byte-parity oracle for the original three lives in each package's
-> `<name>-oracle.ts` + `test/parity.test.ts`. See
-> [`authoring-effects.md`](./authoring-effects.md) for the scaffold flow.
-
-**Phase 0 — encode. DONE.** `solarbloom.dope.json`, `inkstroke.dope.json` and
-`comic.dope.json` reproduce `BASELINES`/`INK_BASELINES`/`COMIC_BASELINES` + the
-lerp ranges + color/tempo exactly, in a `baselines` per-mood table + the
-`render.params` mapping grammar.
-
-**Phase 1 — parity test. DONE.** The loader (`resolveDopeParams`) evaluates the
-mapping grammar + the OKLCH palette in the SAME rng order as the engine. A
-vitest (`test/loader.test.ts`) asserts, across a `mood × intensity × whimsy ×
-seed` grid, that loader-resolved params equal `resolveParams` /
-`resolveInkParams` / `resolveComicParams` **byte-for-byte** (the correctness
-anchor — exact equality, not epsilon).
-
-**Phase 2 — flip the source of truth. DONE.** Each effect's `resolve()`
-(`effects/*.ts`) now drives off its bundled `.dope` document through the loader.
-Solarbloom + Verdict are fully data-driven; Comic is numeric+palette data-driven
-with its typography + per-fire word composed in code (genuinely code-shaped).
-The legacy `resolve*Params` remain in `mood.ts` as the parity reference.
-
-**Phase 3 — open it up. DONE (web).** The public `loadEffect(doc | JSON | .dope
-zip, { overrides })` (`framework/load-effect.ts`) returns a registered, playable
-effect from an arbitrary `.dope`: it parses + (optionally) patches the doc
-(clamp control ranges, pin a brand `palette`/`seed`, swap an outline `svgPath` —
-re-baked to an SDF), re-validates the merged doc (magic/version + the standalone
-guard), and binds it to the bundled render program its
-`render.backends.webgl2.shader.program` key names (`framework/programs.ts`). The
-content/typography tables (Comic's words + lettering, Solarbloom's glyph bands)
-are also data-driven (`framework/content.ts`). Bodymovin import for `outlines`
-remains the only deferred piece.
-
-### 11.1 Concrete mapping — Solarbloom (`resolveParams`)
-
-| `RenderParams` field | Source in `mood.ts` | Format encoding |
-|---|---|---|
-| `seed` | input/`randomSeed()` | `palette.seed.source` |
-| `durationMs` | `round(base.durationMs * lerp(1.1,0.9,i))` | `tempo.durationMs` (§7) |
-| `palette` | `buildPalette(rng, {L,C,hueCenter,hueRange,hueSpread})` | `palette` (§6) |
-| `exposure` | `lerp(0.75,1.5,i)` | `render.params.exposure` |
-| `bloomRadius` | `base.bloomRadius * lerp(0.8,1.15,i)` | `render.params.bloomRadius` |
-| `moteCount` | `min(MAX_MOTES, round(base * lerp(0.85,1.25,i)))` | `params.moteCount` (`clampMax`) |
-| `moteSpeed` | `base.moteSpeed` | `{ "baseline": "moteSpeed" }` |
-| `turbulence` | `base.turbulence * lerp(0.85,1.2,i)` | `params.turbulence` |
-| `overshoot` | `base.overshoot * lerp(0.7,1.25,i)` | `params.overshoot` |
-| `iridescence` | `clamp01(base.iridescence * lerp(1.0,0.12,w))` | `params.iridescence` (`clamp01`) |
-| `dispersion` | `clamp01(base.dispersion * lerp(1.0,0.45,w) * lerp(0.85,1.1,i))` | `params.dispersion` |
-| `style` | `w` | `{ "control": "whimsy" }` |
-| `moteSeed` | `rng() * 1000` | `palette.seed` scatter (same mulberry32 stream) |
-
-### 11.2 Concrete mapping — Calligraphic Verdict (`resolveInkParams`)
-
-| `InkRenderParams` field | Source | Format encoding |
-|---|---|---|
-| `durationMs` | `round(base.durationMs * lerp(1.1,0.9,i))` | `tempo.durationMs` |
-| `palette` | `buildPalette(...)` (same generator, ink baselines) | `palette` w/ ink `perMood` |
-| `exposure` | `lerp(0.8,1.55,i)` | `params.exposure` |
-| `overshoot` | `base.overshoot * lerp(0.7,1.25,i)` | `params.overshoot` |
-| `scale` | `base.scale * lerp(0.9,1.08,i)` | `params.scale` |
-| `pressure` | `base.pressure * lerp(0.85,1.2,i)` | `params.pressure` |
-| `wetness` | `clamp01(base.wetness * lerp(1.0,0.35,w))` | `params.wetness` (`clamp01`) |
-| `bristle` | `clamp01(base.bristle * lerp(0.85,1.25,w) * lerp(0.9,1.1,i))` | `params.bristle` |
-| `droplets` | `min(MAX_DROPS, round(base * lerp(0.7,1.3,i)))` | `params.droplets` (`clampMax`) |
-| `style` | `w` | `{ "control": "whimsy" }` |
-| `inkSeed` | `rng() * 1000` | `palette.seed` scatter |
-
-Confirm window: `STROKE_DRAW_MS=360` → `tempo.confirm.windowMs.stroke`.
-Stroke geometry `P0/P1/P2` → `geometry.outlines["signature-stroke"]` (quadratic;
-stored as a 3-vertex Lottie path or `svgPath` `M…Q…`).
-
----
-
-## 12. Loader sketch (proof the mapping is real — NOT a full parser)
+### 11.1 Loader sketch (illustrative — NOT the full parser)
 
 ```ts
 // Pseudo-code. The mapping evaluator is ~30 lines; this is why the grammar
@@ -807,36 +817,14 @@ function resolveFromDoc(doc: Doc, input: ResolveInput): RenderParams {
     if ((spec as any).clampMax) v = Math.min(v, ctx.consts[(spec as any).clampMax]);
     out[name] = v;
   }
-  // palette + scatter draw from the SAME rng stream, SAME order as mood.ts:
+  // palette + scatter draw from the SAME rng stream, in a FIXED order:
   out.palette  = buildPalette(rng, paletteParamsFrom(doc.palette, ctx));
   out.moteSeed = rng() * 1000;
   return out as RenderParams;
 }
 ```
 
-The crucial parity invariant: the `rng` calls happen in the *same order* as
-`mood.ts` (baseHue inside `buildPalette` first, then the `* 1000` scatter), so a
-pinned seed reproduces today's output exactly — including on the Metal port.
-
----
-
-## 13. Open questions for the owner
-
-1. **"Loggy" → Lottie** confirmed? (Assumed yes; whole doc hinges on it.)
-2. **Shader source in-file or referenced?** I recommend referenced (`$ref` to
-   `.glsl`/`.metal` in the zip). Do you ever want a single self-contained JSON
-   with inlined shader strings (bigger, but one file)?
-3. **Outline → SDF for the swappable icon.** Today the checkmark/stroke are baked
-   analytic SDFs in GLSL. Letting hosts swap an arbitrary `svgPath` means the
-   backend must build an SDF from a path at load (a runtime path→SDF step, or a
-   precomputed SDF texture). How far do we want "swap any glyph" to go in v1 vs.
-   "choose from a built-in glyph set"?
-4. **Envelope: analytic vs sampled.** Keep `envelope()` analytic on each backend
-   (exact, but duplicated code) or make the sampled curve authoritative
-   (portable, but an approximation)? I leaned "analytic is source of truth, curve
-   is the authoring/portable handle" — OK?
-5. **Composition** (sequence/overlay multiple effects) — v1 or later? I deferred
-   it.
-6. **Security**: remote `$ref` for shaders/assets — allowlist only, or forbid
-   non-bundled refs entirely for embedded use?
+The crucial parity invariant: the `rng` calls happen in a *fixed order* (the
+base hue inside `buildPalette` first, then the `* 1000` scatter), so a pinned
+seed reproduces the same output on every platform.
 ```

@@ -55,6 +55,12 @@ export interface FrameInfo {
   animMs: number;
   /** Normalized life 0..1 (animMs / durationMs, clamped). */
   life: number;
+  /**
+   * The REAL un-stepped wall clock in ms (the raw `renderAt` argument, before
+   * the "on twos" snap). Mirrors the Swift/Android runners, which hand their
+   * `frame()` hooks the same un-stepped clock for stamp/shake-style timing.
+   */
+  elapsedMs: number;
 }
 
 /**
@@ -322,7 +328,7 @@ export function createPassInstance(
       const stepped = Math.floor(elapsedMs / NPR_TIME_STEP_MS) * NPR_TIME_STEP_MS;
       const animMs = elapsedMs + (stepped - elapsedMs) * params.style;
       const life = Math.min(Math.max(animMs, 0) / params.durationMs, 1);
-      const info: FrameInfo = { animMs, life };
+      const info: FrameInfo = { animMs, life, elapsedMs };
       const frameUniforms = config.frame(info, params);
       // Draw the dynamic sprite panel once (shared by both passes), if present.
       if (panelCfg && panelCanvas && panelCtx2d) {

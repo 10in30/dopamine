@@ -34,7 +34,7 @@
 
     "baselines": {
       "type": "object",
-      "description": "Per-mood baseline table the mapping grammar's { baseline: X } nodes read (color register + the effect's own spatial/motion/typographic baselines). The loader (framework/loader.ts) resolves these. Keyed by mood name; built-in moods carry their exact tuned values so loader output is byte-identical to the legacy resolve*Params.",
+      "description": "Per-mood baseline table the mapping grammar's { baseline: X } nodes read (color register + the effect's own spatial/motion/typographic baselines). The loader (framework/loader.ts) resolves these. Keyed by mood name; each mood carries the effect's exact tuned values so loader output is byte-identical on every platform.",
       "additionalProperties": {
         "type": "object",
         "additionalProperties": { "type": "number" }
@@ -95,6 +95,26 @@
       "type": "object",
       "properties": {
         "durationMs": { "$ref": "#/$defs/paramExpr" },
+        "frame": {
+          "type": "object",
+          "description": "Per-frame logic (§7.1): the effect's frame() hook as frame-expression trees, evaluated each frame against animMs/life/elapsedMs + the resolved params. `amp` feeds shadow geometry / uAmp; `extras` are keyed by the canonical binding.extras[].name.",
+          "required": ["amp"],
+          "properties": {
+            "amp": { "$ref": "#/$defs/frameExpr" },
+            "extras": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/frameExpr" }
+            }
+          }
+        },
+        "reducedMotion": {
+          "type": "object",
+          "description": "Reduced-motion handling: the calm-peak elapsedMs and how long to hold that single static frame.",
+          "properties": {
+            "peakMs": { "type": "number" },
+            "holdMs": { "type": "number" }
+          }
+        },
         "confirm": {
           "type": "object",
           "properties": {
@@ -145,11 +165,68 @@
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/paramExpr" }
         },
+        "shadowHeightFrac": {
+          "$ref": "#/$defs/frameExpr",
+          "description": "Shadow occluder height as a fraction of min canvas dim: a bare number or a PARAMS-ONLY frame expression ({input} nodes are rejected at runtime)."
+        },
+        "consts": {
+          "type": "object",
+          "description": "Loop-cap constants the paramSpec clampMax/clampMin flags reference (MAX_RINGS, MAX_DROPS, ...).",
+          "additionalProperties": { "type": "number" }
+        },
+        "config": {
+          "type": "object",
+          "description": "Generic-runner config.",
+          "properties": {
+            "usesOrigin": { "type": "boolean" }
+          }
+        },
         "backends": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/backend" }
         },
         "fallbackOrder": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "binding": {
+      "type": "object",
+      "description": "The cross-platform uniform-binding contract (§8.2). SHIPS in the portable doc: the runtime derives its uniform bindings from it; the @dopamine/build toolchain also consumes it for the Metal Uniforms struct codegen.",
+      "properties": {
+        "note": { "type": "string" },
+        "excludeParams": { "type": "array", "items": { "type": "string" } },
+        "scatterKey": { "type": ["string", "null"] },
+        "scatterWeb": { "type": "string" },
+        "extras": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "type": { "type": "string" },
+              "web": { "type": "string" },
+              "note": { "type": "string" }
+            }
+          }
+        },
+        "samplers": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "required": ["web"],
+                "properties": {
+                  "web": { "type": "string" },
+                  "name": { "type": "string" },
+                  "texture": { "type": "integer" }
+                }
+              }
+            ]
+          }
+        }
       }
     },
 
@@ -210,6 +287,30 @@
       ]
     },
     "exprOrNumber": { "$ref": "#/$defs/expr" },
+
+    "frameExpr": {
+      "description": "Per-FRAME expression grammar (§7.1): a non-Turing-complete arithmetic tree over the frame inputs (animMs/life/elapsedMs), the resolved params, and the tempo primitives. Evaluated every frame by framework/frame-expr.ts (and its Swift/Android ports); reduce order is significant for float parity.",
+      "oneOf": [
+        { "type": "number" },
+        { "type": "object", "properties": { "const": { "type": "number" } }, "required": ["const"] },
+        { "type": "object", "properties": { "param": { "type": "string" } }, "required": ["param"] },
+        { "type": "object", "properties": { "input": { "enum": ["animMs", "life", "elapsedMs"] } }, "required": ["input"] },
+        { "type": "object", "properties": { "add": { "type": "array", "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["add"] },
+        { "type": "object", "properties": { "sub": { "type": "array", "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["sub"] },
+        { "type": "object", "properties": { "mul": { "type": "array", "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["mul"] },
+        { "type": "object", "properties": { "div": { "type": "array", "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["div"] },
+        { "type": "object", "properties": { "min": { "type": "array", "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["min"] },
+        { "type": "object", "properties": { "max": { "type": "array", "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["max"] },
+        { "type": "object", "properties": { "pow": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["pow"] },
+        { "type": "object", "properties": { "sin": { "$ref": "#/$defs/frameExpr" } }, "required": ["sin"] },
+        { "type": "object", "properties": { "exp": { "$ref": "#/$defs/frameExpr" } }, "required": ["exp"] },
+        { "type": "object", "properties": { "clamp01": { "$ref": "#/$defs/frameExpr" } }, "required": ["clamp01"] },
+        { "type": "object", "properties": { "lt": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["lt"] },
+        { "type": "object", "properties": { "envelope": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["envelope"] },
+        { "type": "object", "properties": { "easeOutCubic": { "$ref": "#/$defs/frameExpr" } }, "required": ["easeOutCubic"] },
+        { "type": "object", "properties": { "easeOutBack": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["easeOutBack"] }
+      ]
+    },
 
     "paramExpr": {
       "type": "object",
