@@ -46,8 +46,8 @@ export interface DopeShader {
 
 /**
  * Derive a {@link PassConfig} from a datafied `.dope` + its shader (+ optional
- * code hooks). Equivalent, for the migrated effects, to the hand-written config
- * literals it replaced (gated by the per-effect frame-parity vitests):
+ * code hooks). The derived contract is pinned by the per-effect dope-config
+ * vitests:
  *
  *   - `uniforms`: every `render.params` key not in `binding.excludeParams` and
  *     not the scatter key → `u<Name>`; the scatter key contributes

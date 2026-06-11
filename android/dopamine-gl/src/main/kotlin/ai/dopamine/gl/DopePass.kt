@@ -18,8 +18,8 @@ import ai.dopamine.core.dopePassPlan
 
 /**
  * Build a {@link PassConfig} from a datafied `.dope` + its GLSL (+ optional code
- * hooks). Equivalent, for the migrated effects, to the hand-written config
- * literals it replaced (gated by the frame-parity JVM tests in dopamine-core).
+ * hooks). The derived contract is pinned by the dope-config JVM tests in
+ * dopamine-core.
  *
  * Pass `plan` when the factory already derived one (to share it with the
  * `resolve()` call); it defaults to deriving from `doc`.

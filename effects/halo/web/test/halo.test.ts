@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { parseDope, resolveDopeParams, NPR_TIME_STEP_MS } from "@dopamine/core";
 import doc from "../src/halo.dope.json";
 
-// The breathe gate now lives in halo.dope.json (`tempo.frame.amp` — a steady
-// periodic sine, evaluated by the generic dope factory; the frame-parity suite
-// pins it). Local mirror for the loop-seam property checks below.
+// The breathe gate lives in halo.dope.json (`tempo.frame.amp` — a steady
+// periodic sine, evaluated by the generic dope factory). Local mirror for the
+// loop-seam property checks below.
 const haloBreathe = (timeS: number, periodS: number): number =>
   0.85 + 0.15 * Math.sin((Math.PI * 2 * timeS) / Math.max(periodS, 1e-3));
 

@@ -25,9 +25,8 @@ package ai.dopamine.core
 fun cap(s: String): String = "u" + s.replaceFirstChar { it.uppercase() }
 
 /**
- * The datafied pass description derived from a `.dope`. Equivalent, for the
- * migrated effects, to the hand-written config literals it replaced (gated by
- * the per-effect frame-parity JVM tests):
+ * The datafied pass description derived from a `.dope`. The derived contract
+ * is pinned by the per-effect dope-config JVM tests:
  *
  *   - `uniforms`: every `render.params` key not in `binding.excludeParams` and
  *     not the scatter key → `u<Name>`; the scatter key contributes

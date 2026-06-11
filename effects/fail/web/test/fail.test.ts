@@ -17,9 +17,9 @@ import { clamp01, easeOutCubic, parseDope, resolveDopeParams, getOutline, decode
 import "../src/index.js";
 import failDoc from "../src/fail.dope.json";
 
-// The fail tempo now lives in fail.dope.json (`tempo.frame` — amp/stamp/shake
-// expression trees, evaluated by the generic dope factory; the frame-parity
-// suite pins them). Local mirrors for the property checks below.
+// The fail tempo lives in fail.dope.json (`tempo.frame` — amp/stamp/shake
+// expression trees, evaluated by the generic dope factory). Local mirrors for
+// the property checks below.
 const failEnvelope = (life: number): number => {
   const t = clamp01(life);
   if (t < 0.05) return easeOutCubic(t / 0.05);
