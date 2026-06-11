@@ -1,14 +1,16 @@
 # DopamineDemo — simulator-runnable iOS demo
 
-A SwiftUI app that fires **Solarbloom** through the shared `DopamineCore` stack
-and the Metal overlay (`MetalOverlayHost<SolarbloomConfig>`). It mirrors the web
-demo: a sample **"Order complete"** card, a **Fire** button, and **mood /
-intensity / whimsy** controls.
+A SwiftUI app that fires Dopamine effects through the shared `DopamineCore`
+stack and the Metal overlay (`MetalOverlayHost`). It mirrors the web demo: a
+sample **"Order complete"** card, an **Effect** picker, a **Fire** button, and
+**mood / intensity / whimsy** controls.
 
 SwiftPM cannot emit an `.app`, so the Xcode project is generated with
 [XcodeGen](https://github.com/yonaskolb/XcodeGen) from `project.yml`. The app
-depends on the local SwiftPM packages (`DopamineCore`,
-`DopamineEffectSolarbloom`) by **path** (`packages.Dopamine.path: ".."`).
+depends on the local SwiftPM packages by **path**: `DopamineCore`
+(`packages.Dopamine.path: ".."`) plus every effect's
+`dist/swift/DopamineEffect<Name>` package (built by
+`node tools/dopamine/src/cli.mjs build`).
 
 ## Generate + build + run (macOS only)
 
@@ -78,7 +80,8 @@ opens idle and you drive it with the **Effect** picker + **Fire** button.
 - `Info.plist` — bundle id `ai.polyguard.DopamineDemo`, Metal capability, portrait.
 - `Sources/DopamineDemoApp.swift` — `@main` SwiftUI `App` + autoplay parsing.
 - `Sources/ContentView.swift` — card + effect picker + Fire button + mood/intensity/whimsy controls.
-- `Sources/SolarbloomOverlay.swift` — `UIViewRepresentable` hosting the Metal
+- `Sources/EffectRegistry.swift` — the demo's effect table (one entry per installed effect package).
+- `Sources/EffectOverlay.swift` — `UIViewRepresentable` hosting the Metal
   overlay layers + the `CADisplayLink` tick; resolves the feeling and plays.
 
 ## UNVERIFIED on Linux
@@ -88,4 +91,3 @@ of this folder compiles or runs here. It is authored for the macOS CI (which
 builds it, boots a sim, launches with `-autoplay`, and records a clip). The
 shared `DopamineCore` + the generated uniform packer it links ARE verified on
 Swift-for-Linux (see `../README.md`).
-```

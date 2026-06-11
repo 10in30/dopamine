@@ -1,53 +1,54 @@
 # Dopamine — Android (Kotlin + OpenGL ES 3.0)
 
-The Android port of Dopamine. Like the web (TypeScript + WebGL2) and Swift
+The Android stack of Dopamine. Like the web (TypeScript + WebGL2) and Swift
 (Swift + Metal) stacks, it is an **interpreter for the shared `.dope` files** —
 the same bytes drive all three platforms. This directory mirrors `swift/`.
 
-> **Status: all ten effects ship.** The portable core, the GL rendering
-> backbone, and every effect — solarbloom, aurora, comic, confetti, fail,
-> heartburst, inkstroke, lightning, ripple, halo — are ported on the same `.dope`
-> spine. Each effect now lives in the consolidated single-folder model at
-> `effects/<name>/android/` (repo root) and is compiled by the `@dopamine/build`
-> toolchain into a standalone `dist/android/dopamine-effect-<name>` Gradle module;
-> `settings.gradle.kts` auto-includes those dist modules. `halo` is the first
-> CONTINUOUS effect (a calm looping "loading" ring); see
-> [Porting an effect](#porting-an-effect) for the per-effect contract.
+> Each effect lives in the single-folder model at `effects/<name>/` (repo
+> root, with any Android sources under `effects/<name>/android/`) and is
+> compiled by the `@dopamine/build` toolchain into a standalone
+> `dist/android/dopamine-effect-<name>` Gradle module; `settings.gradle.kts`
+> auto-includes those dist modules. See
+> [Adding an effect](#adding-an-effects-android-side) for the per-effect
+> contract.
 
 ## Why OpenGL ES 3.0
 
-Android OpenGL ES 3.0 uses **GLSL ES 3.00 — the exact shading language the web's
-WebGL2 already uses.** Two consequences shape the whole port, and are the reason
-it is *smaller* than the Metal port:
+Android OpenGL ES 3.0 uses **GLSL ES 3.00 — the same shading language as
+WebGL2.** Two consequences shape the whole stack:
 
-1. **The shaders are the web's GLSL, near-verbatim.** No hand-port to a new
-   dialect (the Metal port rewrote every shader into MSL). The shared GLSL "look"
+1. **One GLSL source per effect.** An effect's shader is authored once in
+   GLSL ES 3.00; both the WebGL2 and GL ES stacks run that same source. For
+   effects whose `.dope` declares an `x-build.shader` block the toolchain
+   generates the Kotlin shader string (`<Name>Shader.kt`) from it; other
+   effects keep a per-effect Kotlin GLSL source. The shared GLSL "look"
    chunks (`hash`, `fbm`, `paletteMix`, `tonemapACES`, `benday`, …) live **once**
-   in `dopamine-core` (`Look.kt`) and effects compose them exactly like the web
-   (`"#version 300 es …" + GLSL_HASH + …`). The Metal port had to copy
-   `DopamineLook.metal` into every package; here there is one canonical copy.
+   in `dopamine-core` (`Look.kt`) and effects compose them by interpolation
+   (`"#version 300 es …" + GLSL_HASH + …`).
 2. **No uniform codegen.** GL ES sets uniforms one-by-one **by name**
-   (`glUniform*`), exactly like WebGL — so the web's `name → u<Name>` auto-bind
-   ports verbatim, and Android needs **none** of the Metal struct-packing codegen
+   (`glUniform*`), exactly like WebGL — the `name → u<Name>` auto-bind applies
+   directly, and Android needs **none** of the Metal struct-packing codegen
    the `@dopamine/build` toolchain emits for Swift (that exists only because a
    `.metal` reads one packed `Uniforms` struct).
 
-The single deliberate divergence from the web shaders is the final pixel: see
-[the overlay model](#the-self-contained-overlay).
+The single deliberate Android divergence in the shared shader source is the
+final pixel: see [the overlay model](#the-self-contained-overlay).
 
 ## Module layout
 
 ```
 android/
 ├─ settings.gradle.kts      # includes dist/android/dopamine-effect-* modules; core-only when no SDK
-├─ dopamine-core/           # PURE Kotlin/JVM — the portable spine. NO android.* imports.
+├─ dopamine-core/           # PURE Kotlin/JVM — the portable core. NO android.* imports.
 │   ├─ src/main/kotlin/…     #   Seed, Color, Tempo, Shadow, Json, Loader, ParseDope,
-│   │                        #   Registry, MoodRegistry, Content, Look (GLSL chunks)
-│   └─ src/test/…            #   ParityTest — the 192-case byte-parity grid (runs on the JVM)
-├─ dopamine-gl/             # Android lib — OpenGL ES 3.0 backbone (the analog of swift's
-│                           #   Metal-guarded half): DopamineView host + GlPassRunner +
+│   │                        #   FrameExpr, DopePass, Registry, MoodRegistry, Content,
+│   │                        #   Look (GLSL chunks)
+│   └─ src/test/…            #   ParityTest (the 192-case byte-parity grid), FrameExprTest,
+│                            #   DopeConfigTest — all run on a plain JVM
+├─ dopamine-gl/             # Android lib — the OpenGL ES 3.0 rendering layer (the analog of
+│                           #   swift's Metal-guarded half): DopamineView host + GlPassRunner +
 │                           #   GlPanelRunner + PassConfig/PanelConfig + DrawableEffect.
-├─ dopamine-effects/        # umbrella — registers all ten (consumes each dist/ effect module).
+├─ dopamine-effects/        # umbrella — registers every effect (consumes each dist/ effect module).
 └─ demo/                    # Android app — translucent overlay, tap / autoplay.
 
 # Per-effect modules are GENERATED by the toolchain from effects/<name>/android/
@@ -73,7 +74,7 @@ cd android
 # The correctness gate — the 192-case byte-parity grid. NO Android SDK required.
 ./gradlew :dopamine-core:test
 
-# The full Android build (GL backbone + effect packages + demo APK). Needs the SDK
+# The full Android build (GL runtime + effect packages + demo APK). Needs the SDK
 # (ANDROID_HOME / ANDROID_SDK_ROOT, or android/local.properties with sdk.dir=…).
 ./gradlew assembleDebug
 ```
@@ -85,11 +86,11 @@ plugin + JUnit). CI runs this on a free runner.
 ## Parity is gated by tests, not by trust
 
 `dopamine-core/src/test/.../ParityTest.kt` loads the **same**
-`solarbloom-parity.json` fixture the swift `ParityTests` asserts against (dumped
-by running the ACTUAL web `loader.ts` across a `mood × intensity × whimsy × seed`
-grid — ground truth, not a reimplementation), resolves the bundled
-`solarbloom.dope.json` across that **192-case** grid in Kotlin, and asserts every
-scalar + palette stop is identical to the web output. This catches any drift in
+`solarbloom-parity.json` fixture the swift `ParityTests` asserts against
+(regenerated by `swift/Scripts/regen-parity.sh`, which resolves the same
+`mood × intensity × whimsy × seed` grid through the TypeScript loader), resolves
+the bundled `solarbloom.dope.json` across that **192-case** grid in Kotlin, and
+asserts every scalar + palette stop is identical. This catches any drift in
 the PRNG order (`mulberry32` in `UInt` space), the OKLCH math, the mapping
 grammar, the clamp flags, or the default-mood fallback.
 
@@ -108,78 +109,93 @@ The web composites its light canvas over the page with CSS
 content. So `DopamineView` is a **self-contained** overlay: a **translucent**
 `GLSurfaceView`, cleared transparent, that **additively accumulates premultiplied
 light**. Dark regions stay transparent (the host UI shows through); bright light
-reads as cast light over it — the web's light layer, achieved within one surface.
+reads as cast light over it — the same light layer, achieved within one surface.
 
-The one shader change from the web: the final emit is `dopLightOut(col)`
+The one Android-specific shader change: the final emit is `dopLightOut(col)`
 (premultiplied alpha = brightness; `Look.kt`) instead of `vec4(col, 1.0)`. The
-RGB look is byte-identical. (Solarbloom's web shader already emits exactly this.)
+RGB look is byte-identical. (Solarbloom's shader already emits exactly this
+form on every platform.)
 
 A `uShadow` multiply pass exists in the config/shader contract for portability,
 but the single-surface host renders **light only** (a multiply shadow needs the
 backdrop the GL surface can't read — the same limitation swift documents on iOS).
 
-### Coordinate conventions (match the web)
+### Coordinate conventions (shared across stacks)
 
-- `gl_FragCoord` is y-UP (bottom-left origin), like WebGL — pure-shader effects
-  reuse the web math directly. `uOrigin` / `uCenter` are device px, y-flipped
+- `gl_FragCoord` is y-UP (bottom-left origin), like WebGL — the shared shader
+  math applies unchanged. `uOrigin` / `uCenter` are device px, y-flipped
   from the (y-down) anchor.
-- The hybrid **panel** is drawn in a **y-down, top-left** `Canvas` (identical to
-  the web Canvas2D renderer); `GlPanelRunner` pre-flips the Canvas so the uploaded
-  texel orientation matches the web's `UNPACK_FLIP_Y_WEBGL`. Path geometry flips
-  cleanly; a text effect flips its glyph block back locally (as swift's comic does).
+- The hybrid **panel** is drawn in a **y-down, top-left** `Canvas` (the same
+  convention as the Canvas2D renderer); `GlPanelRunner` pre-flips the Canvas so
+  the uploaded texel orientation matches WebGL's `UNPACK_FLIP_Y_WEBGL`. Path
+  geometry flips cleanly; a text effect flips its glyph block back locally (as
+  comic does on every platform).
 
-## Porting an effect
+## Adding an effect's Android side
 
-An effect's Android sources live in the single-folder model at
-`effects/<name>/android/`; the toolchain generates the `dopamine-effect-<name>`
-Gradle module (build.gradle.kts + manifest + the `.dope` asset) into `dist/`. No
-backbone edits. **heartburst** is the worked reference for a hybrid; a pure-shader
-effect is simpler (no panel). The recipe:
+An effect's Android sources (if it needs any) live in the single-folder model
+at `effects/<name>/android/`; the toolchain generates the
+`dopamine-effect-<name>` Gradle module (build.gradle.kts + manifest + the
+`.dope` asset + any generated shader) into `dist/`. No shared-module edits.
+
+**The declarative path (preferred where it fits).** For an effect whose `.dope`
+carries `tempo.frame` + the `binding` contract +
+`render.shadowHeightFrac`/`consts`/`config`, and whose `x-build.shader` block
+generates `<Name>Shader.kt`, the Android side is a single registration shim
+(see e.g. `effects/ripple/android/Ripple.kt`): load the `.dope` from assets,
+derive the whole config with `dopePassPlan(doc)` (pure JVM, in `dopamine-core`)
++ `dopePassConfig(...)` (in `dopamine-gl`), and expose
+`companion object { fun register(context) }`.
+
+**The code path (supported for effects with platform-specific behavior —
+hybrids with a panel draw, code-shaped timing).** A hybrid (e.g. heartburst)
+is the fullest case; the pieces:
 
 1. **Author the single folder** `effects/<name>/` — the unified
-   `<name>.dope.json` (the data spine + the `binding` contract + the per-platform
+   `<name>.dope.json` (the data + the `binding` contract + the per-platform
    `x-build` config, including `android.namespace: ai.dopamine.effect.<name>`) is
    the ONE source of the `.dope`; you do not copy or hand-place an asset. Put the
    Kotlin sources below in `effects/<name>/android/`. `dopamine build` emits the
    Gradle module into `dist/android/` and `settings.gradle.kts` includes it.
 
-2. **Shader** → `<Name>Shader.kt`: a Kotlin string that is the web
-   `<name>-shader.ts` source **verbatim**, composing the same `Look.kt` chunks,
-   with the **one** change — the final `fragColor = …` becomes
+2. **Shader** → `<Name>Shader.kt`: a Kotlin string carrying the effect's
+   GLSL ES 3.00 source, composing the same `Look.kt` chunks, with the **one**
+   Android change — the final `fragColor = …` becomes
    `fragColor = dopLightOut(col);` (premultiplied light). Keep the vertex as
-   `GLSL_FULLSCREEN_VERTEX` (it exposes `vUv`, matching the web).
+   `GLSL_FULLSCREEN_VERTEX` (it exposes `vUv`, the standard interpolant).
 
-3. **Tempo** → `<Name>Tempo.kt`: a faithful port of `<name>-tempo.ts` (pure Kotlin
-   on the `dopamine-core` primitives `easeOutCubic` / `easeOutBack` / `envelope` /
-   `tempoClamp01`).
+3. **Timing** → `<Name>Tempo.kt`: the effect's per-effect timing, pure Kotlin
+   on the `dopamine-core` primitives (`easeOutCubic` / `easeOutBack` /
+   `envelope` / `tempoClamp01`) — it must match the effect's other platform
+   implementations exactly.
 
-4. **Panel** (HYBRIDS ONLY — comic, heartburst) → `<Name>Panel.kt`: port the web
-   `<name>-renderer.ts` draw to `android.graphics.Canvas` / `Path` / `Paint`. Use
-   `PorterDuff.Mode.ADD` for the additive channel encoding the web does with
-   `globalCompositeOperation = "lighter"`. (See `HeartburstPanel.kt`.)
+4. **Panel** (hybrids only, e.g. comic/heartburst) → `<Name>Panel.kt`: the
+   panel draw on `android.graphics.Canvas` / `Path` / `Paint`. Use
+   `PorterDuff.Mode.ADD` for the additive channel encoding (the Canvas2D
+   renderer's `globalCompositeOperation = "lighter"`). (See
+   `HeartburstPanel.kt`.)
 
 5. **Factory** → `<Name>.kt`: a `class <Name>(context) : DrawableEffect` that
    - loads the `.dope` from assets (`context.assets.open("<name>.dope.json")`),
    - `resolve()` calls `resolveDopeParams(doc, feeling, consts, scatterKey)` with
-     the **exact** `consts` + `scatterKey` the web uses (from
-     `effects/<name>/web/src/index.ts`'s `resolveDopeParams(...)` call — e.g.
+     the **exact** `consts` + `scatterKey` the effect uses everywhere (e.g.
      solarbloom `{ "MAX_MOTES": 80 }` / `"moteSeed"`; heartburst `{}` /
      `"heartburstSeed"`),
    - `create()` calls `createPassInstance(CONFIG, …)` (pure-shader) or
      `createPanelInstance(CONFIG, …)` (hybrid),
-   - defines `CONFIG` (`PassConfig` / `PanelConfig`) mirroring the web `index.ts`
-     `CONFIG` **exactly**: the `uniforms` list, the `bindings` map (every web
-     `bindings: { x: null }` → `"x" to null`; `{ x: "uY" }` → `"x" to "uY"`),
+   - defines `CONFIG` (`PassConfig` / `PanelConfig`) identical to the effect's
+     config on the other platforms: the `uniforms` list, the `bindings` map
+     (`bindings: { x: null }` → `"x" to null`; `{ x: "uY" }` → `"x" to "uY"`),
      `usesOrigin` (true for anchored/radial effects), `shadowHeightFrac`,
-     `passUniforms`, and `frame` (mirror swift's `frame()` for the exact extras),
+     `passUniforms`, and `frame` (the exact same extras on every platform),
    - exposes `companion object { fun register(context): <Name> { … } }`.
 
-6. **Register.** Add `effects/<name>/web` to the `@dopamine/effects` umbrella and
-   the Android `dopamine-effects` umbrella's `Dopamine.registerAll` (it calls
-   `<Name>.register(context)`); the demo picks it up automatically.
+6. **Register.** Add the effect to the Android `dopamine-effects` umbrella's
+   `Dopamine.registerAll` (it calls `<Name>.register(context)`); the demo picks
+   it up automatically.
 
 **Sanity checks.** `node tools/dopamine/src/cli.mjs build` emits the dist module;
-`./gradlew :dopamine-core:test` stays green (the spine is unchanged);
+`./gradlew :dopamine-core:test` stays green (the portable core is unchanged);
 `./gradlew assembleDebug` builds it; the `android.yml` jvm job confirms the three
 `.dope` embeds are byte-identical; the best-effort emulator job proves the GLSL
 compiles + runs on a real GL ES driver.
@@ -188,6 +204,7 @@ compiles + runs on a real GL ES driver.
 
 - **No uniform-struct codegen** — uniforms bind by name (see above); only the
   Swift dist packages get a generated `Uniforms` struct from the toolchain.
-- **No second shader dialect** — the shaders are the web's GLSL ES 3.00.
+- **No second shader dialect** — the shaders run the effect's one GLSL ES 3.00
+  source.
 - **No multiply shadow pass in the host** — the overlay is light-only (the shader
   `uShadow` branch is kept for contract parity).
