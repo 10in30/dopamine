@@ -229,6 +229,15 @@ export function glslToMSL({ slug, fragment, uniformMap }) {
   const Name = pascal(slug);
   const { defines, fns } = parseFunctions(fragment);
 
+  // Avoid the `u` collision: effect functions gain a `constant <Name>Uniforms &u`
+  // param, so any GLSL identifier literally named `u` (e.g. inkstroke's arc-fraction
+  // param) must be renamed (→ `uu`) so it doesn't shadow the uniform struct. Uniform
+  // reads are spelled `uName` (longer ⇒ unaffected by the `\bu\b` word match).
+  for (const f of fns) {
+    f.paramStr = f.paramStr.replace(/\bu\b/g, "uu");
+    f.bodyText = f.bodyText.replace(/\bu\b/g, "uu");
+  }
+
   // Pass 1: signatures — which bespoke fns take `u`, and where their first out-arg is.
   const bespoke = fns.filter((f) => !LOOK_FNS[f.name] && f.name !== "main");
   const sigInfo = {};

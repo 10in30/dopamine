@@ -34,18 +34,16 @@ const readSnapshot = (slug) =>
 // Migrated effects: transpiler output must byte-match the committed snapshot oracle.
 const SNAPSHOT = [
   { slug: "aurora", fragment: AURORA_FRAGMENT_SRC },
+  { slug: "ripple", fragment: RIPPLE_FRAGMENT_SRC },
+  { slug: "inkstroke", fragment: INK_FRAGMENT_SRC },
 ];
 
 // Not yet migrated (still hand-ported); their hand-ports diverge from a mechanical
 // transpile — NOT translator bugs, recorded so the divergence is tracked:
-//   • ripple    — hand-port INLINES `u.resolution` (drops the `float2 res =` local).
-//   • inkstroke — hand-port orders `inkDraw()` BEFORE the vertex entry (ordering).
 //   • lightning — hand-port fragment takes a `constant float2 *verts [[buffer]]` (its
 //                 CPU bolt-precompute seam) — a Metal-specific binding (P3).
 const PENDING = [
-  { slug: "ripple", fragment: RIPPLE_FRAGMENT_SRC },
   { slug: "lightning", fragment: LIGHTNING_FRAGMENT_SRC },
-  { slug: "inkstroke", fragment: INK_FRAGMENT_SRC },
 ];
 
 const transpile = (slug, fragment) => {
