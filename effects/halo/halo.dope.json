@@ -135,7 +135,6 @@
     "shader": { "note": "Single-source shader: web GLSL is the only hand-written shader; MSL+Android generated from it.", "web": "web/src/halo-shader.ts", "vertexExport": "HALO_VERTEX_SRC", "fragmentExport": "HALO_FRAGMENT_SRC", "generateMSL": true },
     "swift": {
       "module": "DopamineEffectHalo",
-      "sources": "swift",
       "platforms": ["iOS(.v15)", "macOS(.v12)"],
       "core": { "mode": "path", "package": "Dopamine", "product": "DopamineCore", "path": "swift" }
     },
@@ -145,8 +144,7 @@
     },
     "android": {
       "module": "dopamine-effect-halo",
-      "namespace": "ai.dopamine.effect.halo",
-      "sources": "android"
+      "namespace": "ai.dopamine.effect.halo"
     }
   }
 }

@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { buildFields, emitSwift, emitMSL } from "./uniforms.mjs";
 import { glslToMSL, buildUniformMap } from "./shader.mjs";
 import { loadWebGLSL } from "./glsl-load.mjs";
+import { assertFactoryGeneratable, emitSwiftFactory, emitSwiftBundle } from "./factory.mjs";
 
 const pascal = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -93,11 +94,23 @@ export async function generateSwiftPackage({ root, eff, outDir, fonts = [] }) {
   const srcRel = join(pkgRel, "Sources", module);
   const out = [];
 
-  // (1) hand-written Swift sources (top-level *.swift in the folder's swift/ dir)
-  for (const name of (await readdir(srcAbs)).sort()) {
-    if (name.endsWith(".swift")) {
-      out.push({ path: join(srcRel, name), content: await readFile(join(srcAbs, name), "utf8") });
+  // (1) the Swift sources. An effect with hand-written sources (a panel draw, a
+  //     code-shaped hook) ships them from its swift/ dir; a FULLY DECLARATIVE
+  //     effect ships NO swift/ dir at all and gets its factory shell + resource
+  //     -bundle accessor GENERATED from the `.dope` (factory.mjs) — zero
+  //     per-effect Swift to write or drift.
+  let handNames = null;
+  try { handNames = (await readdir(srcAbs)).sort(); } catch { /* no swift/ dir */ }
+  if (handNames) {
+    for (const name of handNames) {
+      if (name.endsWith(".swift")) {
+        out.push({ path: join(srcRel, name), content: await readFile(join(srcAbs, name), "utf8") });
+      }
     }
+  } else {
+    assertFactoryGeneratable(doc, slug, "swift");
+    out.push({ path: join(srcRel, `${Name}.swift`), content: emitSwiftFactory(slug) });
+    out.push({ path: join(srcRel, `${Name}Bundle.swift`), content: emitSwiftBundle(slug) });
   }
 
   // (2) the bespoke per-effect shader. When the effect declares a generated MSL

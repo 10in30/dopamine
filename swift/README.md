@@ -42,9 +42,11 @@ swift/
 └─ Scripts/{dump-parity.ts,regen-parity.sh}   # regenerate the parity fixtures
 ```
 
-Each effect's Swift sources live at `effects/<name>/swift/` (a thin
-registration shim for declarative effects; fuller sources — including `.metal`
-shaders — for effects with platform-specific behavior). `dopamine build` emits
+A FULLY DECLARATIVE effect has NO `effects/<name>/swift/` folder: its factory
+shell + resource-bundle accessor are generated from the `.dope` by the
+toolchain (`tools/dopamine/src/factory.mjs`; inkstroke is the reference).
+Effects with platform-specific behavior keep hand-written sources — including
+`.metal` shaders — at `effects/<name>/swift/`. `dopamine build` emits
 them — plus the generated `<Name>Uniforms.{swift,metal}`, any generated
 `<Name>.metal` (from the effect's single GLSL source, via `x-build.shader`),
 and the bundled `.dope` — into `dist/swift/DopamineEffect<Name>` (a real,

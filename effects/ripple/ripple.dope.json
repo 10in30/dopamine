@@ -325,7 +325,6 @@
     },
     "swift": {
       "module": "DopamineEffectRipple",
-      "sources": "swift",
       "platforms": [
         "iOS(.v15)",
         "macOS(.v12)"
@@ -343,8 +342,7 @@
     },
     "android": {
       "module": "dopamine-effect-ripple",
-      "namespace": "ai.dopamine.effect.ripple",
-      "sources": "android"
+      "namespace": "ai.dopamine.effect.ripple"
     }
   }
 }
