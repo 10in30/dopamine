@@ -35,13 +35,16 @@ that doc is the spec.
 > NO core edits, NO shared-file edits, NO touching another effect.
 
 > **Other platforms.** This guide walks the **web** package; the same effect runs
-> from the *same `.dope` bytes* on Swift/Metal (`swift/`) and Android/OpenGL ES
-> (`android/`). For an effect whose `.dope` declares an `x-build.shader` block
-> and `tempo.frame`, the toolchain generates the MSL and Kotlin shader variants
-> and the other platforms need only thin registration shims; effects with
-> platform-specific behavior add sources under `effects/<name>/swift` and
-> `effects/<name>/android` — see `swift/README.md` and
-> [`android/README.md`](../android/README.md).
+> from the *same `.dope` bytes* on Swift/Metal and Android/OpenGL ES. For a
+> FULLY DECLARATIVE effect (an `x-build.shader` block + `tempo.frame` +
+> `render.shadowHeightFrac` + `binding.scatterKey`), the toolchain generates
+> EVERYTHING the other platforms need — the MSL and Kotlin shader variants, the
+> uniform glue, AND the Swift factory shell / Kotlin registration shim
+> (`tools/dopamine/src/factory.mjs`) — so the effect ships **no `swift/` or
+> `android/` folder at all** (inkstroke is the reference). Effects with
+> platform-specific behavior (panel draws, code-shaped hooks) instead add
+> sources under `effects/<name>/swift` and `effects/<name>/android` — see
+> `swift/README.md` and [`android/README.md`](../android/README.md).
 
 By the end you will be able to add either kind of effect — a **pure-shader**
 effect or a **Canvas2D-hybrid** effect — with a `.dope` data file, a fragment
@@ -534,8 +537,9 @@ effects/sparkle/
       # syncs in (gitignored — never hand-edit it; edit the canonical one)
     test/
       sparkle.test.ts   # pin a seed, assert params/look (§7.5)
-  swift/                # optional: Swift sources (a thin shim for declarative effects)
-  android/              # optional: Kotlin sources (ditto)
+  swift/                # ONLY for platform-specific code (panel draw, hooks);
+  android/              # a fully declarative effect ships NEITHER — the factory
+                        # shells are generated (tools/dopamine/src/factory.mjs)
 ```
 
 Copy an existing effect folder (`effects/ripple` is a simple pure-shader,

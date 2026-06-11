@@ -86,14 +86,22 @@ derives the whole `PassConfig` — uniforms, bindings, `frame()`,
 `shadowHeightFrac`, `usesOrigin` — from the `.dope` + its `binding` contract and
 registers the factory (+ a bundled program). Genuinely code-shaped bits (fail's
 SDF aux texture + canvas-dependent pass uniforms) ride the `hooks` escape hatch.
+**The Swift and Android factories are GENERATED entirely**: a fully declarative
+effect ships NO `effects/<name>/swift` or `effects/<name>/android` folder — the
+toolchain emits the Swift factory shell + resource-bundle accessor and the
+Kotlin registration shim from the `.dope` (`tools/dopamine/src/factory.mjs`,
+gated byte-for-byte by `tools/dopamine/test/factory.test.mjs`; inkstroke is the
+reference). Hand-written platform sources remain a supported path for effects
+with panel draws or code-shaped hooks.
 
 If you find yourself editing the core runtimes to add an effect, stop — that
 almost always means something that should be generalized is being special-cased.
 
 **Every effect lives in the single-folder model** at `effects/<name>/`: the unified
 `<name>.dope.json` (the data + the `binding` contract + the per-platform
-`x-build` config) plus the effect's `web/`, `swift/`, and `android/` sources
-(and `fonts/` if it bundles faces). The `@dopamine/build` toolchain
+`x-build` config) plus the effect's `web/` sources — and `swift/`/`android/`
+sources ONLY where it has genuinely platform-shaped code (a fully declarative
+effect has neither; `fonts/` if it bundles faces). The `@dopamine/build` toolchain
 (`tools/dopamine`, run `node tools/dopamine/src/cli.mjs build`) reads that one
 folder and emits STANDALONE, installable platform packages into `dist/` (an npm
 package, a SwiftPM package, a Gradle library) — each with a byte-identical

@@ -145,7 +145,6 @@
     },
     "swift": {
       "module": "DopamineEffectInkstroke",
-      "sources": "swift",
       "platforms": [
         "iOS(.v15)",
         "macOS(.v12)"
@@ -163,8 +162,7 @@
     },
     "android": {
       "module": "dopamine-effect-inkstroke",
-      "namespace": "ai.dopamine.effect.inkstroke",
-      "sources": "android"
+      "namespace": "ai.dopamine.effect.inkstroke"
     }
   }
 }

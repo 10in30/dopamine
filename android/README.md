@@ -141,11 +141,12 @@ at `effects/<name>/android/`; the toolchain generates the
 **The declarative path (preferred where it fits).** For an effect whose `.dope`
 carries `tempo.frame` + the `binding` contract +
 `render.shadowHeightFrac`/`consts`/`config`, and whose `x-build.shader` block
-generates `<Name>Shader.kt`, the Android side is a single registration shim
-(see e.g. `effects/ripple/android/Ripple.kt`): load the `.dope` from assets,
-derive the whole config with `dopePassPlan(doc)` (pure JVM, in `dopamine-core`)
-+ `dopePassConfig(...)` (in `dopamine-gl`), and expose
-`companion object { fun register(context) }`.
+generates `<Name>Shader.kt`, the Android side needs NO hand-written Kotlin at
+all: the registration shim is GENERATED from the `.dope`
+(`tools/dopamine/src/factory.mjs`; inkstroke ships no `android/` folder). The
+generated shim loads the `.dope` from assets, derives the whole config with
+`dopePassPlan(doc)` (pure JVM, in `dopamine-core`) + `dopePassConfig(...)`
+(in `dopamine-gl`), and exposes `companion object { fun register(context) }`.
 
 **The code path (supported for effects with platform-specific behavior —
 hybrids with a panel draw, code-shaped timing).** A hybrid (e.g. heartburst)
