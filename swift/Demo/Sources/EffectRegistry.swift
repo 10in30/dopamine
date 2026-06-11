@@ -61,7 +61,7 @@ enum EffectRegistry {
         },
         DemoEffect(name: "aurora") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: AuroraResources.bundle),
-                  let host = try? MetalOverlayHost(config: AuroraConfig(), device: device,
+                  let host = try? MetalOverlayHost(config: Aurora.passConfig(), device: device,
                                                    library: lib, wantsShadow: false),
                   let fx = try? Aurora() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
@@ -82,7 +82,7 @@ enum EffectRegistry {
         },
         DemoEffect(name: "fail") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: FailResources.bundle),
-                  let host = try? MetalOverlayHost(config: FailConfig(), device: device,
+                  let host = try? MetalOverlayHost(config: Fail.passConfig(), device: device,
                                                    library: lib, wantsShadow: false),
                   let fx = try? Fail() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
@@ -96,7 +96,7 @@ enum EffectRegistry {
         },
         DemoEffect(name: "inkstroke") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: InkstrokeResources.bundle),
-                  let host = try? MetalOverlayHost(config: InkstrokeConfig(), device: device,
+                  let host = try? MetalOverlayHost(config: Inkstroke.passConfig(), device: device,
                                                    library: lib, wantsShadow: false),
                   let fx = try? Inkstroke() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
@@ -110,14 +110,14 @@ enum EffectRegistry {
         },
         DemoEffect(name: "ripple") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: RippleResources.bundle),
-                  let host = try? MetalOverlayHost(config: RippleConfig(), device: device,
+                  let host = try? MetalOverlayHost(config: Ripple.passConfig(), device: device,
                                                    library: lib, wantsShadow: false),
                   let fx = try? Ripple() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
         DemoEffect(name: "halo") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: HaloResources.bundle),
-                  let host = try? MetalOverlayHost(config: HaloConfig(), device: device,
+                  let host = try? MetalOverlayHost(config: Halo.passConfig(), device: device,
                                                    library: lib, wantsShadow: false),
                   let fx = try? Halo() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
