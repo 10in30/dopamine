@@ -1,31 +1,24 @@
 /**
- * Golden mid-frame shader gate.
+ * Web↔Android shader-dialect mid-frame gate.
  *
  * Renders a representative middle-of-the-effect frame of each effect's canonical
- * GLSL through headless Chromium + SwiftShader (WebGL2 == GLSL ES 3.00, the exact
- * dialect ANDROID uses), and gates it against a committed golden PNG. Because the
- * web GLSL is the SINGLE SOURCE the Android (and, via the transpiler, the MSL)
- * shaders are generated from, a stable golden proves the shared shader body for
- * every platform — the pixel safety-net that lets the generated-shader work land.
+ * web GLSL through headless Chromium + SwiftShader (WebGL2 == GLSL ES 3.00, the
+ * exact dialect ANDROID uses), then renders the LITERAL Android variant of the
+ * same fragment (the same body + `dopLightOut`, the premultiplied light-out
+ * emit) with the same captured uniform bag, and asserts the two RGB outputs are
+ * byte-identical (Δ0 — they share `max(col, 0)`; only the alpha emit differs).
+ * Because the web GLSL is the SINGLE SOURCE the Android (and, via the
+ * transpiler, the MSL) shaders are generated from, this self-contained check
+ * proves the Android emit path leaves the shared shader body's pixels intact —
+ * no committed golden images needed.
  *
- * It also renders the LITERAL Android variant (the same body + `dopLightOut`, the
- * premultiplied light-out emit) and asserts its RGB matches the web byte-for-byte
- * (they share `max(col, 0)`), with alpha == the per-pixel max channel — so the
- * Android emit path is covered too, not just the shared body.
- *
- *   node scripts/shader-goldens.mjs              # CHECK against e2e/goldens/*.png
- *   node scripts/shader-goldens.mjs --update     # (re)write the goldens
+ *   node scripts/shader-goldens.mjs              # check all migrated pure-shader effects
  *   node scripts/shader-goldens.mjs aurora       # only these effects
  */
 import { build, preview } from "vite";
 import { chromium } from "playwright";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { DEMO_DIR, VIEWPORT, CHROMIUM_ARGS, ROOT } from "./lib/reel.mjs";
+import { DEMO_DIR, VIEWPORT, CHROMIUM_ARGS } from "./lib/reel.mjs";
 import { loadShaderSources } from "./lib/shader-src.mjs";
-
-const GOLDEN_DIR = join(ROOT, "e2e", "goldens");
-const TOLERANCE = 4; // max per-channel delta (SwiftShader is near-deterministic)
 
 // Representative fixtures: a fixed (mood, intensity, whimsy, seed, lifeFrac) so the
 // frame is reproducible. lifeFrac 0.45 ≈ just past the envelope peak (the effect at
@@ -103,7 +96,7 @@ async function renderFrag({ vertex, fragment, uniforms, width, height, force }) 
     else if (u.type === gl.INT || u.type === gl.BOOL || u.type === gl.SAMPLER_2D) gl.uniform1i(loc, u.value);
   }
   // Force the LIGHT pass (the captured program may have been the shadow pass, whose
-  // multiply layer is near-white) — the representative golden is the lit frame.
+  // multiply layer is near-white) — the representative frame is the lit one.
   for (const [name, val] of Object.entries(force ?? {})) {
     const loc = gl.getUniformLocation(prog, name);
     if (loc) gl.uniform1f(loc, val);
@@ -114,44 +107,13 @@ async function renderFrag({ vertex, fragment, uniforms, width, height, force }) 
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   const px = new Uint8Array(width * height * 4);
   gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, px);
-  // Top-down PNG (for goldens) via a 2D copy of the GL canvas.
-  const cc = document.createElement("canvas"); cc.width = width; cc.height = height;
-  cc.getContext("2d").drawImage(cv, 0, 0);
-  return { dataURL: cc.toDataURL("image/png"), px: Array.from(px) };
-}
-
-// ---- in-page: decode a golden PNG and return its top-down RGBA ----
-async function decodePng({ dataURL, width, height }) {
-  const img = new Image();
-  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = dataURL; });
-  const cc = document.createElement("canvas"); cc.width = width; cc.height = height;
-  const ctx = cc.getContext("2d"); ctx.drawImage(img, 0, 0);
-  return Array.from(ctx.getImageData(0, 0, width, height).data);
-}
-
-function maxChannelDelta(a, b) {
-  let m = 0;
-  for (let i = 0; i < a.length; i++) { const d = Math.abs(a[i] - b[i]); if (d > m) m = d; }
-  return m;
-}
-
-// fresh GL readPixels is bottom-up; flip to top-down to compare with a decoded PNG.
-function flipRows(px, width, height) {
-  const row = width * 4;
-  const out = new Array(px.length);
-  for (let y = 0; y < height; y++) {
-    const src = (height - 1 - y) * row;
-    for (let i = 0; i < row; i++) out[y * row + i] = px[src + i];
-  }
-  return out;
+  return { px: Array.from(px) };
 }
 
 async function main() {
-  const update = process.argv.includes("--update");
   const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
   const slugs = (args.length ? args : Object.keys(FIXTURES)).filter((s) => FIXTURES[s]);
   if (!slugs.length) { console.error("no known effects to render"); process.exit(1); }
-  mkdirSync(GOLDEN_DIR, { recursive: true });
 
   const sources = await loadShaderSources(slugs);
   console.log("• building demo…");
@@ -184,28 +146,16 @@ async function main() {
       for (let i = 0; i < web.px.length; i += 4) {
         rgbDelta = Math.max(rgbDelta, Math.abs(web.px[i] - and.px[i]), Math.abs(web.px[i + 1] - and.px[i + 1]), Math.abs(web.px[i + 2] - and.px[i + 2]));
       }
-
-      const goldenPath = join(GOLDEN_DIR, `${slug}.png`);
-      if (update) {
-        writeFileSync(goldenPath, Buffer.from(web.dataURL.split(",")[1], "base64"));
-        console.log(`updated golden (${dims.width}×${dims.height}, web/androidΔ ${rgbDelta})`);
-        if (rgbDelta > TOLERANCE) { failures++; console.error(`  ! ${slug}: web/android RGB parity off by ${rgbDelta}`); }
-        continue;
-      }
-      if (!existsSync(goldenPath)) { console.error(`MISSING golden (run --update)`); failures++; continue; }
-      const goldenDataURL = "data:image/png;base64," + readFileSync(goldenPath).toString("base64");
-      const goldenPx = await page.evaluate(decodePng, { dataURL: goldenDataURL, ...dims });
-      const delta = maxChannelDelta(flipRows(web.px, dims.width, dims.height), goldenPx);
-      const ok = delta <= TOLERANCE && rgbDelta <= TOLERANCE;
-      console.log(`${ok ? "✓" : "✗"} goldenΔ ${delta}, web/androidΔ ${rgbDelta}`);
+      const ok = rgbDelta === 0;
+      console.log(`${ok ? "✓" : "✗"} ${dims.width}×${dims.height}, web/androidΔ ${rgbDelta}`);
       if (!ok) failures++;
     }
   } finally {
     if (browser) await browser.close();
     await new Promise((r) => server.httpServer.close(r));
   }
-  if (failures) { console.error(`\n${failures} shader-golden failure(s).`); process.exit(1); }
-  console.log("\nall shader goldens OK.");
+  if (failures) { console.error(`\n${failures} web↔android shader parity failure(s).`); process.exit(1); }
+  console.log("\nweb↔android shader parity OK.");
 }
 
 await main();
