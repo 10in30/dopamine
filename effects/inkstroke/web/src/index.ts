@@ -2,8 +2,8 @@
  * Calligraphic Verdict (the ink-stroke success effect) as an `EffectFactory`.
  *
  * FULLY DATA-DRIVEN (P2): everything that isn't the GLSL lives in
- * inkstroke.dope.json — the mood→params mapping + palette (the loader,
- * byte-identical to the legacy resolveInkParams), AND the per-frame logic:
+ * inkstroke.dope.json — the mood→params mapping + palette (the loader), AND
+ * the per-frame logic:
  * `tempo.frame` (the envelope amp + the 360 ms ease-out-cubic stroke draw that
  * was inkstroke-tempo.ts), `render.shadowHeightFrac`, `render.consts`
  * (MAX_DROPS), `render.config` and the uniform `binding` contract.

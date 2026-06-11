@@ -13,7 +13,7 @@
  * draw — genuinely code-shaped vector/text logic stays JS, the honest boundary),
  * and a tiny config naming the shader uniforms + the per-frame impact timing.
  * The word + typography are still data-driven from comic.dope.json via the loader
- * + content resolver (byte-identical to the legacy resolveComicParams).
+ * + content resolver.
  */
 
 import { impactScale, impactPresence, IMPACT_MS, IMPACT_HOLD_MS } from "./comic-tempo.js";
@@ -47,8 +47,8 @@ export { ensureComicFonts } from "./comic-renderer.js";
 // Comic is FULLY data-driven: numeric panel + palette params, the per-fire
 // WORD/checkmark token (content.pool), and the TYPOGRAPHY (mood→face + the
 // whimsy/intensity curve table) all come from comic.dope.json via the loader +
-// content resolver — byte-identical to the legacy resolveComicParams /
-// comicTypography / pickWord (parity-tested). Reskinning is no-code.
+// content resolver — cross-platform parity is gated by the Swift/Android
+// 192-case grids. Reskinning is no-code.
 const DOPE = parseDope(doc as object);
 const CONTENT = (DOPE.content ?? {}) as { pool?: readonly string[] };
 const TYPO = DOPE.typography as unknown as DopeTypography;

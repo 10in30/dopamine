@@ -1,27 +1,33 @@
 import { describe, expect, it } from "vitest";
-import { resolveInkParams, MAX_DROPS } from "../src/inkstroke-oracle.js";
-import { easeOutCubic, type DopamineMood } from "@dopamine/core";
+import { easeOutCubic, resolveMood, type DopamineMood } from "@dopamine/core";
+// The droplet cap is owned by the shader that `#define`s it (single source of truth).
+import { MAX_DROPS } from "../src/inkstroke-shader.js";
 // Importing the effect registers it (self-registers on import).
-import "../src/index.js";
+import { inkstroke } from "../src/index.js";
 
-// The stroke-draw timing now lives in inkstroke.dope.json (`tempo.frame.extras.
+// The stroke-draw timing lives in inkstroke.dope.json (`tempo.frame.extras.
 // draw` — easeOutCubic of animMs/360, evaluated by the generic dope factory; the
-// frame-parity suite pins it). These are local mirrors for the property checks.
+// dope-config suite pins the derived pass config). These are local mirrors for
+// the property checks.
 const STROKE_DRAW_MS = 360;
 const strokeProgress = (elapsedMs: number): number => easeOutCubic(elapsedMs / STROKE_DRAW_MS);
 
 const MOODS: DopamineMood[] = ["serene", "celebratory", "electric"];
 
-describe("resolveInkParams (Calligraphic Verdict)", () => {
+/** The production path: the factory's `.dope`-driven resolve. */
+const resolve = (mood: DopamineMood, intensity: number, whimsy: number, seed: number) =>
+  inkstroke.resolve({ mood, intensity, whimsy, seed }, resolveMood(mood));
+
+describe("inkstroke resolve (Calligraphic Verdict)", () => {
   it("is deterministic for a fixed seed", () => {
-    const a = resolveInkParams({ mood: "celebratory", intensity: 0.7, whimsy: 0.5, seed: 42 });
-    const b = resolveInkParams({ mood: "celebratory", intensity: 0.7, whimsy: 0.5, seed: 42 });
+    const a = resolve("celebratory", 0.7, 0.5, 42);
+    const b = resolve("celebratory", 0.7, 0.5, 42);
     expect(a).toEqual(b);
   });
 
   it("produces sane, in-range params for every mood", () => {
     for (const mood of MOODS) {
-      const p = resolveInkParams({ mood, intensity: 0.7, whimsy: 0.5, seed: 7 });
+      const p = resolve(mood, 0.7, 0.5, 7);
       expect(p.palette).toHaveLength(3);
       expect(p.durationMs).toBeGreaterThan(0);
       expect(Number.isInteger(p.droplets)).toBe(true);
@@ -38,16 +44,16 @@ describe("resolveInkParams (Calligraphic Verdict)", () => {
   });
 
   it("higher intensity raises exposure and gesture boldness", () => {
-    const lo = resolveInkParams({ mood: "celebratory", intensity: 0.1, whimsy: 0.5, seed: 5 });
-    const hi = resolveInkParams({ mood: "celebratory", intensity: 0.95, whimsy: 0.5, seed: 5 });
+    const lo = resolve("celebratory", 0.1, 0.5, 5);
+    const hi = resolve("celebratory", 0.95, 0.5, 5);
     expect(hi.exposure).toBeGreaterThan(lo.exposure);
     expect(hi.pressure).toBeGreaterThan(lo.pressure);
     expect(hi.overshoot).toBeGreaterThan(lo.overshoot);
   });
 
   it("whimsy is the stylization axis: dries the ink (less wetness) and tracks style", () => {
-    const lo = resolveInkParams({ mood: "celebratory", intensity: 0.7, whimsy: 0.0, seed: 5 });
-    const hi = resolveInkParams({ mood: "celebratory", intensity: 0.7, whimsy: 1.0, seed: 5 });
+    const lo = resolve("celebratory", 0.7, 0.0, 5);
+    const hi = resolve("celebratory", 0.7, 1.0, 5);
     expect(lo.style).toBe(0);
     expect(hi.style).toBe(1);
     // Toward the cel/neon end the wet bleed recedes (drier, flatter mark).
@@ -55,14 +61,14 @@ describe("resolveInkParams (Calligraphic Verdict)", () => {
   });
 
   it("electric is faster than serene", () => {
-    const electric = resolveInkParams({ mood: "electric", intensity: 0.7, whimsy: 0.5, seed: 1 });
-    const serene = resolveInkParams({ mood: "serene", intensity: 0.7, whimsy: 0.5, seed: 1 });
+    const electric = resolve("electric", 0.7, 0.5, 1);
+    const serene = resolve("serene", 0.7, 0.5, 1);
     expect(electric.durationMs).toBeLessThan(serene.durationMs);
   });
 
   it("electric rakes harder and wetter-serene bleeds more (mood character)", () => {
-    const electric = resolveInkParams({ mood: "electric", intensity: 0.7, whimsy: 0.5, seed: 3 });
-    const serene = resolveInkParams({ mood: "serene", intensity: 0.7, whimsy: 0.5, seed: 3 });
+    const electric = resolve("electric", 0.7, 0.5, 3);
+    const serene = resolve("serene", 0.7, 0.5, 3);
     expect(electric.bristle).toBeGreaterThan(serene.bristle);
     expect(serene.wetness).toBeGreaterThan(electric.wetness);
   });

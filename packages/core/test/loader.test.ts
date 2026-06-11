@@ -1,10 +1,11 @@
 /**
  * `.dope` loader VALIDATION — the generic schema / standalone-guard checks.
  *
- * The per-effect byte-parity guards (loader output == frozen legacy
- * `resolve*Params`) live in each effect package's `parity.test.ts` (they need
- * that effect's bundled `.dope` + its oracle). Here we exercise only the
- * effect-agnostic loader rules against a representative bundled fixture.
+ * Cross-platform resolve parity is gated by the Swift/Android 192-case grids
+ * against the web-dumped fixture (`ParityTests.swift` / `ParityTest.kt`); the
+ * per-effect behavioral checks live in each effect package's tests. Here we
+ * exercise only the effect-agnostic loader rules against a representative
+ * bundled fixture.
  */
 
 import { describe, expect, it } from "vitest";

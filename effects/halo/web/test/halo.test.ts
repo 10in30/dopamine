@@ -8,10 +8,9 @@ import doc from "../src/halo.dope.json";
 const haloBreathe = (timeS: number, periodS: number): number =>
   0.85 + 0.15 * Math.sin((Math.PI * 2 * timeS) / Math.max(periodS, 1e-3));
 
-// Halo is a brand-new effect with NO legacy oracle (per the authoring guide,
-// §7.5): we exercise the production loader path directly and pin a seed to assert
-// the params + mood/intensity/whimsy mapping we expect — PLUS the property that
-// makes Halo special: it LOOPS SEAMLESSLY.
+// Per the authoring guide (§7.5) we exercise the production loader path directly
+// and pin a seed to assert the params + mood/intensity/whimsy mapping we expect —
+// PLUS the property that makes Halo special: it LOOPS SEAMLESSLY.
 const DOPE = parseDope(doc as object);
 const CONSTS = {};
 

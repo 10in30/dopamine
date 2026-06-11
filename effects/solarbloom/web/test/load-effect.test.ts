@@ -11,10 +11,10 @@
 
 import { describe, expect, it } from "vitest";
 
-import { loadEffectSync, resolveDopeParams, parseDope, getOutline, oklchToLinearSrgb } from "@dopamine/core";
-import { resolveParams, MAX_MOTES } from "../src/solarbloom-oracle.js";
+import { loadEffectSync, resolveDopeParams, parseDope, getOutline, oklchToLinearSrgb, resolveMood } from "@dopamine/core";
+import { MAX_MOTES } from "../src/solarbloom-shader.js";
 // Importing the effect registers its render program ("solarbloom").
-import "../src/index.js";
+import { solarbloom } from "../src/index.js";
 import solarbloomDoc from "../src/solarbloom.dope.json";
 
 const FEEL = { mood: "electric", intensity: 0.8, whimsy: 0.4, seed: 12345 };
@@ -24,11 +24,11 @@ describe("loadEffect — bind a .dope to its bundled program", () => {
     const { factory, name } = loadEffectSync(solarbloomDoc as object, { name: "test.sb.basic" });
     expect(name).toBe("test.sb.basic");
     const params = factory.resolve(FEEL, {} as never) as Record<string, unknown>;
-    const legacy = resolveParams(FEEL) as unknown as Record<string, unknown>;
+    const bundled = solarbloom.resolve(FEEL, resolveMood(FEEL.mood)) as unknown as Record<string, unknown>;
     for (const k of ["durationMs", "exposure", "bloomRadius", "moteCount", "moteSeed", "style"]) {
-      expect(params[k], `field ${k}`).toEqual(legacy[k]);
+      expect(params[k], `field ${k}`).toEqual(bundled[k]);
     }
-    expect(params.palette).toEqual(legacy.palette);
+    expect(params.palette).toEqual(bundled.palette);
     // composeParams adds the whimsy-picked check glyph.
     expect(params.checkGlyph).toBeDefined();
   });
