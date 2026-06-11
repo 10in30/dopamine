@@ -42,10 +42,11 @@ fixpoint threads them) with `texture(uX,uv)`→`<name>.sample(texSampler,uv)`; `
 - `tools/dopamine/test/shader-msl.test.mjs` — byte-for-byte snapshots of the generated MSL +
   Android `.kt` (`golden-msl/*.metal`, `golden-android/*Shader.kt`). Edit the web GLSL + rebuild;
   never hand-edit a snapshot/generated file.
-- `scripts/shader-goldens.mjs` (in `web-reel.yml`) — golden **mid-frame** gate: renders the literal
-  web AND the Android-derived GLSL through headless Chromium/SwiftShader (WebGL2 == the Android
-  GLSL ES 3.00 dialect) and asserts web↔Android RGB Δ0 vs `e2e/goldens/*.png`. Covers the
-  pure-shader effects; textured/panel effects rely on CI's macOS sim + android emulator.
+- `scripts/shader-goldens.mjs` (in `web-reel.yml`) — self-contained **mid-frame** gate: renders the
+  literal web AND the Android-derived GLSL through headless Chromium/SwiftShader (WebGL2 == the
+  Android GLSL ES 3.00 dialect) with the same captured uniform bag and asserts web↔Android RGB Δ0
+  (no committed golden images). Covers the pure-shader effects; textured/panel effects rely on
+  CI's macOS sim + android emulator.
 - CI: `swift.yml` macOS compiles the generated MSL; `android.yml` build compiles the `.kt`.
 
 **NOT migrated (stay hand-written):**
@@ -84,10 +85,12 @@ The five web factories are now thin shims (shader + one `registerDopeEffect` cal
 fail keeps its code-shaped SDF/passUniforms `hooks`); `inkstroke-tempo.ts`,
 `halo-tempo.ts`, `fail-tempo.ts` and aurora's `SWEEP_SPEED` are deleted.
 
-**Gates.** Per-effect `effects/<name>/web/test/frame-parity.test.ts` pins the datafied
-`frame()`/`shadowHeightFrac` EXACTLY (`===`) against the frozen pre-P2 hand-written
-logic across a feeling × clock grid, and pins the derived uniforms/bindings against
-the old hand-written config literals. The golden mid-frame gate stays Δ0.
+**Gates.** The frame-expr evaluator has its own unit suite
+(`packages/core/test/frame-expr.test.ts`); per-effect
+`effects/<name>/web/test/dope-config.test.ts` pins the derived uniforms/bindings/
+`usesOrigin` contract (+ halo's loop-seam amp pin). (The transitional
+frozen-oracle frame grids that proved the P2 flip were retired once the old code
+was gone.) The web↔Android mid-frame render gate stays Δ0.
 
 **One deliberate behavior change:** fail's stamp/shake now run on the REAL un-stepped
 clock (`elapsedMs`) on web — matching what the Swift/Android ports always did. The
@@ -103,11 +106,13 @@ trees like web, calls the same `Tempo.swift` primitives, identical reduce order)
 sources are thin shims (`<Effect>.passConfig()`); `InkstrokeTempo.swift`,
 `FailTempo.swift`, `haloBreathe`, `SWEEP_SPEED` and the per-effect consts are
 deleted (consts come from `render.consts`, scatterKey from `binding.scatterKey`).
-Fail keeps its boxPx/sdfStrokePx `packExtras` hook. `FrameParityTests.swift`
-pins the datafied eval EXACTLY (`==`) against frozen pre-P2 oracles over the
-feeling × clock grid, loading the canonical `.dope`s via `#filePath`. Linux
-`swift test`: 20/20 (incl. the 192-case grid). Extras evaluate under their
-CANONICAL names ("sweep"/"draw"/…) — the keys the generated packers read.
+Fail keeps its boxPx/sdfStrokePx `packExtras` hook. `DopeConfigTests.swift`
+pins each effect's `.dope` config contract (consts / scatterKey / usesOrigin /
+reducedMotion + doc-driven resolve == explicit-args resolve), loading the
+canonical `.dope`s via `#filePath`; `FrameExprTests.swift` unit-tests the
+evaluator. Linux `swift test`: 20/20 (incl. the 192-case grid). Extras evaluate
+under their CANONICAL names ("sweep"/"draw"/…) — the keys the generated packers
+read.
 
 ### DONE — the Android pillar (same branch)
 
@@ -117,10 +122,11 @@ uniforms/bindings/shadow/frame/consts/scatterKey/reducedMotion (the web
 `dope-pass.ts` rules; `cap()` moved from gl into core). `dopamine-gl`'s
 `dopePassConfig(...)` wraps the plan into a `PassConfig`; the five effects'
 `<Name>.kt` are thin shims and all five `*Tempo.kt` files are deleted.
-`FrameExprTest.kt` + `FrameParityTest.kt` (frozen-oracle grid + derived
-uniforms/bindings vs the old hand literals) run with NO Android SDK:
-`./gradlew :dopamine-core:test` → 21/21. The five test-resource `.dope`s are
-byte-identical to the dist embeds (the android.yml md5 gate covers them).
+`FrameExprTest.kt` (the evaluator unit suite) + `DopeConfigTest.kt` (the derived
+uniforms/bindings/consts/scatterKey/reducedMotion contract + halo's loop-seam
+pin) run with NO Android SDK: `./gradlew :dopamine-core:test` → 16/16. The five
+test-resource `.dope`s are byte-identical to the dist embeds (the android.yml
+md5 gate covers them).
 
 ## TODO — P3: lightning's logic transpiler
 
@@ -134,6 +140,6 @@ transpiler (`<name>.logic.ts` → Swift + Kotlin) would let that be authored onc
 ## Verification reality (dev container)
 
 No `xcrun`/Metal compiler and no Android SDK locally, BUT headless Chromium/SwiftShader works, so
-the GLSL ES 3.00 (web + Android) path is locally golden-gated. MSL compiles only on the macOS CI
+the GLSL ES 3.00 (web + Android) path is locally Δ0-gated (shader-goldens.mjs). MSL compiles only on the macOS CI
 runner — covered transitively (same web GLSL source + the byte snapshot + the macOS compile). Lean
 on CI (`swift.yml` macOS, `android.yml` build) for the compile gates; reverts are cheap.

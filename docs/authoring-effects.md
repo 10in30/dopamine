@@ -241,7 +241,7 @@ survives. Three linear-sRGB stops. Rules (all in `engine/color.ts → buildPalet
 > **PRNG order is load-bearing.** `resolveDopeParams` consumes the seed PRNG in a
 > fixed order: the base hue (inside `buildPalette`) **first**, then the per-fire
 > scatter offset (`rng() * 1000`). Do not reorder — a pinned seed must reproduce
-> byte-for-byte (the parity tests assert this, §7).
+> byte-for-byte (the cross-platform parity grids assert this, §7.5).
 
 ### 3.5 `tempo` — `durationMs`
 
@@ -756,7 +756,7 @@ registerMood("triumphant", { hueCenter: 280, hueRange: 160, lightness: 0.8, chro
 ```
 
 An effect that has a tuned baseline for a mood uses it; an effect that doesn't can
-derive one from the register's `energy` (the legacy oracle shows the pattern). The
+derive one from the register's `energy` (lerp the baseline fields by energy). The
 Fail effect registers its moods this way at module load
 (`packages/effect-fail/src/index.ts`).
 
@@ -785,7 +785,7 @@ from `engine/shadow.ts` using your frame's `amp`. In the shader, branch on
 by `uShadowOffset`, softened by `uShadowSoft`, scaled by `uShadowStrength`. Opt
 out with `castsShadow: false` on the factory if your effect casts no shadow.
 
-### 7.5 Validate: shots + byte-parity
+### 7.5 Validate: shots + parity
 
 - **Visual spot-check.** `node scripts/shot.mjs [peakMs] [suffix] [effect]`
   builds the demo, renders one peak frame per mood under headless Chromium
@@ -794,17 +794,17 @@ out with `castsShadow: false` on the factory if your effect casts no shadow.
   --enable-unsafe-swiftshader --ignore-gpu-blocklist --enable-webgl`). Read the
   PNGs to confirm the look. (The demo seeds randomly per fire, so two runs differ
   in colour — that's the seed, not a regression.)
-- **Byte-parity (the original built-ins).** Solarbloom / inkstroke / comic each
-  ship a **frozen, test-only legacy oracle** inside their own package
-  (`<name>-oracle.ts`), and a `test/parity.test.ts` asserts the `.dope`-driven
-  loader output **and** the factory's `resolve` equal that oracle byte-for-byte
-  across a mood × intensity × whimsy × seed grid (palette + numeric + content +
-  typography). If you change one of those built-ins' `.dope` you must keep parity
-  (or update the oracle deliberately). A brand-new effect has no oracle — you
-  simply add a `test/<name>.test.ts` in your package that pins a seed and asserts
-  the params/look you expect. **Never import an oracle from production code**; it
-  exists only as the regression reference. `npm test` discovers tests across all
-  packages (see `vitest.config.ts`, which aliases every `@dopamine/*` to source).
+- **Per-effect functional tests.** Add a `test/<name>.test.ts` in your package
+  that exercises the production resolve path (the factory / `resolveDopeParams`),
+  pins a seed, and asserts the params/look you expect — determinism, ranges, and
+  the mood/intensity/whimsy axes (see the existing effects' tests for the
+  pattern). `npm test` discovers tests across all packages (see
+  `vitest.config.ts`, which aliases every `@dopamine/*` to source).
+- **Cross-platform byte-parity** is gated by the Swift/Android 192-case grids
+  against the web-dumped fixture (`ParityTests.swift` / `ParityTest.kt`,
+  regenerated via `swift/Scripts/regen-parity.sh`), and the shader dialects by
+  the toolchain byte snapshots + the web↔Android Δ0 render check
+  (`scripts/shader-goldens.mjs`).
 
 ---
 

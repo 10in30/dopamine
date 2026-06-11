@@ -771,10 +771,11 @@ plan below is now built (`@dopamine/core`'s `framework/loader.ts` + each effect'
 bundled `packages/effect-<name>/src/<name>.dope.json`):
 
 > **Authoring note (package-per-effect).** Effects ship as separate
-> `@dopamine/effect-<name>` packages on top of the slim `@dopamine/core` runtime;
-> the byte-parity oracle for the original three lives in each package's
-> `<name>-oracle.ts` + `test/parity.test.ts`. See
-> [`authoring-effects.md`](./authoring-effects.md) for the scaffold flow.
+> `@dopamine/effect-<name>` packages on top of the slim `@dopamine/core` runtime.
+> (The frozen legacy oracles + per-package parity grids that proved the original
+> migration have been retired; cross-platform parity is gated by the Swift/Android
+> 192-case grids.) See [`authoring-effects.md`](./authoring-effects.md) for the
+> scaffold flow.
 
 **Phase 0 — encode. DONE.** `solarbloom.dope.json`, `inkstroke.dope.json` and
 `comic.dope.json` reproduce `BASELINES`/`INK_BASELINES`/`COMIC_BASELINES` + the
@@ -782,17 +783,18 @@ lerp ranges + color/tempo exactly, in a `baselines` per-mood table + the
 `render.params` mapping grammar.
 
 **Phase 1 — parity test. DONE.** The loader (`resolveDopeParams`) evaluates the
-mapping grammar + the OKLCH palette in the SAME rng order as the engine. A
-vitest (`test/loader.test.ts`) asserts, across a `mood × intensity × whimsy ×
-seed` grid, that loader-resolved params equal `resolveParams` /
-`resolveInkParams` / `resolveComicParams` **byte-for-byte** (the correctness
-anchor — exact equality, not epsilon).
+mapping grammar + the OKLCH palette in the SAME rng order as the engine. The
+flip was anchored, at migration time, by per-effect vitest grids asserting
+loader output equal to the frozen `resolve*Params` **byte-for-byte** (exact
+equality, not epsilon); those scaffolding grids are retired now that the data
+path is the only path, and the byte-exact anchor lives on as the Swift/Android
+192-case grids against the web-dumped fixture.
 
 **Phase 2 — flip the source of truth. DONE.** Each effect's `resolve()`
 (`effects/*.ts`) now drives off its bundled `.dope` document through the loader.
 Solarbloom + Verdict are fully data-driven; Comic is numeric+palette data-driven
 with its typography + per-fire word composed in code (genuinely code-shaped).
-The legacy `resolve*Params` remain in `mood.ts` as the parity reference.
+The legacy `resolve*Params` code has since been deleted.
 
 **Phase 3 — open it up. DONE (web).** The public `loadEffect(doc | JSON | .dope
 zip, { overrides })` (`framework/load-effect.ts`) returns a registered, playable

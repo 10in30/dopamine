@@ -49,13 +49,15 @@ one copy without the other.
 
 ### Parity is gated by tests, not by trust
 
-- **Web:** `packages/core/test/loader.test.ts` proves the data path is
-  byte-identical to the (historical) code path.
+- **Web:** `packages/core/test/loader.test.ts` exercises the effect-agnostic
+  loader rules (schema + standalone guards); each effect's own tests pin its
+  production resolve behavior.
 - **Swift:** `swift/Tests/DopamineCoreTests/ParityTests.swift` loads the bundled
   `.dope`, resolves a **192-case** `mood × intensity × whimsy × seed` grid, and
   asserts every scalar equals the web loader's dumped fixture
   (`Fixtures/solarbloom-parity.json`). Regenerate the fixture from web code with
-  `swift/Scripts/regen-parity.sh` (→ `dump-parity.ts`).
+  `swift/Scripts/regen-parity.sh` (→ `dump-parity.ts`). Android runs the same
+  grid pure-JVM (`ParityTest.kt`).
 
 ## The generalization boundary (read before adding an effect)
 
@@ -73,10 +75,10 @@ Everything general lives there; only three things are genuinely **per-effect**:
    inkstroke, halo, fail) this is now **`.dope` DATA**, not code: `tempo.frame`
    (the per-frame amp + extras as expression trees), `tempo.reducedMotion`,
    `render.shadowHeightFrac`, `render.consts` and `render.config`, evaluated by
-   the core per-frame evaluator (web: `framework/frame-expr.ts`; the per-effect
-   `frame-parity` vitests pin the datafied output `===` the old hand-written
-   hooks). The non-datafied effects still ship `<name>-tempo.ts` /
-   `<Name>Tempo.swift` code,
+   the core per-frame evaluator (web: `framework/frame-expr.ts`, unit-tested by
+   the frame-expr suites on all three stacks; the per-effect `dope-config` tests
+   pin the derived uniforms/bindings/consts contract). The non-datafied effects
+   still ship `<name>-tempo.ts` / `<Name>Tempo.swift` code,
 3. the **uniform config** (the `.dope` `render.params` + the `.dope` `binding`
    contract; see the build toolchain below).
 
@@ -202,9 +204,9 @@ other platforms' shaders from it — there is no hand-ported `.metal`/`.kt` to d
 **Gates (don't edit generated shaders by hand — edit the web GLSL + re-run the build):**
 - `tools/dopamine/test/shader-msl.test.mjs` snapshots the generated MSL + Android `.kt`
   byte-for-byte (`golden-msl/` + `golden-android/`).
-- The macOS Metal compile (`swift.yml`) + the golden mid-frame gate
+- The macOS Metal compile (`swift.yml`) + the self-contained mid-frame gate
   (`scripts/shader-goldens.mjs`, in `web-reel.yml` — renders the literal web AND Android-derived
-  GLSL through SwiftShader and asserts web↔Android RGB Δ0 against `e2e/goldens/*.png`).
+  GLSL through SwiftShader and asserts web↔Android RGB Δ0; no committed golden images).
 
 > **Migrated:** aurora, ripple, inkstroke, halo, fail. **Not migrated** (multi-pass *panel*
 > effects — hand-written shaders, like the comic/heartburst hybrids): solarbloom, confetti.
