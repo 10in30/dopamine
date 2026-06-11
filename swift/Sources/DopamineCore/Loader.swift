@@ -58,6 +58,9 @@ public enum DopeError: Error, CustomStringConvertible {
     case missingSections
     case externalReference(String)
     case noBaselines
+    /// The doc lacks a P2 datafied section a data-driven consumer needs
+    /// (`binding.scatterKey` / `tempo.frame` / `render.shadowHeightFrac`).
+    case notDatafied(String)
 
     public var description: String {
         switch self {
@@ -68,6 +71,7 @@ public enum DopeError: Error, CustomStringConvertible {
         case .missingSections: return "dope: document missing render.params / palette.perMood / baselines"
         case let .externalReference(v): return "dope: external asset reference is not allowed: \"\(v)\""
         case .noBaselines: return "dope: document has no baselines to resolve a mood against"
+        case let .notDatafied(m): return "dope: \(m)"
         }
     }
 }
@@ -136,6 +140,48 @@ public struct DopePalette {
     public var perMood: [String: PaletteRegister]
 }
 
+/// The per-frame logic spec (`tempo.frame`): the datafied form of an effect's
+/// hand-written `frame()` hook (mirror of the web `DopeFrameSpec`). `amp` feeds
+/// the shadow geometry; `extras` are keyed by the CANONICAL extra name
+/// (matching `binding.extras[].name` — the same names the generated Metal
+/// packers read), in authored order. Both are RAW expression trees evaluated by
+/// `evalFrameExpr` — no decode step, matching the web posture.
+public struct DopeFrameSpec {
+    public var amp: JSONValue
+    public var extras: [(String, JSONValue)]
+}
+
+/// The reduced-motion peak/hold (`tempo.reducedMotion`) the factories used to
+/// hardcode: ramp to a calm peak over `peakMs`, hold a static frame `holdMs`.
+public struct DopeReducedMotion: Equatable {
+    public var peakMs: Double
+    public var holdMs: Double
+}
+
+/// One per-frame/host-filled extra in the binding contract (`binding.extras[]`),
+/// by canonical name; `web` is the web uniform it binds to (the Metal struct
+/// field is generated from the same entry at build time).
+public struct DopeBindingExtra: Equatable {
+    public var name: String
+    public var type: String?
+    public var web: String?
+}
+
+/// The cross-platform uniform-binding contract (mirror of the web
+/// `DopeBinding`). SHIPS in the portable doc: the runtime derives which
+/// resolved params bind to which shader uniforms from it (the Metal struct
+/// codegen consumes it too, at build time).
+public struct DopeBinding {
+    /// `render.params` (or resolved-bag) names that are NOT shader uniforms.
+    public var excludeParams: [String]
+    /// The per-fire seed-keyed scatter field (auroraSeed / inkSeed / …).
+    public var scatterKey: String?
+    /// The web uniform the scatter binds to (absent = not a shader uniform).
+    public var scatterWeb: String?
+    /// Per-frame/host extras (filled by `tempo.frame.extras` or host hooks).
+    public var extras: [DopeBindingExtra]
+}
+
 /// A `.dope` document (the parts the loader consumes — others are ignored). The
 /// raw ordered JSON is retained so effect code can read free-form `content` /
 /// `geometry` sections (the data spine carries more than the loader needs).
@@ -151,6 +197,21 @@ public struct DopeDoc {
     public var baselineOrder: [String]
     /// Declared default mood from `controls.mood.default`, if any.
     public var controlsMoodDefault: String?
+    // ── P2 — the datafied per-frame logic + binding contract. All OPTIONAL: a
+    //         doc without them (a not-yet-datafied effect) still parses. ──
+    /// Per-frame logic (`tempo.frame`): amp + extras as raw frame-expression trees.
+    public var frame: DopeFrameSpec?
+    /// Reduced-motion peak/hold (`tempo.reducedMotion`).
+    public var reducedMotion: DopeReducedMotion?
+    /// Shadow occluder height (`render.shadowHeightFrac`): a bare number or a
+    /// PARAMS-ONLY frame expression (evaluate via `evalParamExpr`).
+    public var shadowHeightFrac: JSONValue?
+    /// Loop-cap consts (`render.consts`) the mapping's clampMax/clampMin reference.
+    public var consts: [String: Double]
+    /// Runner config (`render.config.usesOrigin`): whether the shader reads `uOrigin`.
+    public var usesOrigin: Bool?
+    /// The uniform-binding contract (`binding`), when the doc ships one.
+    public var binding: DopeBinding?
     /// The raw ordered JSON (for `content` / `geometry` consumers).
     public var raw: JSONValue
 }
@@ -258,4 +319,21 @@ public func resolveDopeParams(
     out[scatterKey] = .number(rng() * 1000)
 
     return out
+}
+
+/// Resolve a DATAFIED `.dope` doc + a feeling: the consts come from the doc's
+/// own `render.consts` and the scatter key from `binding.scatterKey` — the
+/// mirror of the web `registerDopeEffect` resolve, so a datafied effect's
+/// factory needs no hand-written consts/scatterKey literals. Throws if the doc
+/// ships no `binding.scatterKey` (not a datafied effect).
+public func resolveDopeParams(
+    _ doc: DopeDoc,
+    _ input: DopeResolveInput,
+    paletteOverride: [OKLCH]? = nil
+) throws -> [String: DopeValue] {
+    guard let scatterKey = doc.binding?.scatterKey else {
+        throw DopeError.notDatafied("\(doc.id) has no binding.scatterKey")
+    }
+    return try resolveDopeParams(
+        doc, input, consts: doc.consts, scatterKey: scatterKey, paletteOverride: paletteOverride)
 }
