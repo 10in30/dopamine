@@ -19,6 +19,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { glslToMSL, buildUniformMap } from "../src/shader.mjs";
 import { buildFields } from "../src/uniforms.mjs";
+import { generateAndroidShaderKt } from "../src/android-shader.mjs";
 
 import { AURORA_FRAGMENT_SRC } from "../../../effects/aurora/web/src/aurora-shader.ts";
 import { RIPPLE_FRAGMENT_SRC } from "../../../effects/ripple/web/src/ripple-shader.ts";
@@ -63,5 +64,25 @@ for (const { slug, fragment } of PENDING) {
     const msl = transpile(slug, fragment);
     expect(msl).toContain(`fragment float4 ${slug}_fragment(`);
     expect(msl).toContain('#include "DopamineLook.metal"');
+  });
+}
+
+// Android `<Name>Shader.kt` is generated from the same web GLSL (look chunks kept as
+// `${GLSL_*}` refs, + dopLightOut). Gated byte-for-byte against the committed snapshot
+// (also Kotlin-compiled by android.yml + pixel-checked by the golden frame).
+const pascal = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+for (const { slug } of SNAPSHOT) {
+  test(`${slug}: generated Android shader matches the committed snapshot`, async () => {
+    const dope = readDope(slug);
+    const Name = pascal(slug);
+    const gen = await generateAndroidShaderKt({
+      root: fileURLToPath(root),
+      dir: fileURLToPath(new URL(`effects/${slug}`, root)),
+      slug,
+      namespace: dope["x-build"].android.namespace ?? `ai.dopamine.effect.${slug}`,
+      shaderCfg: dope["x-build"].shader,
+    });
+    const want = readFileSync(new URL(`./golden-android/${Name}Shader.kt`, import.meta.url), "utf8");
+    expect(gen.content).toBe(want);
   });
 }
