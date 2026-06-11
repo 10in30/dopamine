@@ -14,28 +14,20 @@
  * committed hand-port snapshot in tools/dopamine/test, and pixel-gated by the golden
  * frame (which renders exactly this web→android derivation).
  */
-import { loadWebShaderSource } from "./glsl-load.mjs";
+import { loadWebShaderSource, extractTemplate } from "./glsl-load.mjs";
 
 const pascal = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Extract the `export const NAME = /* glsl *​/ `…`;` template body (raw, with `${…}`). */
-function extractTemplate(srcText, name) {
-  const m = srcText.match(new RegExp(`export const ${name}\\s*=\\s*(?:/\\* glsl \\*/\\s*)?\`([\\s\\S]*?)\``));
-  if (!m) throw new Error(`android-shader: ${name} template not found`);
-  return m[1];
-}
-
 /**
  * Transform a raw web template body → an Android Kotlin raw-string body:
- *  - resolve non-`GLSL_*` `${X}` interpolations to `mod[X]`,
+ *  - resolve non-`GLSL_*` `${X}` interpolations to their numeric const value,
  *  - collect the `GLSL_*` chunk names referenced (kept as `${…}`).
  */
-function transformBody(body, mod, chunks) {
+function transformBody(body, consts, chunks) {
   return body.replace(/\$\{([A-Za-z_]\w*)\}/g, (_m, id) => {
     if (id.startsWith("GLSL_")) { chunks.add(id); return `\${${id}}`; }
-    const v = mod[id];
-    if (v === undefined) throw new Error(`android-shader: cannot resolve \${${id}}`);
-    return String(v);
+    if (id in consts) return consts[id];
+    throw new Error(`android-shader: cannot resolve \${${id}}`);
   });
 }
 
@@ -44,11 +36,11 @@ function transformBody(body, mod, chunks) {
  */
 export async function generateAndroidShaderKt({ root, dir, slug, namespace, shaderCfg }) {
   const Name = pascal(slug);
-  const { srcText, mod } = await loadWebShaderSource(root, dir, shaderCfg);
+  const { srcText, consts } = await loadWebShaderSource(root, dir, shaderCfg);
   const chunks = new Set();
 
-  const vertexBody = transformBody(extractTemplate(srcText, shaderCfg.vertexExport), mod, chunks);
-  let fragmentBody = transformBody(extractTemplate(srcText, shaderCfg.fragmentExport), mod, chunks);
+  const vertexBody = transformBody(extractTemplate(srcText, shaderCfg.vertexExport), consts, chunks);
+  let fragmentBody = transformBody(extractTemplate(srcText, shaderCfg.fragmentExport), consts, chunks);
 
   // Append the light-out chunk after the leading chunk block (i.e. right after the
   // last `${GLSL_*}` interpolation), then swap the web emit for the premultiplied one.
