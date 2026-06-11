@@ -196,7 +196,7 @@ as live references. `parseDope()` validates the magic
 
 Declares the knobs a host UI can render. The loader reads `controls.mood.default`
 for the default-mood fallback (§6.2); the rest is for hosts/tooling and for
-`loadEffect` overrides (§6).
+`loadEffect` overrides (§7.2).
 
 ```jsonc
 "controls": {
