@@ -108,7 +108,8 @@ export async function generateSwiftPackage({ root, eff, outDir, fonts = [] }) {
   const shaderCfg = doc["x-build"].shader;
   if (shaderCfg?.generateMSL) {
     const { fragment } = await loadWebGLSL(root, dir, shaderCfg);
-    const msl = glslToMSL({ slug, fragment, uniformMap: buildUniformMap(fields) });
+    const samplers = doc.binding?.samplers ?? [];
+    const msl = glslToMSL({ slug, fragment, uniformMap: buildUniformMap(fields), samplers });
     out.push({ path: join(srcRel, "Shaders", `${Name}.metal`), content: msl });
   } else {
     const shadersAbs = join(srcAbs, "Shaders");

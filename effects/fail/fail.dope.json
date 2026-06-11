@@ -275,10 +275,17 @@
       { "name": "sdfStrokePx", "type": "float", "web": "uSdfStrokePx", "note": "half stroke width (device px)" },
       { "name": "boxPx", "type": "float", "web": "uBoxPx", "note": "half-size (device px) of the ✗ box" }
     ],
-    "samplers": ["uSdfTex"]
+    "samplers": [{ "web": "uSdfTex", "name": "sdfTex", "texture": 1 }]
   },
   "x-build": {
     "note": "TOOLCHAIN build config (vendor-namespaced `x-` so runtime parsers ignore it; stripped from the embedded .dope). One block per platform: how `dopamine build` assembles the standalone, installable package into dist/<platform>/.",
+    "shader": {
+      "note": "Single-source shader: web GLSL is the only hand-written shader; MSL+Android generated from it. The SDF sampler (uSdfTex) binds at texture(1) — texture(0) is the panel/placeholder slot.",
+      "web": "web/src/fail-shader.ts",
+      "vertexExport": "FAIL_VERTEX_SRC",
+      "fragmentExport": "FAIL_FRAGMENT_SRC",
+      "generateMSL": true
+    },
     "swift": {
       "module": "DopamineEffectFail",
       "sources": "swift",

@@ -180,7 +180,7 @@ export function emitWeb(effect, fields, binding) {
   const standardWeb = STANDARD.map((s) => s.web);
   const effectUniforms = [
     ...fields.filter((x) => x.kind !== "standard").map((x) => x.web),
-    ...(binding.samplers ?? []),
+    ...(binding.samplers ?? []).map((s) => (typeof s === "string" ? s : s.web)),
   ];
   return JSON.stringify(
     {

@@ -168,11 +168,13 @@ function rewriteTokens(code, { uniformMap }) {
 }
 
 /**
- * Inject `u` into bespoke call sites and rename look calls (incl. the palette-stop
- * append). `sigs` maps fnName → { needsU, firstOutIdx }. Processes innermost args
- * by recursing on each call's argument text.
+ * Inject `u` into bespoke call sites, rename look calls (incl. the palette-stop
+ * append), rewrite `texture(uX, uv)` → `<name>.sample(texSampler, uv)`, and thread
+ * the texture(s) + sampler into bespoke calls that need them. `sigs` maps fnName →
+ * { needsU, needsTex, firstOutIdx }; `ctx` = { samplerMap (uX→mslName), samplerArgs
+ * (the trailing `<name>…, texSampler` call args) }.
  */
-function rewriteCalls(code, sigs) {
+function rewriteCalls(code, sigs, ctx = { samplerMap: {}, samplerArgs: [] }) {
   // Find `name(` occurrences and rewrite the matching argument list.
   let result = "";
   let i = 0;
@@ -191,9 +193,14 @@ function rewriteCalls(code, sigs) {
     }
     const argText = code.slice(openParen + 1, k);
     result += code.slice(i, start) + name + "(";
-    const args = argText.trim() === "" ? [] : splitArgs(argText).map((a) => rewriteCalls(a, sigs));
+    const args = argText.trim() === "" ? [] : splitArgs(argText).map((a) => rewriteCalls(a, sigs, ctx));
 
-    if (name === "atan" && args.length === 2) {
+    if (name === "texture" && ctx.samplerMap[args[0]?.trim()]) {
+      // GLSL texture(uX, uv) → MSL <name>.sample(texSampler, uv).
+      const texName = ctx.samplerMap[args[0].trim()];
+      result = result.slice(0, -("texture(".length)) + `${texName}.sample(`;
+      result += ["texSampler", ...args.slice(1)].join(",");
+    } else if (name === "atan" && args.length === 2) {
       // GLSL 2-arg atan(y, x) is MSL atan2(y, x) (1-arg atan stays atan).
       result = result.slice(0, -("atan(".length)) + "atan2(";
       result += args.join(",");
@@ -212,10 +219,14 @@ function rewriteCalls(code, sigs) {
     } else if (LOOK_FNS[name]) {
       result = result.slice(0, -((name + "(").length)) + LOOK_FNS[name] + "(";
       result += args.join(",");
-    } else if (sigs[name] && sigs[name].needsU) {
-      const idx = sigs[name].firstOutIdx; // insert u BEFORE the first out-arg
-      const at = idx < 0 ? args.length : idx;
-      args.splice(at, 0, args.length ? " u" : "u");
+    } else if (sigs[name] && (sigs[name].needsU || sigs[name].needsTex)) {
+      if (sigs[name].needsU) {
+        const idx = sigs[name].firstOutIdx; // insert u BEFORE the first out-arg
+        const at = idx < 0 ? args.length : idx;
+        args.splice(at, 0, args.length ? " u" : "u");
+      }
+      // texture(s) + sampler thread in at the very end (after u + out-args).
+      if (sigs[name].needsTex) for (const a of ctx.samplerArgs) args.push(` ${a}`);
       result += args.join(",");
     } else {
       result += args.join(",");
@@ -236,9 +247,18 @@ const pascal = (s) => s.charAt(0).toUpperCase() + s.slice(1);
  * @param {Record<string,string>} a.uniformMap  GLSL uniform token → `u.<field>`
  * @returns {string} MSL source (comment-free; gated by token-equivalence)
  */
-export function glslToMSL({ slug, fragment, uniformMap }) {
+export function glslToMSL({ slug, fragment, uniformMap, samplers = [] }) {
   const Name = pascal(slug);
   const { defines, fns } = parseFunctions(fragment);
+
+  // Texture samplers (from the .dope binding): GLSL `uniform sampler2D uX` → an MSL
+  // `texture2d<float> <name> [[texture(idx)]]` param + one shared `sampler texSampler
+  // [[sampler(0)]]`. `samplerMap` rewrites `texture(uX,…)`; `samplerArgs` are the
+  // trailing call args threaded into sampling helpers; `texParams` the signature decls.
+  const samplerMap = Object.fromEntries(samplers.map((s) => [s.web, s.name]));
+  const samplerArgs = [...samplers.map((s) => s.name), ...(samplers.length ? ["texSampler"] : [])];
+  const texParams = samplers.map((s) => `texture2d<float> ${s.name}`);
+  const ctx = { samplerMap, samplerArgs };
 
   // Avoid the `u` collision: effect functions gain a `constant <Name>Uniforms &u`
   // param, so any GLSL identifier literally named `u` (e.g. inkstroke's arc-fraction
@@ -258,23 +278,31 @@ export function glslToMSL({ slug, fragment, uniformMap }) {
       params,
       firstOutIdx: params.findIndex((p) => p.isOut),
       needsU: false,
+      needsTex: false,
     };
   }
-  // Fixpoint: a fn needs u if it reads a uniform, calls paletteMix, or calls a
-  // bespoke fn that needs u.
+  // A fn samples if it calls `texture(uX,…)` on a declared sampler.
+  const samplesTex = (body) => samplers.some((s) => new RegExp(`\\btexture\\s*\\(\\s*${s.web}\\b`).test(body));
+  // Fixpoint: a fn needs u if it reads a uniform / calls paletteMix / calls a needsU
+  // fn; it needs the texture(s)+sampler if it samples or calls a needsTex fn.
   const uniformTokens = new Set(Object.values(uniformMap)); // e.g. u.resolution
   let changed = true;
   while (changed) {
     changed = false;
     for (const f of bespoke) {
-      if (sigInfo[f.name].needsU) continue;
+      const info = sigInfo[f.name];
       const rewritten = rewriteTokens(f.bodyText, { uniformMap });
       const readsUniform = [...uniformTokens].some((t) => rewritten.includes(t));
       const usesPalette = /\bpaletteMix\s*\(/.test(f.bodyText);
-      const callsU = bespoke.some(
-        (g) => g.name !== f.name && sigInfo[g.name].needsU && new RegExp(`\\b${g.name}\\s*\\(`).test(f.bodyText),
+      const calls = (pred) => bespoke.some(
+        (g) => g.name !== f.name && pred(g.name) && new RegExp(`\\b${g.name}\\s*\\(`).test(f.bodyText),
       );
-      if (readsUniform || usesPalette || callsU) { sigInfo[f.name].needsU = true; changed = true; }
+      if (!info.needsU && (readsUniform || usesPalette || calls((nm) => sigInfo[nm].needsU))) {
+        info.needsU = true; changed = true;
+      }
+      if (!info.needsTex && (samplesTex(f.bodyText) || calls((nm) => sigInfo[nm].needsTex))) {
+        info.needsTex = true; changed = true;
+      }
     }
   }
 
@@ -289,14 +317,15 @@ export function glslToMSL({ slug, fragment, uniformMap }) {
       const at = info.firstOutIdx < 0 ? params.length : info.firstOutIdx;
       params.splice(at, 0, `constant ${Name}Uniforms &u`);
     }
-    let body = rewriteCalls(rewriteTokens(f.bodyText, { uniformMap }), sigInfo);
+    if (info.needsTex) params.push(...texParams, "sampler texSampler");
+    let body = rewriteCalls(rewriteTokens(f.bodyText, { uniformMap }), sigInfo, ctx);
     const ret = TYPE_MAP[f.ret] ?? f.ret;
     return `inline ${ret} ${f.name}(${params.join(", ")}) ${body}`;
   };
 
   const mainFn = fns.find((f) => f.name === "main");
   if (!mainFn) throw new Error("shader: no main()");
-  const fragBody = emitFragment(mainFn, { uniformMap, sigInfo });
+  const fragBody = emitFragment(mainFn, { uniformMap, sigInfo, ctx });
 
   const out = [];
   out.push("#include <metal_stdlib>");
@@ -317,25 +346,41 @@ export function glslToMSL({ slug, fragment, uniformMap }) {
   for (const f of bespoke) { out.push(emitFn(f)); out.push(""); }
   out.push(`fragment float4 ${slug}_fragment(`);
   out.push("    VSOut in [[stage_in]],");
-  out.push(`    constant ${Name}Uniforms &u [[buffer(0)]]`);
+  out.push(`    constant ${Name}Uniforms &u [[buffer(0)]]${samplers.length ? "," : ""}`);
+  // Texture(s) at their declared [[texture(idx)]] (0 reserved for the panel slot) +
+  // one shared sampler at [[sampler(0)]].
+  samplers.forEach((s, i) => {
+    out.push(`    texture2d<float> ${s.name} [[texture(${s.texture})]],`);
+    if (i === samplers.length - 1) out.push("    sampler texSampler [[sampler(0)]]");
+  });
   out.push(`) ${fragBody}`);
   out.push("");
   return out.join("\n");
 }
 
 /** Emit the fragment-entry BODY: y-flip preamble, shadow early-returns, light-out tail. */
-function emitFragment(mainFn, { uniformMap, sigInfo }) {
-  let body = rewriteCalls(rewriteTokens(mainFn.bodyText, { uniformMap }), sigInfo);
+function emitFragment(mainFn, { uniformMap, sigInfo, ctx }) {
+  let body = rewriteCalls(rewriteTokens(mainFn.bodyText, { uniformMap }), sigInfo, ctx);
   // y-flip: gl_FragCoord.xy reads Metal's top-left [[position]] flipped to y-up.
   body = body.replace(/gl_FragCoord\.xy/g, "float2(in.position.x, u.resolution.y - in.position.y)");
   // `fragColor = X; return;` (early outs, e.g. shadow) → `return X;`
   body = body.replace(/fragColor\s*=\s*([^;]+);\s*return\s*;/g, "return $1;");
-  // terminal light-out `fragColor = float4(max(col, 0.0), 1.0);` → premultiplied tail.
+  // Terminal light-out: the web returns opaque `fragColor = vec4(<rgb>, 1.0)` over a
+  // black, `screen`-blended canvas; the self-contained Metal overlay encodes that
+  // brightness as PREMULTIPLIED alpha (alpha = the max channel). Two web spellings:
+  //   `vec4(max(col, 0.0), 1.0)` → pre-clamp col, then premultiply (aurora/ripple/…);
+  //   `vec4(col, 1.0)`           → premultiply directly (fail, which clamps earlier).
   body = body.replace(
     /fragColor\s*=\s*float4\(\s*max\(\s*(\w+)\s*,\s*0\.0\s*\)\s*,\s*1\.0\s*\)\s*;/,
     (_m, v) =>
       `${v} = max(${v}, 0.0);\n` +
       `    float outA = clamp(max(max(${v}.r, ${v}.g), ${v}.b), 0.0, 1.0);\n` +
+      `    return float4(${v}, outA);`,
+  );
+  body = body.replace(
+    /fragColor\s*=\s*float4\(\s*(\w+)\s*,\s*1\.0\s*\)\s*;/,
+    (_m, v) =>
+      `float outA = clamp(max(max(${v}.r, ${v}.g), ${v}.b), 0.0, 1.0);\n` +
       `    return float4(${v}, outA);`,
   );
   return body;

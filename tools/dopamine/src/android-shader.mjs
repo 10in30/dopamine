@@ -50,11 +50,12 @@ export async function generateAndroidShaderKt({ root, dir, slug, namespace, shad
 
   // Append the light-out chunk after the leading chunk block (i.e. right after the
   // last `${GLSL_*}` interpolation), then swap the web emit for the premultiplied one.
+  // Both `vec4(max(col, 0.0), 1.0)` and `vec4(col, 1.0)` → dopLightOut(col) (the chunk
+  // clamps internally), so the col variable is what's passed.
   fragmentBody = fragmentBody.replace(/(\$\{GLSL_\w+\})(?![\s\S]*\$\{GLSL_\w+\})/, "$1\n${GLSL_LIGHT_OUT}");
-  fragmentBody = fragmentBody.replace(
-    "fragColor = vec4(max(col, 0.0), 1.0);",
-    "fragColor = dopLightOut(col);",
-  );
+  fragmentBody = fragmentBody
+    .replace(/fragColor\s*=\s*vec4\(\s*max\(\s*(\w+)\s*,\s*0\.0\s*\)\s*,\s*1\.0\s*\)\s*;/, "fragColor = dopLightOut($1);")
+    .replace(/fragColor\s*=\s*vec4\(\s*(\w+)\s*,\s*1\.0\s*\)\s*;/, "fragColor = dopLightOut($1);");
   chunks.add("GLSL_LIGHT_OUT");
 
   const imports = [...chunks].sort().map((c) => `import ai.dopamine.core.${c}`).join("\n");

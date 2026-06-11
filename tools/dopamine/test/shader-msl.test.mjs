@@ -26,6 +26,7 @@ import { RIPPLE_FRAGMENT_SRC } from "../../../effects/ripple/web/src/ripple-shad
 import { LIGHTNING_FRAGMENT_SRC } from "../../../effects/lightning/web/src/lightning-shader.ts";
 import { INK_FRAGMENT_SRC } from "../../../effects/inkstroke/web/src/inkstroke-shader.ts";
 import { HALO_FRAGMENT_SRC } from "../../../effects/halo/web/src/halo-shader.ts";
+import { FAIL_FRAGMENT_SRC } from "../../../effects/fail/web/src/fail-shader.ts";
 
 const root = new URL("../../../", import.meta.url);
 const readDope = (slug) =>
@@ -39,6 +40,7 @@ const SNAPSHOT = [
   { slug: "ripple", fragment: RIPPLE_FRAGMENT_SRC },
   { slug: "inkstroke", fragment: INK_FRAGMENT_SRC },
   { slug: "halo", fragment: HALO_FRAGMENT_SRC },
+  { slug: "fail", fragment: FAIL_FRAGMENT_SRC },
 ];
 
 // Not yet migrated (still hand-ported); their hand-ports diverge from a mechanical
@@ -52,7 +54,7 @@ const PENDING = [
 const transpile = (slug, fragment) => {
   const dope = readDope(slug);
   const fields = buildFields(dope, dope.binding ?? {});
-  return glslToMSL({ slug, fragment, uniformMap: buildUniformMap(fields) });
+  return glslToMSL({ slug, fragment, uniformMap: buildUniformMap(fields), samplers: dope.binding?.samplers ?? [] });
 };
 
 for (const { slug, fragment } of SNAPSHOT) {

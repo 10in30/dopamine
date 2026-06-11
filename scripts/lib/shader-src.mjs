@@ -19,6 +19,8 @@ export const SHADER_EXPORTS = {
   ripple: { file: "effects/ripple/web/src/ripple-shader.ts", vertex: "RIPPLE_VERTEX_SRC", fragment: "RIPPLE_FRAGMENT_SRC" },
   inkstroke: { file: "effects/inkstroke/web/src/inkstroke-shader.ts", vertex: "INK_VERTEX_SRC", fragment: "INK_FRAGMENT_SRC" },
   halo: { file: "effects/halo/web/src/halo-shader.ts", vertex: "HALO_VERTEX_SRC", fragment: "HALO_FRAGMENT_SRC" },
+  // fail/solarbloom/confetti sample textures the harness can't bind standalone — they're
+  // gated by the MSL/Android snapshots + CI's macOS sim / android emulator instead.
 };
 
 /**
