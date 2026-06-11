@@ -494,6 +494,60 @@ duration* (the glyph draws in ≤240/360 ms no matter how long the afterglow), t
 the **stepping grid** is 12 Hz blended by whimsy. This is exactly the two-layer
 timing the README/`tempo.ts` describe.
 
+### 7.1 Per-frame logic — `tempo.frame` + `tempo.reducedMotion` (IMPLEMENTED)
+
+The §4.1 grammar runs ONCE per fire (feeling → params). `tempo.frame` is its
+per-frame sibling: the effect's hand-written `frame()` hook — the envelope amp,
+a stroke-draw progress, a stamp/shake — as expression trees the backbone
+evaluates EVERY frame (`framework/frame-expr.ts` on web; the Swift/Android
+backbones port the same evaluator). With it, the *logic*, like the mapping, is
+authored once and interpreted identically on every platform.
+
+```jsonc
+"tempo": {
+  "durationMs": { /* §7 */ },
+  "frame": {
+    "amp": { "envelope": [{ "input": "life" }, { "param": "overshoot" }] },
+    "extras": {                       // keyed by the CANONICAL extra name —
+      "draw": {                       // must match a binding.extras[].name (§8.2)
+        "easeOutCubic": { "div": [{ "input": "animMs" }, 360] }
+      }
+    }
+  },
+  "reducedMotion": { "peakMs": 300, "holdMs": 360 }
+}
+```
+
+- **`frame.amp`** — the per-frame amplitude. The well-known value: it feeds the
+  shadow geometry and binds to `uAmp`. One-shot effects use
+  `envelope(life, overshoot)`; halo (continuous) uses a periodic sine of
+  `animMs` so its loop seam survives.
+- **`frame.extras`** — every other time-varying uniform, keyed by canonical
+  name; the `binding.extras` entry with the same `name` supplies each
+  platform's uniform name (web `uDraw`, the Metal struct field, …). A
+  `binding.extras` entry with NO `tempo.frame` expression is host/code-filled
+  (e.g. fail's canvas-size-dependent SDF plumbing).
+- **`reducedMotion`** — the calm-peak `peakMs` + static-frame `holdMs` the
+  factories used to hardcode.
+
+**Evaluation context.** Three inputs, addressed as `{ "input": "<name>" }`:
+
+| input | meaning |
+|---|---|
+| `animMs` | the "animate on twos"-snapped clock, ms (stepping applied) |
+| `life` | normalized 0..1 (`animMs / durationMs`, clamped) |
+| `elapsedMs` | the REAL un-stepped wall clock, ms (fail's stamp/shake — identical on every platform) |
+
+plus `{ "param": "<name>" }` (a resolved render param) and the nodes: number
+literal, `const`, `add`, `sub` (left fold), `mul`, `div` (left fold, plain IEEE),
+`min`, `max`, `pow: [a, b]`, `sin`, `exp`, `clamp01`,
+`lt: [a, b, then, else]` (lazy branches), and the tempo primitives
+`envelope: [t, overshoot]`, `easeOutCubic`, `easeOutBack: [x, overshoot]` — the
+SAME `tempo.ts` functions the hand-written hooks called, so datafied output is
+bit-identical. Operation order is significant for float parity: a port must
+reduce `add`/`mul` left-to-right exactly as written. Anything outside the
+grammar **throws** (same posture as §4.1).
+
 ---
 
 ## 8. Renderer binding & multi-backend
@@ -514,7 +568,30 @@ current runtime this mapping is **implicit by convention**: the generic runners
 with a per-effect `bindings` map for the exceptions — so a built-in's `.dope`
 references its shader by a bundled `program` KEY
 (`render.backends.webgl2.shader = { "program": "solarbloom" }`) rather than an
-explicit uniform table. An explicit `uniforms` table (below) is still the portable
+explicit uniform table.
+
+**The `binding` contract SHIPS in the portable doc (IMPLEMENTED).** The
+exceptions to the auto-bind convention live in the top-level `binding` block —
+`excludeParams` (resolved params that are NOT shader uniforms), `scatterKey` +
+`scatterWeb` (the per-fire seed-keyed field and, when the shader reads it, its
+web uniform name), `extras` (the per-frame/host-filled uniforms, by canonical
+name; see §7.1) and `samplers` (texture units). It used to be toolchain-only;
+now it ships, because the runtime derives its uniform bindings from it
+(`framework/dope-pass.ts` on web) — the `@dopamine/build` toolchain still also
+consumes it to generate the Metal `Uniforms` struct + packer. Only `slug`,
+`kind` and `x-build` stay toolchain-only.
+
+A datafied effect also carries, under `render`:
+
+- **`shadowHeightFrac`** — the shadow occluder height as a fraction of min
+  canvas dim: a bare number or a PARAMS-ONLY §7.1 expression (`{input}` throws
+  there — shadow geometry must not read the frame clock).
+- **`consts`** — the loop-cap consts the §4.1 `clampMax`/`clampMin` flags
+  reference (`MAX_RINGS`, `MAX_DROPS`, …), previously passed in from code.
+- **`config`** — runner config; today `usesOrigin` (whether the shader is
+  anchored on `uOrigin`).
+
+An explicit `uniforms` table (below) is still the portable
 form for a non-bundled or cross-backend doc:
 
 ```jsonc
@@ -570,6 +647,8 @@ form for a non-bundled or cross-backend doc:
 | Controls, mappings | ✅ fully | — |
 | Palette intent (OKLCH, seed stream) | ✅ | OKLab→RGB math is a fixed lib per platform |
 | Tempo curves (easing/envelope/step) | ✅ | sampling impl |
+| Per-frame logic (`tempo.frame`, `shadowHeightFrac`) | ✅ expression trees (§7.1) | the evaluator is a fixed lib per platform |
+| Uniform-binding contract (`binding`) | ✅ ships in the portable doc | Metal struct codegen consumes it at build time |
 | Outline geometry | ✅ | how an SDF/path is built from it |
 | Uniform *names + semantics* | ✅ (the binding table) | uniform *transport* (GL uniforms vs MTLBuffer struct) |
 | **Shader source body** | ❌ referenced by `$ref` | hand-written/ported per backend (`.glsl`, `.metal`) |

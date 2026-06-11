@@ -57,43 +57,56 @@ fixpoint threads them) with `texture(uX,uv)`→`<name>.sample(texSampler,uv)`; `
 
 ---
 
-## TODO — P2: datafy the LOGIC hooks (the next pillar)
+## P2: datafy the LOGIC hooks — WEB + FORMAT + TOOLCHAIN **DONE**; Swift + Android in flight
 
 Goal: move each effect's per-frame `frame()` + `shadowHeightFrac` + consts out of the
 hand-written per-platform factories into the `.dope`, evaluated by a generic data-driven
 factory in each backbone — so the *logic*, like the shader, is authored once.
 
-> **Recommend a SEPARATE PR/branch:** this touches the **runtime render path** on all three
-> stacks (not the build/shader pipeline), so it's a different review surface.
+### DONE — the web pillar (this branch)
 
-**Inputs (read these — the hooks to datafy):** each migrated effect's web factory
-`effects/<name>/web/src/index.ts` — the `CONFIG.frame`, `CONFIG.shadowHeightFrac`,
-`CONFIG.bindings`, `consts`, and any module constants (e.g. aurora's `SWEEP_SPEED = 0.02`).
-Example (aurora): `shadowHeightFrac = params.bandHeight * 0.6`;
-`frame = ({animMs,life}, p) => ({ amp: envelope(life, p.overshoot), uSweep: 0.02*(animMs/1000)*(1 - 0.5*life) })`.
+**Format.** Each migrated effect's `.dope` now carries `tempo.frame` (`amp` + `extras`
+as PER-FRAME expression trees — inputs `animMs`/`life`/`elapsedMs`, `{param}`, and ops
+incl. the tempo primitives `envelope`/`easeOutCubic`/`easeOutBack`; specced in
+`docs/effect-format.md` §7.1 + the schema), `tempo.reducedMotion`,
+`render.shadowHeightFrac` (a PARAMS-ONLY expression or bare number), `render.consts`
+and `render.config` (`usesOrigin`). The `binding` contract now **SHIPS in the portable
+doc** (removed from the toolchain's strip list) — the runtime derives uniform bindings
+from it. The three committed portable fixtures (the android JVM grid resource, the
+swift parity fixture, core's `sample.dope.json`) were regenerated via `portableDope()`.
 
-**Design:**
-1. **Extend the `.dope` expression grammar** (the mood→params grammar lives in
-   `packages/core/src/framework/loader.ts`) with a per-frame evaluation context: inputs
-   `animMs`, `life`, `param.<name>`, `const.<name>`; ops it lacks (`sin`, `mod`, `min`/`max`,
-   and the tempo primitives `envelope`/`easeOutBack` from `packages/core/src/engine/tempo.ts`).
-2. **New `.dope` sections:** `tempo.frame = { amp: <expr>, extras: { uSweep: <expr>, … } }` and
-   `render.shadowHeightFrac = <expr>`, plus `render.consts` + `render.config` (vertex/fragment
-   entry names, `usesOrigin`) — fully derivable, today hand-set per platform.
-3. **Add the per-frame evaluator to all three backbones:** web (`pass-runner.ts` consumes
-   `config.frame(info, params)` → `{amp, ...extras}` → uniforms; `bindings` maps resolved param →
-   GLSL uniform name), Swift (`swift/Sources/DopamineCore/` MetalPassRunner/Loader/Tempo), Android
-   (`android/dopamine-core` + `android/dopamine-gl`). Each effect supplies frame/shadow as
-   hand-written code today — replace with the datafied eval.
-4. **Generic data-driven factory** per backbone that instantiates from `(dope, shader, hooks)` —
-   deletes the per-effect factory boilerplate (the only per-effect web/swift/android source left
-   for the migrated effects becomes the `.dope` + the web GLSL).
+**Web backbone.** `packages/core/src/framework/frame-expr.ts` (`evalFrameExpr` /
+`evalParamExpr` — calls the SAME `engine/tempo.ts` primitives, so datafied output is
+bit-identical); `FrameInfo` gained `elapsedMs` (the REAL un-stepped clock, mirroring
+the Swift/Android runners); `framework/dope-pass.ts` (`dopePassConfig` +
+`registerDopeEffect`) derives the whole `PassConfig` from `(dope, shader, hooks)`.
+The five web factories are now thin shims (shader + one `registerDopeEffect` call;
+fail keeps its code-shaped SDF/passUniforms `hooks`); `inkstroke-tempo.ts`,
+`halo-tempo.ts`, `fail-tempo.ts` and aurora's `SWEEP_SPEED` are deleted.
 
-**Validation (locally verifiable — the safe net):** the parity grids cover the `.dope` *resolve*;
-add micro-tests that sample a grid of `(animMs, life, params)` and assert the datafied
-`tempo.frame`/`shadowHeightFrac` eval equals the current hand-written `frame()`/`shadowHeightFrac`
-output, on web (vitest) + the Swift 192-grid + the Android JVM grid. Then the golden mid-frame gate
-+ the reels confirm pixels unchanged.
+**Gates.** Per-effect `effects/<name>/web/test/frame-parity.test.ts` pins the datafied
+`frame()`/`shadowHeightFrac` EXACTLY (`===`) against the frozen pre-P2 hand-written
+logic across a feeling × clock grid, and pins the derived uniforms/bindings against
+the old hand-written config literals. The golden mid-frame gate stays Δ0.
+
+**One deliberate behavior change:** fail's stamp/shake now run on the REAL un-stepped
+clock (`elapsedMs`) on web — matching what the Swift/Android ports always did. The
+pre-P2 web factory fed them the on-twos-snapped `animMs`, so at whimsy > 0 web pixels
+shift slightly toward the (already-shipped) native behavior.
+
+### IN FLIGHT — the Swift + Android halves (same branch)
+
+Port the per-frame evaluator + the generic `(dope, shader, hooks)` factory to
+`swift/Sources/DopamineCore/` (MetalPassRunner/Loader/Tempo) and
+`android/dopamine-core` + `android/dopamine-gl`, replace the five effects'
+hand-written `frame()`/shadow hooks with the datafied eval, and add the analogous
+frame-parity micro-tests to the Swift grid + the Android JVM grid. Reduce order in
+the evaluator is significant for float parity — port `add`/`mul` reduces
+left-to-right exactly. Note the `binding` block now arrives in the portable doc
+both runtimes load (parsers must tolerate + may consume it), and
+`binding.scatterKey` is now set for ALL five (halo `haloSeed`, fail `failSeed` —
+neither has a `scatterWeb`, i.e. neither is a shader uniform; fail also excludes
+the raw `seed`).
 
 ## TODO — P3: lightning's logic transpiler
 
