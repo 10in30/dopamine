@@ -20,7 +20,7 @@
 
 import type { InkRenderParams } from "./inkstroke-params.js";
 import { INK_FRAGMENT_SRC, INK_VERTEX_SRC } from "./inkstroke-shader.js";
-import { parseDope, registerDopeEffect, type EffectFactory, type PassParams } from "@dopamine/core";
+import { parseDope, registerDopeEffect, type EffectFactory } from "@dopamine/core";
 import doc from "./inkstroke.dope.json";
 
 export type { InkRenderParams } from "./inkstroke-params.js";
@@ -33,6 +33,6 @@ export const inkstroke = registerDopeEffect(
   DOPE,
   { vertex: INK_VERTEX_SRC, fragment: INK_FRAGMENT_SRC },
   { name: "inkstroke", program: false },
-) as EffectFactory<PassParams> as EffectFactory<InkRenderParams>;
+) as unknown as EffectFactory<InkRenderParams>;
 
 export default inkstroke;
