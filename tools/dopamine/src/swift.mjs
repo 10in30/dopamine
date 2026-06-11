@@ -22,6 +22,8 @@ import { readFile, readdir } from "node:fs/promises";
 import { join, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildFields, emitSwift, emitMSL } from "./uniforms.mjs";
+import { glslToMSL, buildUniformMap } from "./shader.mjs";
+import { loadWebGLSL } from "./glsl-load.mjs";
 
 const pascal = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -98,15 +100,24 @@ export async function generateSwiftPackage({ root, eff, outDir, fonts = [] }) {
     }
   }
 
-  // (2) the bespoke per-effect shader(s) (Shaders/<Name>.metal). The shared look
-  //     lib is NOT kept here — it's injected once from the toolchain asset (2b),
-  //     so the byte-identical copy can't drift across effects.
-  const shadersAbs = join(srcAbs, "Shaders");
-  let shaderNames = [];
-  try { shaderNames = (await readdir(shadersAbs)).sort(); } catch { /* no shaders */ }
-  for (const name of shaderNames) {
-    if (name === "DopamineLook.metal") continue;
-    out.push({ path: join(srcRel, "Shaders", name), content: await readFile(join(shadersAbs, name), "utf8") });
+  // (2) the bespoke per-effect shader. When the effect declares a generated MSL
+  //     (`x-build.shader.generateMSL`), the `.metal` is TRANSPILED from the single
+  //     canonical web GLSL source — no hand-ported `.metal` to drift; otherwise the
+  //     hand-written `Shaders/*.metal` is copied. The shared look lib is NOT kept
+  //     here — it's injected once from the toolchain asset (2b).
+  const shaderCfg = doc["x-build"].shader;
+  if (shaderCfg?.generateMSL) {
+    const { fragment } = await loadWebGLSL(root, dir, shaderCfg);
+    const msl = glslToMSL({ slug, fragment, uniformMap: buildUniformMap(fields) });
+    out.push({ path: join(srcRel, "Shaders", `${Name}.metal`), content: msl });
+  } else {
+    const shadersAbs = join(srcAbs, "Shaders");
+    let shaderNames = [];
+    try { shaderNames = (await readdir(shadersAbs)).sort(); } catch { /* no shaders */ }
+    for (const name of shaderNames) {
+      if (name === "DopamineLook.metal") continue;
+      out.push({ path: join(srcRel, "Shaders", name), content: await readFile(join(shadersAbs, name), "utf8") });
+    }
   }
 
   // (2b) the shared MSL look library — one canonical source → every package.
