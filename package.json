@@ -20,6 +20,8 @@
     "clips": "node scripts/render-clips.mjs",
     "stitch": "node scripts/stitch.mjs",
     "reel": "node scripts/render-clips.mjs && node scripts/stitch.mjs",
+    "shader-goldens": "node scripts/shader-goldens.mjs",
+    "shader-goldens:update": "node scripts/shader-goldens.mjs --update",
     "media": "node scripts/media.mjs",
     "bake-sdf": "node scripts/bake-sdf.mjs",
     "pack-dope": "node scripts/pack-dope.mjs",
