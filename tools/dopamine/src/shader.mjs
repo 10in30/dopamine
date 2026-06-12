@@ -170,11 +170,12 @@ function rewriteTokens(code, { uniformMap }) {
 /**
  * Inject `u` into bespoke call sites, rename look calls (incl. the palette-stop
  * append), rewrite `texture(uX, uv)` → `<name>.sample(texSampler, uv)`, and thread
- * the texture(s) + sampler into bespoke calls that need them. `sigs` maps fnName →
- * { needsU, needsTex, firstOutIdx }; `ctx` = { samplerMap (uX→mslName), samplerArgs
- * (the trailing `<name>…, texSampler` call args) }.
+ * the texture(s) + sampler — and the buffer ARRAYS (`binding.arrays`) — into
+ * bespoke calls that need them. `sigs` maps fnName → { needsU, needsTex, arrs,
+ * firstOutIdx }; `ctx` = { samplerMap (uX→mslName), samplerArgs (the trailing
+ * `<name>…, texSampler` call args), arrayOrder (binding.arrays web names) }.
  */
-function rewriteCalls(code, sigs, ctx = { samplerMap: {}, samplerArgs: [] }) {
+function rewriteCalls(code, sigs, ctx = { samplerMap: {}, samplerArgs: [], arrayOrder: [] }) {
   // Find `name(` occurrences and rewrite the matching argument list.
   let result = "";
   let i = 0;
@@ -219,13 +220,15 @@ function rewriteCalls(code, sigs, ctx = { samplerMap: {}, samplerArgs: [] }) {
     } else if (LOOK_FNS[name]) {
       result = result.slice(0, -((name + "(").length)) + LOOK_FNS[name] + "(";
       result += args.join(",");
-    } else if (sigs[name] && (sigs[name].needsU || sigs[name].needsTex)) {
+    } else if (sigs[name] && (sigs[name].needsU || sigs[name].needsTex || sigs[name].arrs?.size)) {
       if (sigs[name].needsU) {
         const idx = sigs[name].firstOutIdx; // insert u BEFORE the first out-arg
         const at = idx < 0 ? args.length : idx;
         args.splice(at, 0, args.length ? " u" : "u");
       }
-      // texture(s) + sampler thread in at the very end (after u + out-args).
+      // buffer arrays, then texture(s) + sampler, thread in at the very end
+      // (after u + out-args), in declared binding order.
+      for (const w of ctx.arrayOrder ?? []) if (sigs[name].arrs?.has(w)) args.push(` ${w}`);
       if (sigs[name].needsTex) for (const a of ctx.samplerArgs) args.push(` ${a}`);
       result += args.join(",");
     } else {
@@ -240,15 +243,49 @@ function rewriteCalls(code, sigs, ctx = { samplerMap: {}, samplerArgs: [] }) {
 const pascal = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**
+ * Find the GLSL `uniform vecN name[SIZE];` ARRAY declarations and validate them
+ * against the `.dope` `binding.arrays` contract (the cross-platform home for
+ * per-frame array plumbing — web/GL bind these by NAME as uniform arrays, Metal
+ * binds each as a `constant floatN *` FRAGMENT BUFFER at the declared index).
+ * Returns the binding entries in DECLARED `binding.arrays` order, each with its
+ * MSL pointer type.
+ */
+function resolveUniformArrays(fragment, arrays) {
+  const declared = new Map(); // web name → vecN
+  const re = /\buniform\s+(\w+)\s+(\w+)\s*\[[^\]]*\]\s*;/g;
+  for (const m of stripComments(fragment).matchAll(re)) declared.set(m[2], m[1]);
+  const out = [];
+  for (const a of arrays) {
+    const vecType = declared.get(a.web);
+    if (!vecType) throw new Error(`shader: binding.arrays "${a.web}" is not a declared uniform array`);
+    if (vecType !== `vec${a.size}`) {
+      throw new Error(`shader: uniform array ${a.web} is ${vecType} but binding.arrays declares size ${a.size}`);
+    }
+    if (!(a.buffer >= 1)) throw new Error(`shader: binding.arrays "${a.web}" needs a fragment buffer index >= 1`);
+    out.push({ ...a, msl: `float${a.size}` });
+    declared.delete(a.web);
+  }
+  if (declared.size) {
+    throw new Error(`shader: uniform array(s) without a binding.arrays entry: ${[...declared.keys()].join(", ")}`);
+  }
+  return out;
+}
+
+/**
  * Transpile a GLSL ES 3.00 fragment shader to MSL.
  * @param {object} a
  * @param {string} a.slug              effect slug (entry-point prefix)
  * @param {string} a.fragment          resolved GLSL fragment source (chunks inlined)
  * @param {Record<string,string>} a.uniformMap  GLSL uniform token → `u.<field>`
+ * @param {Array<{name:string,web:string,size:number,buffer:number}>} [a.arrays]
+ *        the `.dope` `binding.arrays` contract: declared GLSL uniform ARRAYS that
+ *        become `constant floatN *<web> [[buffer(idx)]]` fragment params, threaded
+ *        through the call graph like the texture samplers.
  * @returns {string} MSL source (comment-free; gated by token-equivalence)
  */
-export function glslToMSL({ slug, fragment, uniformMap, samplers = [] }) {
+export function glslToMSL({ slug, fragment, uniformMap, samplers = [], arrays = [] }) {
   const Name = pascal(slug);
+  const bufferArrays = resolveUniformArrays(fragment, arrays);
   const { defines, fns } = parseFunctions(fragment);
 
   // Texture samplers (from the .dope binding): GLSL `uniform sampler2D uX` → an MSL
@@ -258,7 +295,8 @@ export function glslToMSL({ slug, fragment, uniformMap, samplers = [] }) {
   const samplerMap = Object.fromEntries(samplers.map((s) => [s.web, s.name]));
   const samplerArgs = [...samplers.map((s) => s.name), ...(samplers.length ? ["texSampler"] : [])];
   const texParams = samplers.map((s) => `texture2d<float> ${s.name}`);
-  const ctx = { samplerMap, samplerArgs };
+  const arrayOrder = bufferArrays.map((a) => a.web);
+  const ctx = { samplerMap, samplerArgs, arrayOrder };
 
   // Avoid the `u` collision: effect functions gain a `constant <Name>Uniforms &u`
   // param, so any GLSL identifier literally named `u` (e.g. inkstroke's arc-fraction
@@ -279,12 +317,14 @@ export function glslToMSL({ slug, fragment, uniformMap, samplers = [] }) {
       firstOutIdx: params.findIndex((p) => p.isOut),
       needsU: false,
       needsTex: false,
+      arrs: new Set(),
     };
   }
   // A fn samples if it calls `texture(uX,…)` on a declared sampler.
   const samplesTex = (body) => samplers.some((s) => new RegExp(`\\btexture\\s*\\(\\s*${s.web}\\b`).test(body));
   // Fixpoint: a fn needs u if it reads a uniform / calls paletteMix / calls a needsU
-  // fn; it needs the texture(s)+sampler if it samples or calls a needsTex fn.
+  // fn; it needs the texture(s)+sampler if it samples or calls a needsTex fn; it
+  // needs a buffer ARRAY if it indexes it or calls a fn that needs it.
   const uniformTokens = new Set(Object.values(uniformMap)); // e.g. u.resolution
   let changed = true;
   while (changed) {
@@ -303,6 +343,12 @@ export function glslToMSL({ slug, fragment, uniformMap, samplers = [] }) {
       if (!info.needsTex && (samplesTex(f.bodyText) || calls((nm) => sigInfo[nm].needsTex))) {
         info.needsTex = true; changed = true;
       }
+      for (const a of bufferArrays) {
+        if (info.arrs.has(a.web)) continue;
+        if (new RegExp(`\\b${a.web}\\b`).test(f.bodyText) || calls((nm) => sigInfo[nm].arrs.has(a.web))) {
+          info.arrs.add(a.web); changed = true;
+        }
+      }
     }
   }
 
@@ -317,6 +363,7 @@ export function glslToMSL({ slug, fragment, uniformMap, samplers = [] }) {
       const at = info.firstOutIdx < 0 ? params.length : info.firstOutIdx;
       params.splice(at, 0, `constant ${Name}Uniforms &u`);
     }
+    for (const a of bufferArrays) if (info.arrs.has(a.web)) params.push(`constant ${a.msl} *${a.web}`);
     if (info.needsTex) params.push(...texParams, "sampler texSampler");
     let body = rewriteCalls(rewriteTokens(f.bodyText, { uniformMap }), sigInfo, ctx);
     const ret = TYPE_MAP[f.ret] ?? f.ret;
@@ -346,7 +393,14 @@ export function glslToMSL({ slug, fragment, uniformMap, samplers = [] }) {
   for (const f of bespoke) { out.push(emitFn(f)); out.push(""); }
   out.push(`fragment float4 ${slug}_fragment(`);
   out.push("    VSOut in [[stage_in]],");
-  out.push(`    constant ${Name}Uniforms &u [[buffer(0)]]${samplers.length ? "," : ""}`);
+  out.push(`    constant ${Name}Uniforms &u [[buffer(0)]]${samplers.length || bufferArrays.length ? "," : ""}`);
+  // Per-frame buffer ARRAYS (`binding.arrays`) at their declared fragment
+  // [[buffer(idx)]] (0 is the uniforms struct) — the Metal transport of the
+  // web/GL `uniform vecN name[…]` arrays.
+  bufferArrays.forEach((a, i) => {
+    const last = i === bufferArrays.length - 1 && !samplers.length;
+    out.push(`    constant ${a.msl} *${a.web} [[buffer(${a.buffer})]]${last ? "" : ","}`);
+  });
   // Texture(s) at their declared [[texture(idx)]] (0 reserved for the panel slot) +
   // one shared sampler at [[sampler(0)]].
   samplers.forEach((s, i) => {

@@ -33,7 +33,8 @@ fun cap(s: String): String = "u" + s.replaceFirstChar { it.uppercase() }
  *   - `uniforms`: every `render.params` key not in `binding.excludeParams` and
  *     not the scatter key → `u<Name>`; the scatter key contributes
  *     `binding.scatterWeb` when present (else it is not a shader uniform); every
- *     `binding.extras[].web`; every `binding.samplers[].web`; plus
+ *     `binding.extras[].web`; every `binding.samplers[].web`; every
+ *     `binding.arrays[].web` (the `frameArrays` uniform arrays); plus
  *     `extraUniforms`.
  *   - `bindings`: the scatter key → `scatterWeb` (or `null`), plus `null` for
  *     each excluded param that would otherwise auto-bind. (`style` and
@@ -153,6 +154,11 @@ fun dopePassPlan(doc: DopeDoc, extraUniforms: List<String> = emptyList()): DopeP
         val web = s.asString ?: s["web"]?.asString ?: return@mapNotNull null
         Sampler(web = web, outline = s["outline"]?.asString, on = s["on"]?.asString)
     } ?: emptyList()
+    // arrays: the per-frame ARRAY uniforms (CPU-precomputed frame geometry —
+    // lightning's uVerts/uBoltMeta). GL binds them by NAME (the `frameArrays`
+    // seam fills them); only their uniform names matter to the plan.
+    val arrayWebs: List<String> = binding?.get("arrays")?.asArray?.mapNotNull { it["web"]?.asString }
+        ?: emptyList()
 
     val frameJson = raw["tempo"]?.get("frame")
         ?: throw DopeException("dope: ${doc.id} has no tempo.frame (not a datafied effect)")
@@ -173,6 +179,7 @@ fun dopePassPlan(doc: DopeDoc, extraUniforms: List<String> = emptyList()): DopeP
     if (scatterKey != null && scatterWeb != null) uniforms.add(scatterWeb)
     for ((_, web) in extraDefs) if (web != null) uniforms.add(web)
     for (s in samplers) uniforms.add(s.web)
+    for (w in arrayWebs) uniforms.add(w)
     for (u in extraUniforms) uniforms.add(u)
 
     // --- bindings (exceptions to the `name → u<Name>` auto-bind) --------------

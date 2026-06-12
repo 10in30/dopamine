@@ -2,15 +2,16 @@
 // web `effects/<name>/web/test/dope-config.test.ts` suites, pure-JVM (no
 // Android SDK).
 //
-// The five datafied effects (aurora, ripple, inkstroke, halo, fail) drive
-// their uniforms / bindings / consts / scatterKey / usesOrigin / reducedMotion
-// from the `.dope`, derived by `dopePassPlan` (DopePass.kt + FrameExpr.kt).
+// The six datafied effects (aurora, ripple, inkstroke, halo, fail, lightning)
+// drive their uniforms / bindings / consts / scatterKey / usesOrigin /
+// reducedMotion from the `.dope`, derived by `dopePassPlan` (DopePass.kt +
+// FrameExpr.kt).
 // This suite pins the derived plan — the effect's expected config — plus
 // halo's loop-seam contract (its amp is PERIODIC, so t == durationMs matches
 // t == 0). Numeric cross-platform parity is gated by the 192-case grid in
 // ParityTest.kt; the per-frame evaluator by FrameExprTest.kt.
 //
-// The five test-resource `.dope` files are byte-identical copies of the
+// The test-resource `.dope` files are byte-identical copies of the
 // `dist/android/dopamine-effect-<name>` embeds (android.yml md5-checks this,
 // like solarbloom's).
 
@@ -183,5 +184,58 @@ class DopeConfigTest {
         assertEquals(0.15 * 400.0, out["uBoxPx"]!!, 0.0)
         assertEquals(0.15 * 400.0 * 0.13, out["uSdfStrokePx"]!!, 0.0)
         assertEquals(18.0 * ((2.0 * (0.15 * 400.0)) / 100.0), out["uSdfRangePx"]!!, 0.0)
+    }
+
+    // ══════════════════════════════ lightning ════════════════════════════════
+    // Fully declarative + the frameArrays seam: the strike/flash tempo is
+    // `tempo.frame` data, and the CPU bolt precompute's uVerts/uBoltMeta ride
+    // the `binding.arrays` contract (named uniform arrays here; Metal buffers).
+    @Test
+    fun lightningDerivesTheExpectedConfig() {
+        val (_, plan) = load("lightning")
+        assertEquals(
+            setOf(
+                "uExposure", "uThickness", "uFlashBright", "uSeed", "uStrike", "uFlash",
+                // binding.arrays — the frameArrays uniform arrays.
+                "uVerts", "uBoltMeta",
+            ),
+            plan.uniforms.toSet(),
+        )
+        assertEquals(
+            mapOf(
+                "boltSeed" to "uSeed", "overshoot" to null, "flicker" to null,
+                "jagged" to null, "branches" to null,
+            ),
+            plan.bindings,
+        )
+        assertEquals(true, plan.usesOrigin)
+        assertEquals(mapOf("MAX_FORKS" to 7.0), plan.consts)
+        assertEquals("boltSeed", plan.scatterKey)
+        assertEquals(130.0, plan.reducedMotionPeakMs!!, 0.0)
+        assertEquals(300.0, plan.reducedMotionHoldMs!!, 0.0)
+    }
+
+    @Test
+    fun lightningFrameMatchesTheHandTempoItReplaced() {
+        val (_, plan) = load("lightning")
+        val params = mapOf<String, DopeValue>(
+            "overshoot" to DopeValue.Number(1.3),
+            "flicker" to DopeValue.Number(0.65),
+        )
+        for (life in listOf(0.0, 0.05, 0.2, 0.45, 0.9, 1.0)) {
+            val animMs = life * 850.0
+            val out = plan.frame(animMs, life, animMs, params)
+            // amp — the impact envelope.
+            assertEquals(envelope(life, 1.3), out["amp"]!!, 0.0)
+            // strike — the 130 ms ease-out-quint crack-in (strikeProgress).
+            val x = tempoClamp01(animMs / 130.0)
+            assertEquals(1.0 - Math.pow(1.0 - x, 5.0), out["uStrike"]!!, 0.0)
+            // flash — primary exp decay + sin^8 flicker re-pulses (flashStrobe).
+            val t = tempoClamp01(life)
+            val spike = kotlin.math.max(0.0, kotlin.math.sin(t * 6.0 * Math.PI * 2.0))
+            val flash = kotlin.math.exp(-t / 0.035) +
+                Math.pow(spike, 8.0) * (Math.pow(1.0 - t, 2.2) * 0.28 * 0.65)
+            assertEquals(flash, out["uFlash"]!!, 0.0)
+        }
     }
 }

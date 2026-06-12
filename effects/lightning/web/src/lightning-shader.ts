@@ -13,10 +13,15 @@
  * unchanged while the per-pixel cost drops from ~220 fbm to a single fbm (the
  * halo's living variation).
  *
- * All three platforms now use this precomputed-vertex approach: the Swift/Metal
- * port feeds the same CPU-computed polyline in via DopamineCore's `frameArrays`
- * buffer seam (uVerts/uBoltMeta), and Android via its GL `frameArrays` seam.
- * lightning.dope.json is unchanged across platforms.
+ * All three platforms use this precomputed-vertex approach, and THIS GLSL is
+ * the single shader source (`x-build.shader`): the MSL `Lightning.metal` and
+ * the Kotlin `LightningShader.kt` are GENERATED from it by the toolchain. The
+ * `uVerts`/`uBoltMeta` uniform arrays ride the `.dope` `binding.arrays`
+ * contract — web and Android bind them by name through the runners'
+ * `frameArrays` seam; the GLSL→MSL transpiler turns each declared uniform
+ * array into a `constant floatN *` fragment buffer at its declared index, and
+ * the generated native factories feed them from the transpiled
+ * `LightningRenderer` (the same lightning-logic.ts source as here).
  */
 
 import {
@@ -32,6 +37,12 @@ import {
 import { MAX_FORKS, BOLT_SEGS, MAX_BOLTS, VERTS_PER_BOLT } from "./lightning-logic.js";
 
 export { MAX_FORKS, BOLT_SEGS, MAX_BOLTS, VERTS_PER_BOLT };
+
+/**
+ * Total uVerts entries (exported so the toolchain's Android emitter can resolve
+ * the `${TOTAL_VERTS}` interpolation — it resolves single identifiers only).
+ */
+export const TOTAL_VERTS = MAX_BOLTS * VERTS_PER_BOLT;
 
 export const LIGHTNING_VERTEX_SRC = /* glsl */ `#version 300 es
 void main() {
@@ -62,7 +73,7 @@ uniform float uShadowStrength;// 0..1 max darkening of the multiply layer
 uniform vec3  uC0;            // electric core hue
 // CPU-precomputed bolt polyline: uVerts[b*VPB + i] is vertex i of bolt b
 // (device px, gl coords); uBoltMeta[b] = (segCount, radFrac, fadeMul, isMain).
-uniform vec2  uVerts[${MAX_BOLTS * VERTS_PER_BOLT}];
+uniform vec2  uVerts[${TOTAL_VERTS}];
 uniform vec4  uBoltMeta[${MAX_BOLTS}];
 
 #define MAX_FORKS ${MAX_FORKS}

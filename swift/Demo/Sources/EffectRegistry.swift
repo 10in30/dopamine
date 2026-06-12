@@ -110,7 +110,7 @@ enum EffectRegistry {
         },
         DemoEffect(name: "lightning") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: LightningResources.bundle),
-                  let host = try? MetalOverlayHost(config: LightningConfig(), device: device,
+                  let host = try? MetalOverlayHost(config: Lightning.passConfig(), device: device,
                                                    library: lib, wantsShadow: false),
                   let fx = try? Lightning() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })

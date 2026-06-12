@@ -2,8 +2,6 @@
   "fmt": "dopamine-effect",
   "v": "1.0.0",
   "id": "dopamine.boost.lightning",
-  "slug": "lightning",
-  "kind": "overlay",
   "meta": {
     "name": "Lightning",
     "description": "A high-energy power-up / boost strike: a branching, fbm-perturbed electric arc cracks into the action point with a hard white flash, secondary forks, and a brief flicker afterglow. Electric OKLCH blues/violets to a hot white core.",
@@ -102,7 +100,7 @@
       "jagged": 1.15,
       "branches": 6,
       "flashBright": 1.1,
-      "flicker": 1.0,
+      "flicker": 1,
       "overshoot": 1.5
     }
   },
@@ -493,41 +491,5 @@
         "note": "Per-bolt (segCount, radFrac, fadeMul, isMain); `constant float4 *uBoltMeta` at fragment buffer 2 on Metal."
       }
     ]
-  },
-  "x-build": {
-    "note": "TOOLCHAIN build config (vendor-namespaced `x-` so runtime parsers ignore it; stripped from the embedded .dope). One block per platform: how `dopamine build` assembles the standalone, installable package into dist/<platform>/.",
-    "shader": {
-      "note": "Single-source shader: the canonical web GLSL is the ONLY hand-written shader; the MSL and the Android Kotlin are GENERATED from it. Its uVerts/uBoltMeta uniform ARRAYS ride the binding.arrays contract — kept as uniform arrays on web/GL, transpiled to constant floatN* fragment buffers on Metal.",
-      "web": "web/src/lightning-shader.ts",
-      "vertexExport": "LIGHTNING_VERTEX_SRC",
-      "fragmentExport": "LIGHTNING_FRAGMENT_SRC",
-      "generateMSL": true
-    },
-    "logic": {
-      "note": "CPU-precomputed per-frame GEOMETRY logic, authored ONCE in the restricted TS subset (`src`) and TRANSPILED to LightningRenderer.swift / LightningRenderer.kt by tools/dopamine/src/logic.mjs. The generated factory shells wire its entry function into the runners' frameArrays seam via binding.arrays. `parityFixture` is the committed grid dumped from the web module (regen: node --experimental-strip-types effects/lightning/web/scripts/regen-logic-parity.mjs); it drives the generated pure-JVM JUnit test (synced into dopamine-core's testGenerated source set) and the generated XCTest target in the dist SwiftPM package.",
-      "src": "web/src/lightning-logic.ts",
-      "parityFixture": "web/test/lightning-logic-parity.json"
-    },
-    "swift": {
-      "module": "DopamineEffectLightning",
-      "platforms": [
-        "iOS(.v15)",
-        "macOS(.v12)"
-      ],
-      "core": {
-        "mode": "path",
-        "package": "Dopamine",
-        "product": "DopamineCore",
-        "path": "swift"
-      }
-    },
-    "web": {
-      "package": "@dopamine/effect-lightning",
-      "sources": "web"
-    },
-    "android": {
-      "module": "dopamine-effect-lightning",
-      "namespace": "ai.dopamine.effect.lightning"
-    }
   }
 }

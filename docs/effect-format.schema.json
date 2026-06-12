@@ -246,6 +246,21 @@
               }
             ]
           }
+        },
+        "arrays": {
+          "type": "array",
+          "description": "Per-frame ARRAY uniforms — CPU-precomputed frame geometry (the frameArrays seam). Web/GL bind each by NAME as a `uniform vecN <web>[…]` array; Metal binds it as a `constant floatN *` fragment buffer at index `buffer` (the GLSL→MSL transpiler and the generated factory shells consume this entry). `name` is the canonical name: the field of the logic module's returned bundle (x-build.logic).",
+          "items": {
+            "type": "object",
+            "required": ["name", "web", "size", "buffer"],
+            "properties": {
+              "name": { "type": "string" },
+              "web": { "type": "string" },
+              "size": { "type": "integer", "enum": [2, 3, 4] },
+              "buffer": { "type": "integer", "minimum": 1 },
+              "note": { "type": "string" }
+            }
+          }
         }
       }
     },

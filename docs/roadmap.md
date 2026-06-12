@@ -21,7 +21,7 @@ handle (halo rides it end to end). Still open:
 - **More continuous effects** (a pulsing "recording" dot, a breathing skeleton
   placeholder) to exercise the contract beyond halo.
 
-## A transpiler for CPU-precomputed per-frame geometry — LANDED; remaining work
+## A transpiler for CPU-precomputed per-frame geometry — LANDED
 
 The restricted TypeScript-subset transpiler now exists
 (`tools/dopamine/src/logic.mjs`, declared per effect via `x-build.logic`):
@@ -31,17 +31,29 @@ lightning's bolt precompute is authored ONCE in
 (`tools/dopamine/test/logic.test.mjs`, `golden-logic/`) and numerically by a
 committed web-dumped fixture replayed through a generated pure-JVM JUnit test
 (dopamine-core's `testGenerated` source set) and a generated XCTest target in
-the dist SwiftPM package (Linux-runnable). Still open:
+the dist SwiftPM package (Linux-runnable).
 
-- **Generate lightning's shaders too.** The hand `.metal` reads the polyline
-  from `constant float2 *uVerts [[buffer(1)]]` while the web GLSL uses uniform
-  arrays, so `x-build.shader.generateMSL` needs a buffer-array seam in the
-  GLSL→MSL transpiler (see the PENDING note in
-  `tools/dopamine/test/shader-msl.test.mjs`) before lightning's `.metal`/`.kt`
-  shaders can be generated.
-- **Datafy lightning's remaining tempo** (`flashStrobe` is ~10 lines — likely
-  fits `tempo.frame`) and grow a generated-factory `frameArrays` seam so
-  lightning can drop its platform folders entirely.
+The follow-on work landed too — **lightning is now fully declarative** (it
+ships NO `swift/` or `android/` folder, like aurora/ripple/inkstroke/halo/fail):
+
+- **Generated shaders.** The GLSL→MSL transpiler grew a buffer-array seam: the
+  `.dope` `binding.arrays` section (`docs/effect-format.md` §8.2) declares each
+  CPU-precomputed uniform array's web name / vec size / Metal fragment-buffer
+  index, and `glslToMSL` turns the declared `uniform vecN uX[…]` arrays into
+  `constant floatN *` params threaded through the call graph (snapshot-gated:
+  `golden-msl/lightning.metal`, `golden-android/LightningShader.kt`; pixel-gated
+  by `scripts/shader-goldens.mjs`, whose uniform capture handles array uniforms).
+- **Datafied tempo.** `flashStrobe` + the envelope/strike frame hook fit
+  `tempo.frame` exactly (bit-parity pinned by the web/JVM/Swift dope-config
+  tests); `strikeProgress` stays in the logic module (the precompute keys off
+  it) with the strike extra expressed in frame-expr data.
+- **A generated-factory `frameArrays` seam.** `buildFrameArraysSpec`
+  (tools/dopamine/src/factory.mjs) wires the transpiled renderer into each
+  runner's frameArrays hook from `binding.arrays` — Swift `DopePassConfig` grew
+  an optional `frameArrays` closure (same posture as `packExtras`), the Kotlin
+  shim passes the lambda `dopePassConfig` already accepted, and the web factory
+  is a thin `registerDopeEffect` shim with the one code-shaped
+  `hooks.frameArrays` call.
 
 ## Extend the declarative path to panel/hybrid effects
 

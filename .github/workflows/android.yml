@@ -91,7 +91,7 @@ jobs:
             else
               echo "DRIFT: $name embeds differ — android=$am web=$wm swift=$sm"; status=1
             fi
-            # The dopamine-core JVM parity grid resource (only solarbloom today).
+            # The dopamine-core JVM test resources (the dope-config'd effects + solarbloom).
             core="android/dopamine-core/src/test/resources/$name.dope.json"
             if [ -f "$core" ] && [ "$(md5sum < "$core" | cut -d' ' -f1)" != "$am" ]; then
               echo "DRIFT: $core != the canonical $name embed"; status=1
