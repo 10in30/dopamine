@@ -36,6 +36,13 @@ public protocol AnyEffectHost: AnyObject {
     /// Cheap: start the prepared effect's clock.
     func play()
     func tick(now: CFTimeInterval, dpr: Float, anchorPx: SIMD2<Float>, targetPx: SIMD2<Float>)
+    /// Render ONE light frame at a synthetic `elapsedMs` into a CPU-readable
+    /// image (the deterministic CI media recorder — see
+    /// `MetalOverlayHost.renderOffscreen`). `anchorPx`/`targetPx` are logical
+    /// points, `width`/`height` device px (the live `tick` convention).
+    func renderOffscreen(elapsedMs: Double, width: Int, height: Int,
+                         dpr: Float, anchorPx: SIMD2<Float>,
+                         targetPx: SIMD2<Float>) -> CGImage?
 }
 extension MetalOverlayHost: AnyEffectHost {}
 

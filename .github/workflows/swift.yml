@@ -5,8 +5,10 @@
 #                 the Metal-guarded tests run), the dopamine-build staleness gate,
 #                 then XcodeGen → xcodebuild the iOS-Simulator demo, boot a sim,
 #                 launch it with the autoplay arg, and screen-record a ~5s clip
-#                 uploaded as an artifact. build+test are MUST-PASS; the record
-#                 step is continue-on-error initially.
+#                 uploaded as an artifact; then render per-effect gallery GIFs
+#                 off-screen (MediaRecorder) with an OPT-IN write-back to
+#                 docs/media/ios/. build+test are MUST-PASS; the record + media
+#                 steps are continue-on-error.
 #   • linux     — portability guard: build + the parity test in the swift:6.0.3
 #                 container with NO Apple SDK (proves the canImport guards).
 #
@@ -33,6 +35,11 @@ on:
       - "tools/dopamine/**"
       - ".github/workflows/swift.yml"
   workflow_dispatch:
+    inputs:
+      refresh_media:
+        description: "Commit refreshed per-effect GIFs back to docs/media/ios/"
+        type: boolean
+        default: false
 
 jobs:
   # ===========================================================================
@@ -45,6 +52,8 @@ jobs:
                                # scaler hardware, and a faster display than the M1
                                # standard runners — so AVFoundation screen capture
                                # runs at a usable frame rate.
+    permissions:
+      contents: write   # the guarded docs/media/ios write-back (best-effort step)
     env:
       BUNDLE_ID: ai.polyguard.DopamineDemo
       SIM_NAME: iPhone 16
@@ -410,6 +419,77 @@ jobs:
           name: solarbloom-sim-clip
           path: /tmp/out
           if-no-files-found: warn
+
+      # --- BEST-EFFORT: per-effect gallery media. Relaunch the installed demo in
+      # `-recordMedia` mode: it renders EVERY effect OFF-SCREEN frame-by-frame at
+      # synthetic times (MetalOverlayHost.renderOffscreen via the Demo's
+      # MediaRecorder) — deterministic, no screen capture, per-effect segmentation
+      # is structural (one PNG sequence per effect, pulled from the app sandbox) —
+      # then ffmpeg each sequence into a palette-optimized 380px GIF. ---
+      - name: Render per-effect media GIFs (offscreen)
+        id: media
+        continue-on-error: true
+        run: |
+          set -x
+          UDID=$(xcrun simctl list devices available | awk -F '[()]' "/${SIM_NAME} \(/{print \$2; exit}")
+          if [ -z "$UDID" ]; then echo "no booted/available device — skipping media"; exit 0; fi
+          xcrun simctl bootstatus "$UDID" -b || true
+          brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
+          xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE_ID" -recordMedia 1
+          DATA=$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data)
+          MEDIA="$DATA/Documents/media"
+          # ~10 effects × 28 offscreen frames — normally a couple of minutes; the
+          # app drops media/done.txt when the full set is rendered.
+          for i in $(seq 1 96); do
+            if [ -f "$MEDIA/done.txt" ]; then break; fi
+            sleep 5
+          done
+          [ -f "$MEDIA/done.txt" ] || echo "media render incomplete — converting what exists"
+          mkdir -p /tmp/media/ios
+          for dir in "$MEDIA"/*/; do
+            name=$(basename "$dir")
+            ls "$dir"/f_*.png >/dev/null 2>&1 || continue
+            # 11 fps / 28 frames / 380px — the same GIF contract as scripts/media.mjs.
+            ffmpeg -y -hide_banner -framerate 11 -i "$dir/f_%05d.png" \
+              -vf "scale=380:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=full[p];[b][p]paletteuse=dither=bayer:bayer_scale=3" \
+              -loop 0 "/tmp/media/ios/$name.gif" || true
+          done
+          ls -la /tmp/media/ios || true
+
+      - name: Upload iOS media GIFs
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: dopamine-ios-media
+          path: /tmp/media/ios
+          if-no-files-found: warn
+
+      # Write-back is OPT-IN ONLY (recordings/renders are not byte-stable across
+      # toolchains; committing on every push would bloat history): dispatch this
+      # workflow with refresh_media=true, or push with "[media]" in the commit
+      # message. Loop-safety: the commit touches only docs/media/** (matched by NO
+      # workflow's paths filter), carries [skip ci], and is pushed with
+      # GITHUB_TOKEN (whose pushes don't trigger workflows anyway).
+      - name: Commit refreshed media to docs/media/ios (guarded)
+        if: >-
+          (github.event_name == 'workflow_dispatch' && inputs.refresh_media) ||
+          (github.event_name == 'push' && contains(github.event.head_commit.message, '[media]'))
+        continue-on-error: true
+        run: |
+          set -x
+          if ! ls /tmp/media/ios/*.gif >/dev/null 2>&1; then echo "no media produced — nothing to commit"; exit 0; fi
+          git config user.email noreply@anthropic.com
+          git config user.name Claude
+          mkdir -p docs/media/ios
+          cp /tmp/media/ios/*.gif docs/media/ios/
+          git add docs/media/ios
+          if git diff --cached --quiet; then echo "media unchanged — no commit"; exit 0; fi
+          git commit -m "docs(media): refresh iOS gallery GIFs [skip ci]"
+          for i in 1 2 3; do
+            git push origin "HEAD:${GITHUB_REF_NAME}" && break
+            git pull --rebase origin "${GITHUB_REF_NAME}" || true
+          done
 
   # ===========================================================================
   # Linux — portability guard. The package must build + the parity test must pass

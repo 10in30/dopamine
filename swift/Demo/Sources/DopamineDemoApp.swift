@@ -18,6 +18,15 @@ import SwiftUI
 
 @main
 struct DopamineDemoApp: App {
+    init() {
+        // CI media mode (`-recordMedia 1`, simulator only): render every effect
+        // off-screen to per-effect PNG sequences (see MediaRecorder.swift). The
+        // normal UI still comes up (idle — no autoplay arg in this mode).
+        #if targetEnvironment(simulator)
+        MediaRecorder.runIfRequested()
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

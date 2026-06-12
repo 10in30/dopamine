@@ -5,9 +5,13 @@
         android:label="Dopamine"
         android:supportsRtl="true"
         android:theme="@style/Theme.Dopamine">
+        <!-- singleTop: re-`am start`-ing with new autoplay extras hits onNewIntent
+             on the warm app (the per-effect CI recording loop), instead of
+             stacking new instances. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
