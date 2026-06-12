@@ -75,6 +75,28 @@ export interface DopeBinding {
   extras?: Array<{ name: string; type?: string; web?: string; note?: string }>;
   /** Texture samplers the shader reads (see {@link DopeSampler}). */
   samplers?: Array<string | DopeSampler>;
+  /** CPU-precomputed per-frame ARRAYS the shader reads (see {@link DopeFrameArray}). */
+  arrays?: DopeFrameArray[];
+}
+
+/**
+ * One per-frame ARRAY in the binding contract — the cross-platform transport
+ * for CPU-precomputed frame geometry (lightning's bolt polyline). The web and
+ * GL runtimes bind it by NAME as a `uniform vecN <web>[…]` array filled by the
+ * `frameArrays` seam; Metal binds it as a `constant floatN *` FRAGMENT BUFFER
+ * at index `buffer` (the toolchain's GLSL→MSL transpiler + the generated
+ * factory shells consume this entry).
+ */
+export interface DopeFrameArray {
+  /** The canonical name — the field of the logic module's returned bundle. */
+  name: string;
+  /** The web/GL uniform array name (e.g. `uVerts`). */
+  web: string;
+  /** Vector component count (2 | 3 | 4). */
+  size: number;
+  /** The Metal fragment buffer index (>= 1; 0 is the uniform struct). */
+  buffer?: number;
+  note?: string;
 }
 
 /**

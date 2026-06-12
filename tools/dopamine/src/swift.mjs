@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
 import { buildFields, emitSwift, emitMSL } from "./uniforms.mjs";
 import { glslToMSL, buildUniformMap } from "./shader.mjs";
 import { loadWebGLSL } from "./glsl-load.mjs";
-import { assertFactoryGeneratable, emitSwiftFactory, emitSwiftBundle } from "./factory.mjs";
+import { assertFactoryGeneratable, buildFrameArraysSpec, emitSwiftFactory, emitSwiftBundle } from "./factory.mjs";
 import { emitSwiftLogicParityTests } from "./logic.mjs";
 
 const pascal = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -126,7 +126,7 @@ export async function generateSwiftPackage({ root, eff, outDir, fonts = [], logi
     }
   } else {
     assertFactoryGeneratable(doc, slug, "swift");
-    out.push({ path: join(srcRel, `${Name}.swift`), content: emitSwiftFactory(slug) });
+    out.push({ path: join(srcRel, `${Name}.swift`), content: emitSwiftFactory(slug, buildFrameArraysSpec(doc, slug, logic)) });
     out.push({ path: join(srcRel, `${Name}Bundle.swift`), content: emitSwiftBundle(slug) });
   }
 
@@ -139,7 +139,8 @@ export async function generateSwiftPackage({ root, eff, outDir, fonts = [], logi
   if (shaderCfg?.generateMSL) {
     const { fragment } = await loadWebGLSL(root, dir, shaderCfg);
     const samplers = doc.binding?.samplers ?? [];
-    const msl = glslToMSL({ slug, fragment, uniformMap: buildUniformMap(fields), samplers });
+    const arrays = doc.binding?.arrays ?? [];
+    const msl = glslToMSL({ slug, fragment, uniformMap: buildUniformMap(fields), samplers, arrays });
     out.push({ path: join(srcRel, "Shaders", `${Name}.metal`), content: msl });
   } else {
     const shadersAbs = join(srcAbs, "Shaders");

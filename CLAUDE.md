@@ -217,17 +217,23 @@ copies to drift:
 > `x-build.shader` get generated MSL/Kotlin shaders. Panel/hybrid effects
 > (offscreen render targets / panel textures) author their shaders per
 > platform — a supported path. Effects with CPU-precomputed per-frame geometry
-> (a `[[buffer]]` vertex array, e.g. lightning) author per-platform SHADERS
-> today, but the geometry LOGIC is single-source: `x-build.logic` names a
-> restricted-TS module (`lightning-logic.ts`) that `tools/dopamine/src/logic.mjs`
-> transpiles to the `<Name>Renderer.swift` / `<Name>Renderer.kt` in the dist
-> packages — gated byte-for-byte (`tools/dopamine/test/logic.test.mjs`,
-> `golden-logic/`) and numerically by a committed web-dumped fixture
-> (`x-build.logic.parityFixture`) replayed by a GENERATED pure-JVM JUnit test
-> (synced into dopamine-core's gitignored `testGenerated` source set, so
-> `:dopamine-core:test` compiles the generated Kotlin) and a GENERATED XCTest
-> target in the dist SwiftPM package (Linux-runnable). `docs/roadmap.md` covers
-> generating those shaders too.
+> (e.g. lightning) are fully single-source too: the geometry LOGIC rides
+> `x-build.logic` — a restricted-TS module (`lightning-logic.ts`) that
+> `tools/dopamine/src/logic.mjs` transpiles to the `<Name>Renderer.swift` /
+> `<Name>Renderer.kt` in the dist packages — gated byte-for-byte
+> (`tools/dopamine/test/logic.test.mjs`, `golden-logic/`) and numerically by a
+> committed web-dumped fixture (`x-build.logic.parityFixture`) replayed by a
+> GENERATED pure-JVM JUnit test (synced into dopamine-core's gitignored
+> `testGenerated` source set, so `:dopamine-core:test` compiles the generated
+> Kotlin) and a GENERATED XCTest target in the dist SwiftPM package
+> (Linux-runnable). The geometry ARRAYS ride the `.dope` `binding.arrays`
+> contract (`docs/effect-format.md` §8.2): web/GL bind them by name as
+> `uniform vecN` arrays (the runners' `frameArrays` seam), while the GLSL→MSL
+> transpiler turns each into a `constant floatN *` fragment-buffer param at the
+> declared index, and the GENERATED factory shells wire the transpiled renderer
+> into the frameArrays hooks (Swift `DopePassConfig(frameArrays:)`; the Kotlin
+> `dopePassConfig` lambda) — so lightning ships NO platform folders, like the
+> other fully declarative effects.
 
 ## Build / test / reel — all platforms
 

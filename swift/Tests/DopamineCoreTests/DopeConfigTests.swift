@@ -146,4 +146,34 @@ final class DopeConfigTests: XCTestCase {
         XCTAssertEqual(values["sdfStrokePx"], 0.15 * 400 * 0.13)
         XCTAssertEqual(values["sdfRangePx"], 18 * ((2 * (0.15 * 400)) / 100))
     }
+
+    // ── lightning (fully declarative + the binding.arrays frameArrays seam) ──
+    func testLightningDopeConfig() throws {
+        let doc = try loadCanonicalDope("lightning")
+        XCTAssertEqual(doc.consts, ["MAX_FORKS": 7])
+        XCTAssertEqual(doc.binding?.scatterKey, "boltSeed")
+        XCTAssertEqual(doc.usesOrigin, true)
+        XCTAssertEqual(doc.reducedMotion, DopeReducedMotion(peakMs: 130, holdMs: 300))
+        try assertResolveMatchesExplicitArgs(doc, consts: ["MAX_FORKS": 7], scatterKey: "boltSeed")
+
+        // tempo.frame matches the hand-written tempo it replaced, BIT-identical
+        // (the same FrameExpr evaluator the Metal-only DopePassConfig shims over).
+        guard let frame = doc.frame else { return XCTFail("lightning has no tempo.frame") }
+        let params: [String: DopeValue] = ["overshoot": .number(1.3), "flicker": .number(0.65)]
+        for life in [0.0, 0.05, 0.2, 0.45, 0.9, 1.0] {
+            let animMs = life * 850
+            let ctx = FrameExprCtx(animMs: animMs, life: life, elapsedMs: animMs, params: params)
+            // amp — the impact envelope.
+            XCTAssertEqual(try evalFrameExpr(frame.amp, ctx), envelope(life, overshoot: 1.3))
+            let extras = Dictionary(uniqueKeysWithValues: frame.extras)
+            // strike — the 130 ms ease-out-quint crack-in (strikeProgress).
+            let x = tempoClamp01(animMs / 130)
+            XCTAssertEqual(try evalFrameExpr(try XCTUnwrap(extras["strike"]), ctx), 1 - pow(1 - x, 5))
+            // flash — primary exp decay + sin^8 flicker re-pulses (flashStrobe).
+            let t = tempoClamp01(life)
+            let spike = max(0, sin(t * 6 * Double.pi * 2))
+            let flash = exp(-t / 0.035) + pow(spike, 8) * (pow(1 - t, 2.2) * 0.28 * 0.65)
+            XCTAssertEqual(try evalFrameExpr(try XCTUnwrap(extras["flash"]), ctx), flash)
+        }
+    }
 }

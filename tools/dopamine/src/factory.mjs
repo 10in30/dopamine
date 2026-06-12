@@ -21,6 +21,60 @@
 const pascal = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**
+ * Logic entry params with a RESERVED meaning: the runner-supplied frame
+ * geometry + clocks. Everything else is looked up in the resolved param bag by
+ * name. (The names are the web `frameArrays` hook's vocabulary — the single
+ * logic source is authored against it.)
+ */
+const RESERVED_LOGIC_ARGS = {
+  swift: {
+    width: "width: Double(width)",
+    height: "height: Double(height)",
+    originX: "originX: Double(origin.x)",
+    originY: "originY: Double(origin.y)",
+    elapsedMs: "elapsedMs: info.animMs",
+    life: "life: info.life",
+  },
+  kotlin: {
+    width: "width = geom.widthPx.toDouble()",
+    height: "height = geom.heightPx.toDouble()",
+    originX: "originX = geom.originX.toDouble()",
+    originY: "originY = geom.originY.toDouble()",
+    elapsedMs: "elapsedMs = info.animMs",
+    life: "life = info.life",
+  },
+};
+
+/**
+ * Derive the generated factories' `frameArrays` wiring for an effect with
+ * generated per-frame-geometry logic (`x-build.logic`): the transpiled entry
+ * function is called each frame and its returned bundle fields are bound
+ * through the `.dope` `binding.arrays` contract (web/GL: named uniform arrays;
+ * Metal: `PassFrameArray(bufferIndex:)` fragment buffers). Returns null when
+ * the effect has no logic; throws when logic and the binding contract disagree.
+ */
+export function buildFrameArraysSpec(doc, slug, logic) {
+  if (!logic) return null;
+  const arrays = doc.binding?.arrays ?? [];
+  if (!arrays.length) {
+    throw new Error(
+      `dopamine: effects/${slug} has x-build.logic but no binding.arrays — the generated ` +
+        `factories need the arrays contract to wire the renderer into the frameArrays seam.`,
+    );
+  }
+  const entry = logic.model.entry;
+  const bundleFields = logic.model.interfaces[entry.returnType.slice(7)].fields;
+  for (const a of arrays) {
+    if (!bundleFields.includes(a.name)) {
+      throw new Error(`dopamine: effects/${slug} binding.arrays "${a.name}" is not a field of the logic bundle (${bundleFields.join(", ")})`);
+    }
+    if (![2, 3, 4].includes(a.size)) throw new Error(`dopamine: effects/${slug} binding.arrays "${a.name}" needs size 2|3|4`);
+    if (!(a.buffer >= 1)) throw new Error(`dopamine: effects/${slug} binding.arrays "${a.name}" needs a Metal buffer index >= 1`);
+  }
+  return { entryName: entry.name, params: entry.params.map((p) => p.name), arrays };
+}
+
+/**
  * Guard: a generated factory shell only works for a FULLY DECLARATIVE effect
  * (the generic dope pass config needs the datafied sections). Throws with a
  * pointer at the alternatives otherwise.
@@ -48,10 +102,38 @@ const genHeader = (slug) =>
 /**
  * The Swift factory shell (`<Name>.swift`): the portable `EffectFactory` class
  * + the Metal-only `passConfig()` over the generated packer. Public API matches
- * the historical hand shims (`<Name>()`, `<Name>.passConfig()`).
+ * the historical hand shims (`<Name>()`, `<Name>.passConfig()`). When the
+ * effect has generated per-frame-geometry logic, `frameArrays` (the
+ * `buildFrameArraysSpec` wiring) emits the closure that calls the generated
+ * renderer and binds its bundle through `binding.arrays`.
  */
-export function emitSwiftFactory(slug) {
+export function emitSwiftFactory(slug, frameArrays = null) {
   const Name = pascal(slug);
+  let frameArraysArg = "";
+  if (frameArrays) {
+    const { entryName, params, arrays } = frameArrays;
+    const reserved = RESERVED_LOGIC_ARGS.swift;
+    const needsNum = params.some((p) => !reserved[p]);
+    const args = params
+      .map((p) => reserved[p] ?? `${p}: num("${p}")`)
+      .map((a, i, all) => `                    ${a}${i < all.length - 1 ? "," : ""}`)
+      .join("\n");
+    const buffers = arrays
+      .map((a, i) => `                    PassFrameArray(bufferIndex: ${a.buffer}, data: out.${a.name})${i < arrays.length - 1 ? "," : ""}`)
+      .join("\n");
+    frameArraysArg = `,
+            frameArrays: { info, params, width, height, origin in
+                // The generated ${Name}Renderer (transpiled from the single web
+                // logic module) precomputes the frame geometry; \`binding.arrays\`
+                // maps its bundle onto the fragment buffers.
+${needsNum ? `                func num(_ k: String) -> Double { if case let .number(v)? = params[k] { return v }; return 0 }\n` : ""}                let out = ${entryName}(
+${args}
+                )
+                return [
+${buffers}
+                ]
+            }`;
+  }
   return `${genHeader(slug)}
 //
 // ${Name} as a Dopamine effect on the Swift backbone — the DATA-DRIVEN factory
@@ -99,7 +181,7 @@ public extension ${Name} {
             doc: DopeResource.loadDope("${slug}.dope", bundle: .module),
             vertexFunction: "${slug}_vertex",
             fragmentFunction: "${slug}_fragment",
-            packUniforms: pack${Name}Uniforms
+            packUniforms: pack${Name}Uniforms${frameArraysArg}
         )
     }
 }
@@ -138,11 +220,45 @@ public enum ${Name}Resources {
 
 /**
  * The Kotlin registration shim (`<Name>.kt`). Public API matches the
- * historical hand shims (`<Name>(context)`, `<Name>.register(context)`).
+ * historical hand shims (`<Name>(context)`, `<Name>.register(context)`). When
+ * the effect has generated per-frame-geometry logic, `frameArrays` (the
+ * `buildFrameArraysSpec` wiring) emits the lambda that calls the generated
+ * renderer and binds its bundle through `binding.arrays` (by NAME — GL sets
+ * uniform arrays like the web does).
  */
-export function emitKotlinFactory(slug, namespace) {
+export function emitKotlinFactory(slug, namespace, frameArrays = null) {
   const Name = pascal(slug);
   const SLUG = slug.toUpperCase();
+  let configDecl = `private val config: PassConfig = dopePassConfig(doc, ${SLUG}_VERTEX_SRC, ${SLUG}_FRAGMENT_SRC, plan)`;
+  let numberImport = "";
+  let uniformArrayImport = "";
+  if (frameArrays) {
+    const { entryName, params, arrays } = frameArrays;
+    const reserved = RESERVED_LOGIC_ARGS.kotlin;
+    if (params.some((p) => !reserved[p])) numberImport = "import ai.dopamine.core.number\n";
+    uniformArrayImport = "import ai.dopamine.gl.UniformArray\n";
+    const args = params
+      .map((p) => reserved[p] ?? `${p} = params.number("${p}")`)
+      .map((a) => `                ${a},`)
+      .join("\n");
+    const uniformArrays = arrays
+      .map((a) => `                UniformArray("${a.web}", ${a.size}, out.${a.name}),`)
+      .join("\n");
+    configDecl = `private val config: PassConfig = dopePassConfig(
+        doc, ${SLUG}_VERTEX_SRC, ${SLUG}_FRAGMENT_SRC, plan,
+        // The generated ${Name}Renderer (transpiled from the single web logic
+        // module) precomputes the frame geometry; \`binding.arrays\` maps its
+        // bundle onto the named uniform arrays.
+        frameArrays = { info, params, geom ->
+            val out = ${entryName}(
+${args}
+            )
+            listOf(
+${uniformArrays}
+            )
+        },
+    )`;
+  }
   return `${genHeader(slug)}
 //
 // ${Name} as a Dopamine effect on the Android backbone — the DATA-DRIVEN
@@ -164,13 +280,13 @@ import ai.dopamine.core.DopeResolveInput
 import ai.dopamine.core.DopeValue
 import ai.dopamine.core.EffectRegistry
 import ai.dopamine.core.dopePassPlan
-import ai.dopamine.core.parseDope
+${numberImport}import ai.dopamine.core.parseDope
 import ai.dopamine.core.resolveDopeParams
 import ai.dopamine.gl.DrawableEffect
 import ai.dopamine.gl.EffectContext
 import ai.dopamine.gl.EffectInstance
 import ai.dopamine.gl.PassConfig
-import ai.dopamine.gl.createPassInstance
+${uniformArrayImport}import ai.dopamine.gl.createPassInstance
 import ai.dopamine.gl.dopePassConfig
 import android.content.Context
 
@@ -189,7 +305,7 @@ class ${Name}(context: Context) : DrawableEffect {
     private val plan: DopePassPlan = dopePassPlan(doc)
     private val scatterKey: String =
         plan.scatterKey ?: throw DopeException("dope: \${doc.id} has no binding.scatterKey")
-    private val config: PassConfig = dopePassConfig(doc, ${SLUG}_VERTEX_SRC, ${SLUG}_FRAGMENT_SRC, plan)
+    ${configDecl}
 
     override fun resolve(feeling: DopeResolveInput): Map<String, DopeValue> =
         resolveDopeParams(doc, feeling, consts = plan.consts, scatterKey = scatterKey)

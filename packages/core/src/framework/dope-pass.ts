@@ -57,7 +57,8 @@ export interface DopeShader {
  *   - `uniforms`: every `render.params` key not in `binding.excludeParams` and
  *     not the scatter key → `u<Name>`; the scatter key contributes
  *     `binding.scatterWeb` when present (else it is not a shader uniform); every
- *     `binding.extras[].web`; every `binding.samplers[].web`; plus
+ *     `binding.extras[].web`; every `binding.samplers[].web`; every
+ *     `binding.arrays[].web` (the `frameArrays` uniform arrays); plus
  *     `hooks.extraUniforms`.
  *   - `bindings`: the scatter key → `scatterWeb` (or `null`), plus `null` for
  *     each excluded param that would otherwise auto-bind. (`style` and
@@ -100,6 +101,7 @@ export function dopePassConfig(doc: DopeDoc, shader: DopeShader, hooks: DopePass
   if (scatterKey && binding.scatterWeb) uniforms.add(binding.scatterWeb);
   for (const e of extraDefs) if (e.web) uniforms.add(e.web);
   for (const s of binding.samplers ?? []) uniforms.add(typeof s === "string" ? s : s.web);
+  for (const a of binding.arrays ?? []) uniforms.add(a.web);
   for (const u of hooks.extraUniforms ?? []) uniforms.add(u);
 
   // --- bindings (exceptions to the `name → u<Name>` auto-bind) --------------

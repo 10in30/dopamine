@@ -1,8 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { lightning } from "../src/index.js";
-import { resolveMood, type FeelingInput } from "@dopamine/core";
-import { strikeProgress, flashStrobe, STRIKE_MS } from "../src/lightning-tempo.js";
-import { MAX_FORKS } from "../src/lightning-shader.js";
+import { dopePassConfig, parseDope, resolveMood, type FeelingInput } from "@dopamine/core";
+import { strikeProgress, STRIKE_MS } from "../src/lightning-logic.js";
+import {
+  LIGHTNING_FRAGMENT_SRC,
+  LIGHTNING_VERTEX_SRC,
+  MAX_FORKS,
+} from "../src/lightning-shader.js";
+import doc from "../src/lightning.dope.json";
+
+// The flash/strobe shape now lives in the `.dope` (`tempo.frame.extras.flash`);
+// evaluate it through the same derived config the runner uses.
+const CONFIG = dopePassConfig(parseDope(doc as object), {
+  vertex: LIGHTNING_VERTEX_SRC,
+  fragment: LIGHTNING_FRAGMENT_SRC,
+});
+const flashStrobe = (life: number, flicker = 1): number =>
+  CONFIG.frame({ animMs: 0, life, elapsedMs: 0 }, { overshoot: 1, flicker }).uFlash;
 
 const MOODS = ["serene", "celebratory", "electric"] as const;
 

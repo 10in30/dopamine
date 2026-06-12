@@ -35,26 +35,27 @@ const readSnapshot = (slug) =>
   readFileSync(new URL(`./golden-msl/${slug}.metal`, import.meta.url), "utf8");
 
 // Migrated effects: transpiler output must byte-match the committed snapshot oracle.
+// (lightning exercises the buffer-array seam: its `binding.arrays` uniform arrays
+// become `constant floatN *` fragment buffers, threaded through the call graph.)
 const SNAPSHOT = [
   { slug: "aurora", fragment: AURORA_FRAGMENT_SRC },
   { slug: "ripple", fragment: RIPPLE_FRAGMENT_SRC },
   { slug: "inkstroke", fragment: INK_FRAGMENT_SRC },
   { slug: "halo", fragment: HALO_FRAGMENT_SRC },
   { slug: "fail", fragment: FAIL_FRAGMENT_SRC },
-];
-
-// Not yet migrated (still hand-ported); their hand-ports diverge from a mechanical
-// transpile — NOT translator bugs, recorded so the divergence is tracked:
-//   • lightning — hand-port fragment takes a `constant float2 *verts [[buffer]]` (its
-//                 CPU bolt-precompute seam) — a Metal-specific binding (P3).
-const PENDING = [
   { slug: "lightning", fragment: LIGHTNING_FRAGMENT_SRC },
 ];
 
 const transpile = (slug, fragment) => {
   const dope = readDope(slug);
   const fields = buildFields(dope, dope.binding ?? {});
-  return glslToMSL({ slug, fragment, uniformMap: buildUniformMap(fields), samplers: dope.binding?.samplers ?? [] });
+  return glslToMSL({
+    slug,
+    fragment,
+    uniformMap: buildUniformMap(fields),
+    samplers: dope.binding?.samplers ?? [],
+    arrays: dope.binding?.arrays ?? [],
+  });
 };
 
 for (const { slug, fragment } of SNAPSHOT) {
@@ -63,13 +64,19 @@ for (const { slug, fragment } of SNAPSHOT) {
   });
 }
 
-for (const { slug, fragment } of PENDING) {
-  test(`${slug}: transpiles to plausible MSL (CI-gated for exactness)`, () => {
-    const msl = transpile(slug, fragment);
-    expect(msl).toContain(`fragment float4 ${slug}_fragment(`);
-    expect(msl).toContain('#include "DopamineLook.metal"');
-  });
-}
+// The buffer-array seam throws on contract drift (a declared uniform array with
+// no binding.arrays entry, or a size/buffer mismatch) instead of emitting MSL
+// that would miscompile.
+test("lightning: a uniform array outside the binding.arrays contract throws", () => {
+  const dope = readDope("lightning");
+  const fields = buildFields(dope, dope.binding ?? {});
+  const uniformMap = buildUniformMap(fields);
+  expect(() => glslToMSL({ slug: "lightning", fragment: LIGHTNING_FRAGMENT_SRC, uniformMap, arrays: [] }))
+    .toThrow(/binding\.arrays/);
+  const bad = dope.binding.arrays.map((a) => ({ ...a, size: a.web === "uVerts" ? 3 : a.size }));
+  expect(() => glslToMSL({ slug: "lightning", fragment: LIGHTNING_FRAGMENT_SRC, uniformMap, arrays: bad }))
+    .toThrow(/size/);
+});
 
 // Android `<Name>Shader.kt` is generated from the same web GLSL (look chunks kept as
 // `${GLSL_*}` refs, + dopLightOut). Gated byte-for-byte against the committed snapshot

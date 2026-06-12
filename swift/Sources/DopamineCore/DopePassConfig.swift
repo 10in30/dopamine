@@ -35,6 +35,12 @@ public struct DopePassConfig<U>: PassConfig {
     /// -dependent values before packing (runs after the declarative
     /// `render.pass` evaluation, so it may override).
     public typealias ExtrasHook = (StandardUniforms, [String: DopeValue], inout [String: Double]) -> Void
+    /// Optional code-shaped hook: CPU-precompute the per-frame ARRAYS the
+    /// shader reads as fragment BUFFERS (the `binding.arrays` contract — e.g.
+    /// lightning's bolt polyline from the generated `<Name>Renderer`). Same
+    /// posture as `packExtras`: the genuinely code-shaped seam `PassConfig`
+    /// always had, threaded through the data-driven config.
+    public typealias FrameArraysHook = (FrameInfo, [String: DopeValue], Float, Float, SIMD2<Float>) -> [PassFrameArray]
 
     public let vertexFunction: String
     public let fragmentFunction: String
@@ -49,6 +55,7 @@ public struct DopePassConfig<U>: PassConfig {
     private let passSpec: DopePassSpec?
     private let pack: Packer
     private let extrasHook: ExtrasHook?
+    private let frameArraysHook: FrameArraysHook?
 
     /// Derive the config from a datafied doc. Throws if the doc lacks
     /// `tempo.frame` or `render.shadowHeightFrac` (not a datafied effect) —
@@ -58,7 +65,8 @@ public struct DopePassConfig<U>: PassConfig {
         vertexFunction: String,
         fragmentFunction: String,
         packUniforms: @escaping Packer,
-        packExtras: ExtrasHook? = nil
+        packExtras: ExtrasHook? = nil,
+        frameArrays: FrameArraysHook? = nil
     ) throws {
         guard let frame = doc.frame else {
             throw DopeError.notDatafied("\(doc.id) has no tempo.frame (not a datafied effect)")
@@ -76,6 +84,16 @@ public struct DopePassConfig<U>: PassConfig {
         self.passSpec = doc.renderPass
         self.pack = packUniforms
         self.extrasHook = packExtras
+        self.frameArraysHook = frameArrays
+    }
+
+    /// The per-frame ARRAYS (fragment buffers): the code-shaped hook when the
+    /// effect has one, else the protocol default (none).
+    public func frameArrays(
+        _ info: FrameInfo, _ params: [String: DopeValue],
+        width: Float, height: Float, origin: SIMD2<Float>
+    ) -> [PassFrameArray] {
+        frameArraysHook?(info, params, width, height, origin) ?? []
     }
 
     /// `render.shadowHeightFrac` — a bare number passes through; an expression

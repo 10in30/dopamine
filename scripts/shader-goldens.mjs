@@ -28,6 +28,10 @@ const FIXTURES = {
   ripple: { mood: "celebratory", intensity: 0.85, whimsy: 0.4, seed: 12345, lifeFrac: 0.45 },
   inkstroke: { mood: "celebratory", intensity: 0.85, whimsy: 0.45, seed: 12345, lifeFrac: 0.45 },
   halo: { mood: "serene", intensity: 0.85, whimsy: 0.4, seed: 12345, lifeFrac: 0.45 },
+  // lightning's CPU-precomputed bolt rides uniform ARRAYS (uVerts/uBoltMeta) —
+  // captured per element below and re-bound flat, so the Android-derived
+  // fragment renders the exact same precomputed frame.
+  lightning: { mood: "electric", intensity: 0.95, whimsy: 0.4, seed: 12345, lifeFrac: 0.45 },
   // fail/solarbloom/confetti sample textures the harness can't bind standalone —
   // see scripts/lib/shader-src.mjs (gated by the MSL/Android snapshots + CI).
 };
@@ -62,6 +66,22 @@ async function captureUniforms({ effect, mood, intensity, whimsy, seed, lifeFrac
   const uniforms = [];
   for (let i = 0; i < n; i++) {
     const info = gl.getActiveUniform(prog, i);
+    if (info.size > 1) {
+      // A uniform ARRAY (active name "uX[0]", size = element count): gl.getUniform
+      // reads ONE element, so gather every element and re-emit one flat value under
+      // the base name — uniformNfv re-binds the whole array from it.
+      const base = info.name.replace(/\[0\]$/, "");
+      const flat = [];
+      for (let k = 0; k < info.size; k++) {
+        const loc = gl.getUniformLocation(prog, `${base}[${k}]`);
+        if (!loc) break;
+        const v = gl.getUniform(prog, loc);
+        if (v && v.length != null) flat.push(...Array.from(v));
+        else flat.push(v);
+      }
+      uniforms.push({ name: base, type: info.type, value: flat });
+      continue;
+    }
     const loc = gl.getUniformLocation(prog, info.name);
     if (!loc) continue;
     const v = gl.getUniform(prog, loc);

@@ -624,7 +624,8 @@ exceptions to the auto-bind convention live in the top-level `binding` block —
 `excludeParams` (resolved params that are NOT shader uniforms), `scatterKey` +
 `scatterWeb` (the per-fire seed-keyed field and, when the shader reads it, its
 web uniform name), `extras` (the per-frame/host-filled uniforms, by canonical
-name; see §7.1) and `samplers` (texture units). The runtime derives its uniform
+name; see §7.1), `samplers` (texture units) and `arrays` (per-frame
+CPU-precomputed geometry arrays — below). The runtime derives its uniform
 bindings from it at load time (web: `framework/dope-pass.ts`), and the
 `@dopamine/build` toolchain consumes the same contract to generate the Metal
 `Uniforms` struct + packer. Only `slug`, `kind` and `x-build` stay
@@ -655,6 +656,31 @@ An effect with declarative per-frame logic also carries, under `render`:
   reference (`MAX_RINGS`, `MAX_DROPS`, …).
 - **`config`** — runner config; today `usesOrigin` (whether the shader is
   anchored on `uOrigin`).
+
+**Per-frame ARRAYS (`binding.arrays`) — the frameArrays seam.** An effect that
+CPU-precomputes fragment-independent geometry once per frame (lightning's bolt
+polyline, computed by its `x-build.logic` module) feeds it to the shader as
+ARRAYS. The `arrays` section is the cross-platform contract for that transport:
+
+```jsonc
+"arrays": [
+  { "name": "verts", "web": "uVerts",    "size": 2, "buffer": 1 },
+  { "name": "meta",  "web": "uBoltMeta", "size": 4, "buffer": 2 }
+]
+```
+
+`name` is the canonical name — the field of the logic module's returned bundle;
+`web` the GLSL uniform-array name; `size` the vector component count (2|3|4);
+`buffer` the Metal fragment buffer index (>= 1 — 0 is the uniform struct). The
+web and GL runtimes bind each array by NAME (`uniformNfv` on the declared
+`uniform vecN <web>[…]`, filled by the runners' `frameArrays` hook) and derive
+the `web` names into the shader uniform list; the GLSL→MSL transpiler turns
+each declared uniform array into a `constant floatN *<web> [[buffer(idx)]]`
+fragment param threaded through the call graph (and THROWS when a declared
+uniform array has no `arrays` entry, or sizes disagree); the generated
+Swift/Kotlin factory shells wire the transpiled `x-build.logic` renderer into
+the runners' frameArrays seam from this same section (Metal:
+`PassFrameArray(bufferIndex:)`; GL/web: named arrays).
 
 **Sampler SDF sources.** A `binding.samplers` entry (plain web-name string, or
 the object form `{ web, name, texture }`) may additionally declare a
