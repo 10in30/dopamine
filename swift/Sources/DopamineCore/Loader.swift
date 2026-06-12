@@ -187,6 +187,25 @@ public struct DopeBindingExtra: Equatable {
     public var web: String?
 }
 
+/// One texture sampler in the binding contract (`binding.samplers[]`), mirror
+/// of the web `DopeSampler`. Beyond the binding names, a sampler may declare a
+/// DECLARATIVE SDF source: `outline` names a `geometry.outlines` entry whose
+/// baked SDF backs it (bound as an aux texture on web; the native runtimes
+/// keep their analytic fallback) and `on` names the `binding.extras` flag the
+/// binder flips to 1 when the texture is bound (0 = the analytic path).
+public struct DopeBindingSampler: Equatable {
+    /// The web sampler uniform name (e.g. `uSdfTex`).
+    public var web: String
+    /// The canonical/MSL argument name (e.g. `sdfTex`).
+    public var name: String?
+    /// The texture unit it binds at (texture(0) is the panel slot).
+    public var texture: Int?
+    /// A `geometry.outlines` key whose baked SDF backs this sampler.
+    public var outline: String?
+    /// The canonical `binding.extras` name of the sampler's "on" flag.
+    public var on: String?
+}
+
 /// The cross-platform uniform-binding contract (mirror of the web
 /// `DopeBinding`). SHIPS in the portable doc: the runtime derives which
 /// resolved params bind to which shader uniforms from it (the Metal struct
@@ -200,6 +219,35 @@ public struct DopeBinding {
     public var scatterWeb: String?
     /// Per-frame/host extras (filled by `tempo.frame.extras` or host hooks).
     public var extras: [DopeBindingExtra]
+    /// Texture samplers the shader reads (see {@link DopeBindingSampler}).
+    public var samplers: [DopeBindingSampler] = []
+}
+
+/// The PER-PASS uniform spec (`render.pass`), mirror of the web derivation:
+/// expressions keyed by CANONICAL extra name (matching `binding.extras[].name`
+/// — the same names the generated Metal packers read), evaluated ONCE per pass
+/// by `evalPassExpr` over the resolved params + the pass-geometry inputs.
+/// `sdfRange`/`sdfViewBoxW` carry the declared metadata of the first sampler
+/// with an `outline` source (0 when none) — readable portably from the doc,
+/// whether or not the platform binds the SDF bitmap.
+public struct DopePassSpec {
+    /// (canonical extra name, raw expression), authored order.
+    public var entries: [(String, JSONValue)]
+    /// The backing SDF's declared `range` (0 when no sampler declares one).
+    public var sdfRange: Double
+    /// The backing SDF's `viewBox[2]` author-units width (0 when absent).
+    public var sdfViewBoxW: Double
+
+    /// Evaluate every entry for one pass. The doc was validated at parse, so
+    /// an eval failure here is a data bug the dope-config tests gate; degrade
+    /// to 0 rather than crash the render loop (same posture as `frame`).
+    public func evaluate(
+        targetMinDimPx: Double, params: [String: DopeValue]
+    ) -> [(String, Double)] {
+        let pass = PassExprInputs(
+            targetMinDimPx: targetMinDimPx, sdfRange: sdfRange, sdfViewBoxW: sdfViewBoxW)
+        return entries.map { ($0.0, (try? evalPassExpr($0.1, params, pass)) ?? 0) }
+    }
 }
 
 /// A `.dope` document (the parts the loader consumes — others are ignored). The
@@ -228,6 +276,8 @@ public struct DopeDoc {
     /// Shadow occluder height (`render.shadowHeightFrac`): a bare number or a
     /// PARAMS-ONLY frame expression (evaluate via `evalParamExpr`).
     public var shadowHeightFrac: JSONValue?
+    /// Per-PASS uniforms (`render.pass`), evaluated once per pass.
+    public var renderPass: DopePassSpec? = nil
     /// Loop-cap consts (`render.consts`) the mapping's clampMax/clampMin reference.
     public var consts: [String: Double]
     /// Runner config (`render.config.usesOrigin`): whether the shader reads `uOrigin`.

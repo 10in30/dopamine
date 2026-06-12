@@ -3,20 +3,22 @@
 //
 // For a datafied effect the `.dope` carries everything the hand-written
 // per-effect `PassConfig` used to: the per-frame logic (`tempo.frame`), the
-// shadow height (`render.shadowHeightFrac`) and the runner config
-// (`render.config.usesOrigin`). This type derives a whole `PassConfig` from
-// that data + the two MSL function names + the GENERATED uniform packer — so
-// the only hand-written Swift left for such an effect is its factory shell
-// (and, for fail, the canvas-dependent `packExtras` hook).
+// shadow height (`render.shadowHeightFrac`), the per-pass uniforms
+// (`render.pass`, evaluated against the live target geometry in
+// `packUniforms`) and the runner config (`render.config.usesOrigin`). This
+// type derives a whole `PassConfig` from that data + the two MSL function
+// names + the GENERATED uniform packer — so a fully declarative effect ships
+// NO hand-written Swift at all (the factory shell is toolchain-generated).
 //
 // Per-frame extras are evaluated under their CANONICAL names ("sweep", "draw",
 // "stamp", "shake", …) — exactly the keys the generated `pack<Name>Uniforms`
 // packers read from the `extras` map (the web instead maps them to `u<Name>`
 // uniform names; the Metal binding seam is the packed struct).
 //
-// The honest boundary stays honest: anything genuinely code-shaped (fail's
-// canvas-size-dependent boxPx/sdfStrokePx defaults) is passed through the
-// `packExtras` hook, the same seam `packUniforms` always was.
+// The honest boundary stays honest: anything genuinely code-shaped (a
+// host/canvas-dependent extras top-up) can still ride the `packExtras` hook,
+// the same seam `packUniforms` always was — it runs AFTER the declarative
+// `render.pass` values, so a hook may override them.
 //
 // macOS/iOS ONLY (`#if canImport(Metal)`): `PassConfig` is the Metal runner's
 // protocol. The portable evaluator it calls (FrameExpr.swift) builds — and is
@@ -30,7 +32,8 @@ public struct DopePassConfig<U>: PassConfig {
     /// The generated `pack<Name>Uniforms(standard:params:extras:)` packer.
     public typealias Packer = (StandardUniforms, [String: DopeValue], [String: Double]) -> U
     /// Optional code-shaped hook: top up the frame extras with host/canvas
-    /// -dependent values before packing (fail's boxPx / sdfStrokePx defaults).
+    /// -dependent values before packing (runs after the declarative
+    /// `render.pass` evaluation, so it may override).
     public typealias ExtrasHook = (StandardUniforms, [String: DopeValue], inout [String: Double]) -> Void
 
     public let vertexFunction: String
@@ -43,6 +46,7 @@ public struct DopePassConfig<U>: PassConfig {
     private let ampExpr: JSONValue
     private let extraExprs: [(String, JSONValue)]
     private let shadowSpec: JSONValue
+    private let passSpec: DopePassSpec?
     private let pack: Packer
     private let extrasHook: ExtrasHook?
 
@@ -69,6 +73,7 @@ public struct DopePassConfig<U>: PassConfig {
         self.ampExpr = frame.amp
         self.extraExprs = frame.extras
         self.shadowSpec = shadow
+        self.passSpec = doc.renderPass
         self.pack = packUniforms
         self.extrasHook = packExtras
     }
@@ -100,13 +105,24 @@ public struct DopePassConfig<U>: PassConfig {
         return (amp, extras)
     }
 
-    /// The generated packer, after the optional code-shaped extras top-up.
+    /// The generated packer, after the declarative `render.pass` top-up and
+    /// the optional code-shaped extras hook.
     public func packUniforms(
         standard: StandardUniforms,
         params: [String: DopeValue],
         extras: [String: Double]
     ) -> U {
         var ex = extras
+        if let pass = passSpec {
+            // Per-PASS uniforms (`render.pass`), evaluated here because this is
+            // the once-per-pass seam that sees the live target geometry.
+            // `standard.target` already carries the targeted element box with
+            // the full-canvas fallback applied (MetalPassRunner.standard()).
+            let minDim = Double(min(standard.target.x, standard.target.y))
+            for (name, value) in pass.evaluate(targetMinDimPx: minDim, params: params) {
+                ex[name] = value
+            }
+        }
         extrasHook?(standard, params, &ex)
         return pack(standard, params, ex)
     }

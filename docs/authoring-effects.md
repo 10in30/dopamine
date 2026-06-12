@@ -650,9 +650,11 @@ export default sparkle;
 ```
 
 `registerDopeEffect` derives the `PassConfig` (uniforms, bindings, `frame()`,
-`shadowHeightFrac`, `usesOrigin`), registers the factory AND a bundled program.
-Genuinely code-shaped bits (aux textures, canvas-dependent pass uniforms — see
-`effects/fail/web/src/index.ts`) ride its `hooks` option.
+`shadowHeightFrac`, `usesOrigin` — plus, where the `.dope` declares them, the
+`render.pass` per-pass uniforms and the `binding.samplers[].outline`/`on` SDF
+aux textures; fail's ✗ plumbing is the reference), registers the factory AND a
+bundled program. Genuinely code-shaped bits (a sprite panel, a host-rasterized
+aux texture, CPU frame geometry) ride its `hooks` option.
 
 **The code path (supported for effects that need it).** Spell the config out
 yourself:
@@ -948,7 +950,8 @@ no shared-file edits**.
 - `effect-format.schema.json` — the JSON Schema for `.dope` documents.
 - [`roadmap.md`](./roadmap.md) — planned format/runtime work.
 - Reference effects (each `effects/<name>/web/src/index.ts`): a declarative
-  pure-shader effect (e.g. `ripple`), one with code hooks for an aux SDF
-  texture and its own moods (`fail`), a hybrid with content + typography +
-  embedded display fonts (`comic`), and a pass effect with a baked SDF + glyph
-  fallback (`solarbloom`).
+  pure-shader effect (e.g. `ripple`), one with a declarative SDF aux texture
+  (`render.pass` + the sampler `outline`/`on` source) and its own moods
+  (`fail`), a hybrid with content + typography + embedded display fonts
+  (`comic`), and a pass effect with a baked SDF + glyph fallback
+  (`solarbloom`).

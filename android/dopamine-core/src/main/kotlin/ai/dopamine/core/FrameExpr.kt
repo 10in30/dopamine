@@ -120,62 +120,114 @@ data class FrameExprCtx(
     val loopS: Double = 0.0,
     /** Normalized loop phase in [0, 1) (`animMs % periodMs / periodMs`); 0 without a loop. */
     val phase: Double = 0.0,
+    /** Pass-geometry inputs (`render.pass` only); see [PassExprInputs]. */
+    val pass: PassExprInputs? = null,
 )
 
-private fun evalNode(node: FrameExprNode, ctx: FrameExprCtx, allowInputs: Boolean): Double = when (node) {
+/**
+ * The pass-geometry inputs a `render.pass` expression may read (evaluated ONCE
+ * per pass by the runners, never per resolve or per frame) — mirror of the web
+ * `PassExprInputs`.
+ */
+data class PassExprInputs(
+    /**
+     * Min dimension of the TARGETED element box in device px, falling back to
+     * the full canvas when untargeted (the same box the standard `uTarget`
+     * uniform carries).
+     */
+    val targetMinDimPx: Double,
+    /**
+     * The declared `range` of the SDF behind the first `binding.samplers`
+     * entry with an `outline` source; 0 when no sampler declares one.
+     */
+    val sdfRange: Double = 0.0,
+    /** That SDF's `viewBox[2]` (author-units width); 0 when absent. */
+    val sdfViewBoxW: Double = 0.0,
+)
+
+/** Which inputs an expression may read: the three evaluation entry points. */
+private enum class ExprMode { FRAME, PARAMS, PASS }
+
+private val FRAME_INPUTS = setOf("animMs", "life", "elapsedMs", "loopS", "phase")
+private val PASS_INPUTS = setOf("targetMinDimPx", "sdfRange", "sdfViewBoxW")
+
+/**
+ * Resolve an `{input}` name under the given mode — the same gating (and the
+ * same error wording) as the web `evalInput`.
+ */
+private fun evalInput(name: String, ctx: FrameExprCtx, mode: ExprMode): Double {
+    if (mode == ExprMode.PASS) {
+        if (name in FRAME_INPUTS) {
+            throw DopeException(
+                "dope: frame input \"$name\" is not allowed in a render.pass expression " +
+                    "(pass expressions are not frame-clocked)",
+            )
+        }
+        return when (name) {
+            "targetMinDimPx" -> ctx.pass?.targetMinDimPx ?: 0.0
+            "sdfRange" -> ctx.pass?.sdfRange ?: 0.0
+            "sdfViewBoxW" -> ctx.pass?.sdfViewBoxW ?: 0.0
+            else -> throw DopeException("dope: unknown frame input \"$name\"")
+        }
+    }
+    if (name in PASS_INPUTS) {
+        throw DopeException("dope: pass input \"$name\" is only allowed in a render.pass expression")
+    }
+    if (mode == ExprMode.PARAMS) {
+        throw DopeException("dope: {input} is not allowed in a params-only expression (got \"$name\")")
+    }
+    return when (name) {
+        "animMs" -> ctx.animMs
+        "life" -> ctx.life
+        "elapsedMs" -> ctx.elapsedMs
+        "loopS" -> ctx.loopS
+        "phase" -> ctx.phase
+        else -> throw DopeException("dope: unknown frame input \"$name\"")
+    }
+}
+
+private fun evalNode(node: FrameExprNode, ctx: FrameExprCtx, mode: ExprMode): Double = when (node) {
     is FrameExprNode.Num -> node.value
     is FrameExprNode.Const -> node.value
     is FrameExprNode.Param ->
         (ctx.params[node.name] as? DopeValue.Number)?.value
             ?: throw DopeException("dope: frame expr references missing/non-numeric param \"${node.name}\"")
-    is FrameExprNode.Input -> {
-        if (!allowInputs) {
-            throw DopeException("dope: {input} is not allowed in a params-only expression (got \"${node.name}\")")
-        }
-        when (node.name) {
-            "animMs" -> ctx.animMs
-            "life" -> ctx.life
-            "elapsedMs" -> ctx.elapsedMs
-            "loopS" -> ctx.loopS
-            "phase" -> ctx.phase
-            else -> throw DopeException("dope: unknown frame input \"${node.name}\"")
-        }
-    }
-    is FrameExprNode.Add -> node.nodes.fold(0.0) { p, n -> p + evalNode(n, ctx, allowInputs) }
+    is FrameExprNode.Input -> evalInput(node.name, ctx, mode)
+    is FrameExprNode.Add -> node.nodes.fold(0.0) { p, n -> p + evalNode(n, ctx, mode) }
     is FrameExprNode.Sub -> {
-        val parts = node.nodes.map { evalNode(it, ctx, allowInputs) }
+        val parts = node.nodes.map { evalNode(it, ctx, mode) }
         if (parts.isEmpty()) 0.0 else parts.drop(1).fold(parts[0]) { p, n -> p - n }
     }
-    is FrameExprNode.Mul -> node.nodes.fold(1.0) { p, n -> p * evalNode(n, ctx, allowInputs) }
+    is FrameExprNode.Mul -> node.nodes.fold(1.0) { p, n -> p * evalNode(n, ctx, mode) }
     is FrameExprNode.Div -> {
-        val parts = node.nodes.map { evalNode(it, ctx, allowInputs) }
+        val parts = node.nodes.map { evalNode(it, ctx, mode) }
         if (parts.isEmpty()) 0.0 else parts.drop(1).fold(parts[0]) { p, n -> p / n }
     }
     is FrameExprNode.Min ->
-        node.nodes.map { evalNode(it, ctx, allowInputs) }.minOrNull() ?: Double.POSITIVE_INFINITY
+        node.nodes.map { evalNode(it, ctx, mode) }.minOrNull() ?: Double.POSITIVE_INFINITY
     is FrameExprNode.Max ->
-        node.nodes.map { evalNode(it, ctx, allowInputs) }.maxOrNull() ?: Double.NEGATIVE_INFINITY
-    is FrameExprNode.Pow -> evalNode(node.a, ctx, allowInputs).pow(evalNode(node.b, ctx, allowInputs))
-    is FrameExprNode.Sin -> sin(evalNode(node.node, ctx, allowInputs))
-    is FrameExprNode.Exp -> exp(evalNode(node.node, ctx, allowInputs))
-    is FrameExprNode.Clamp01 -> tempoClamp01(evalNode(node.node, ctx, allowInputs))
+        node.nodes.map { evalNode(it, ctx, mode) }.maxOrNull() ?: Double.NEGATIVE_INFINITY
+    is FrameExprNode.Pow -> evalNode(node.a, ctx, mode).pow(evalNode(node.b, ctx, mode))
+    is FrameExprNode.Sin -> sin(evalNode(node.node, ctx, mode))
+    is FrameExprNode.Exp -> exp(evalNode(node.node, ctx, mode))
+    is FrameExprNode.Clamp01 -> tempoClamp01(evalNode(node.node, ctx, mode))
     is FrameExprNode.Lt ->
         // Branches are evaluated LAZILY (only the taken branch), so a guard like
         // `0 < elapsedMs ? f(elapsedMs) : 0` never evaluates f outside its domain.
-        if (evalNode(node.a, ctx, allowInputs) < evalNode(node.b, ctx, allowInputs)) {
-            evalNode(node.then, ctx, allowInputs)
+        if (evalNode(node.a, ctx, mode) < evalNode(node.b, ctx, mode)) {
+            evalNode(node.then, ctx, mode)
         } else {
-            evalNode(node.otherwise, ctx, allowInputs)
+            evalNode(node.otherwise, ctx, mode)
         }
     is FrameExprNode.Envelope ->
-        envelope(evalNode(node.t, ctx, allowInputs), evalNode(node.overshoot, ctx, allowInputs))
-    is FrameExprNode.EaseOutCubic -> easeOutCubic(evalNode(node.node, ctx, allowInputs))
+        envelope(evalNode(node.t, ctx, mode), evalNode(node.overshoot, ctx, mode))
+    is FrameExprNode.EaseOutCubic -> easeOutCubic(evalNode(node.node, ctx, mode))
     is FrameExprNode.EaseOutBack ->
-        easeOutBack(evalNode(node.x, ctx, allowInputs), evalNode(node.overshoot, ctx, allowInputs))
+        easeOutBack(evalNode(node.x, ctx, mode), evalNode(node.overshoot, ctx, mode))
 }
 
 /** Evaluate a per-frame grammar node to a number. Pure; throws outside the grammar. */
-fun evalFrameExpr(node: FrameExprNode, ctx: FrameExprCtx): Double = evalNode(node, ctx, true)
+fun evalFrameExpr(node: FrameExprNode, ctx: FrameExprCtx): Double = evalNode(node, ctx, ExprMode.FRAME)
 
 /**
  * Evaluate a PARAMS-ONLY expression (e.g. `render.shadowHeightFrac`): the same
@@ -183,4 +235,17 @@ fun evalFrameExpr(node: FrameExprNode, ctx: FrameExprCtx): Double = evalNode(nod
  * pure function of the resolved params, never of the frame clock.
  */
 fun evalParamExpr(node: FrameExprNode, params: Map<String, DopeValue>): Double =
-    evalNode(node, FrameExprCtx(animMs = 0.0, life = 0.0, elapsedMs = 0.0, params = params), false)
+    evalNode(node, FrameExprCtx(animMs = 0.0, life = 0.0, elapsedMs = 0.0, params = params), ExprMode.PARAMS)
+
+/**
+ * Evaluate a PER-PASS expression (`render.pass`): the same grammar over the
+ * resolved params plus the pass-geometry inputs (`targetMinDimPx` / `sdfRange`
+ * / `sdfViewBoxW`). Frame clocks THROW — a pass expression is evaluated once
+ * per pass, not per frame. Mirror of the web `evalPassExpr`.
+ */
+fun evalPassExpr(node: FrameExprNode, params: Map<String, DopeValue>, pass: PassExprInputs): Double =
+    evalNode(
+        node,
+        FrameExprCtx(animMs = 0.0, life = 0.0, elapsedMs = 0.0, params = params, pass = pass),
+        ExprMode.PASS,
+    )

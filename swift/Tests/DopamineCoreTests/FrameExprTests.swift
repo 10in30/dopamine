@@ -91,5 +91,40 @@ final class FrameExprTests: XCTestCase {
         XCTAssertEqual(try evalParamExpr(expr("0.42"), [:]), 0.42)
         // {input} throws in a params-only expression.
         XCTAssertThrowsError(try evalParamExpr(expr(#"{"input": "life"}"#), [:]))
+        // The pass-geometry inputs are render.pass-only, too.
+        XCTAssertThrowsError(try evalParamExpr(expr(#"{"input": "targetMinDimPx"}"#), [:]))
+    }
+
+    func testPassExprInputs() throws {
+        // The pass-geometry inputs, supplied by the runner once per pass.
+        let pass = PassExprInputs(targetMinDimPx: 400, sdfRange: 18, sdfViewBoxW: 100)
+        XCTAssertEqual(try evalPassExpr(expr(#"{"input": "targetMinDimPx"}"#), [:], pass), 400)
+        XCTAssertEqual(try evalPassExpr(expr(#"{"input": "sdfRange"}"#), [:], pass), 18)
+        XCTAssertEqual(try evalPassExpr(expr(#"{"input": "sdfViewBoxW"}"#), [:], pass), 100)
+        // fail's ✗ box: 0.15 × the target min dim; params address like any mode.
+        XCTAssertEqual(
+            try evalPassExpr(expr(#"{"mul": [0.15, {"input": "targetMinDimPx"}]}"#), [:], pass),
+            0.15 * 400)
+        XCTAssertEqual(
+            try evalPassExpr(
+                expr(#"{"mul": [{"param": "scale"}, {"input": "targetMinDimPx"}]}"#),
+                ["scale": .number(0.5)], pass),
+            200)
+        // fail's SDF range mapping: range * (2*boxPx / viewBoxW).
+        XCTAssertEqual(
+            try evalPassExpr(
+                expr(#"{"mul": [{"input": "sdfRange"}, {"div": [{"mul": [2, {"mul": [0.15, {"input": "targetMinDimPx"}]}]}, {"max": [{"input": "sdfViewBoxW"}, 1e-6]}]}]}"#),
+                [:], pass),
+            18 * ((2 * (0.15 * 400)) / 100))
+    }
+
+    func testPassExprRejectsFrameClocks() throws {
+        let pass = PassExprInputs(targetMinDimPx: 400)
+        for name in ["animMs", "life", "elapsedMs", "loopS", "phase"] {
+            XCTAssertThrowsError(try evalPassExpr(expr(#"{"input": "\#(name)"}"#), [:], pass))
+        }
+        XCTAssertThrowsError(try evalPassExpr(expr(#"{"input": "wat"}"#), [:], pass))
+        // …and the pass inputs are rejected in frame expressions.
+        XCTAssertThrowsError(try evalFrameExpr(expr(#"{"input": "targetMinDimPx"}"#), ctx()))
     }
 }

@@ -35,8 +35,10 @@ test("inkstroke: the generated factory shells match the committed snapshots", ()
 });
 
 // The fully declarative effects — those that ship NO swift/ or android/
-// folder. Their dist packages must carry ONLY generated sources.
-const GENERATED = ["aurora", "ripple", "inkstroke", "halo"];
+// folder. Their dist packages must carry ONLY generated sources. (fail joined
+// when its two code hooks became `.dope` data: `render.pass` + the sampler
+// `outline`/`on` SDF source.)
+const GENERATED = ["aurora", "ripple", "inkstroke", "halo", "fail"];
 
 for (const slug of GENERATED) {
   const Name = slug.charAt(0).toUpperCase() + slug.slice(1);

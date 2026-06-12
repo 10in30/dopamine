@@ -4,14 +4,16 @@
 //
 // For a datafied effect the `.dope` carries everything the hand-written
 // per-effect `PassConfig` used to: the per-frame logic (`tempo.frame`), the
-// shadow height (`render.shadowHeightFrac`), the loop-cap consts
-// (`render.consts`), the runner config (`render.config.usesOrigin`), the
-// reduced-motion peak/hold (`tempo.reducedMotion`) and the uniform-binding
-// contract (`binding`). This module derives all of that from the parsed doc —
-// uniform names by the same `name → u<Name>` convention `computeScalarBinds`
-// applies, exceptions from the binding contract — so the only hand-written
-// Android source left for such an effect is its GLSL (toolchain-generated) and
-// any genuinely code-shaped hook (fail's canvas-dependent `passUniforms`).
+// shadow height (`render.shadowHeightFrac`), the per-pass uniforms
+// (`render.pass`, evaluated against the live target geometry), the loop-cap
+// consts (`render.consts`), the runner config (`render.config.usesOrigin`),
+// the reduced-motion peak/hold (`tempo.reducedMotion`) and the uniform-binding
+// contract (`binding`, including the samplers' declarative SDF sources). This
+// module derives all of that from the parsed doc — uniform names by the same
+// `name → u<Name>` convention `computeScalarBinds` applies, exceptions from
+// the binding contract — so the only hand-written Android source left for such
+// an effect is its GLSL (toolchain-generated) and any genuinely code-shaped
+// hook.
 //
 // The GL half (`ai.dopamine.gl.dopePassConfig`) wraps a `DopePassPlan` into the
 // runner's `PassConfig`; the split keeps `dopamine-core` free of `android.*`.
@@ -64,9 +66,41 @@ class DopePassPlan internal constructor(
     private val ampExpr: FrameExprNode,
     /** Per-frame extras as `(web uniform name, expression)`, authored order. */
     private val extraExprs: List<Pair<String, FrameExprNode>>,
+    /** `render.pass` as `(web uniform name, expression)`, authored order. */
+    private val passExprs: List<Pair<String, FrameExprNode>> = emptyList(),
+    /** Declared SDF metadata for the pass inputs (0 when no sampler `outline`). */
+    private val passSdfRange: Double = 0.0,
+    private val passSdfViewBoxW: Double = 0.0,
+    /**
+     * Web names of sampler `on` flag uniforms (`binding.samplers[].on` →
+     * `binding.extras[].web`, e.g. `uSdfOn`). The GL backbone has no
+     * aux-texture support, so the GL config pins these OFF each pass.
+     */
+    val samplerOnUniforms: List<String> = emptyList(),
 ) {
     /** Shadow occluder height (fraction of min canvas dim) — params-only. */
     fun shadowHeightFrac(params: Map<String, DopeValue>): Double = evalParamExpr(shadowSpec, params)
+
+    /** Whether the doc declares any `render.pass` uniforms. */
+    val hasPassUniforms: Boolean get() = passExprs.isNotEmpty()
+
+    /**
+     * The PER-PASS uniform values (`render.pass`), keyed by web uniform name —
+     * evaluated over the resolved params + the pass-geometry inputs.
+     * `targetMinDimPx` is the min dimension of the targeted element box in
+     * device px (full-canvas fallback already applied by the caller — the same
+     * box `uTarget` binds).
+     */
+    fun passUniforms(targetMinDimPx: Double, params: Map<String, DopeValue>): LinkedHashMap<String, Double> {
+        val pass = PassExprInputs(
+            targetMinDimPx = targetMinDimPx,
+            sdfRange = passSdfRange,
+            sdfViewBoxW = passSdfViewBoxW,
+        )
+        val out = LinkedHashMap<String, Double>()
+        for ((web, expr) in passExprs) out[web] = evalPassExpr(expr, params, pass)
+        return out
+    }
 
     /**
      * The per-frame uniform values: the well-known `amp` first, then each extra
@@ -111,8 +145,13 @@ fun dopePassPlan(doc: DopeDoc, extraUniforms: List<String> = emptyList()): DopeP
     val extraDefs: List<Pair<String, String?>> = binding?.get("extras")?.asArray?.map { e ->
         (e["name"]?.asString ?: "") to e["web"]?.asString
     } ?: emptyList()
-    val samplers: List<String> = binding?.get("samplers")?.asArray?.mapNotNull { s ->
-        s.asString ?: s["web"]?.asString
+    // samplers: plain strings (web name only) or the object form, possibly with
+    // a declarative SDF source (`outline` + `on` — the canonical extra name of
+    // the "on" flag).
+    data class Sampler(val web: String, val outline: String?, val on: String?)
+    val samplers: List<Sampler> = binding?.get("samplers")?.asArray?.mapNotNull { s ->
+        val web = s.asString ?: s["web"]?.asString ?: return@mapNotNull null
+        Sampler(web = web, outline = s["outline"]?.asString, on = s["on"]?.asString)
     } ?: emptyList()
 
     val frameJson = raw["tempo"]?.get("frame")
@@ -133,7 +172,7 @@ fun dopePassPlan(doc: DopeDoc, extraUniforms: List<String> = emptyList()): DopeP
     }
     if (scatterKey != null && scatterWeb != null) uniforms.add(scatterWeb)
     for ((_, web) in extraDefs) if (web != null) uniforms.add(web)
-    for (s in samplers) uniforms.add(s)
+    for (s in samplers) uniforms.add(s.web)
     for (u in extraUniforms) uniforms.add(u)
 
     // --- bindings (exceptions to the `name → u<Name>` auto-bind) --------------
@@ -150,6 +189,33 @@ fun dopePassPlan(doc: DopeDoc, extraUniforms: List<String> = emptyList()): DopeP
         val web = extraDefs.firstOrNull { it.first == name }?.second
             ?: throw DopeException("dope: ${doc.id} tempo.frame.extras.\"$name\" has no binding.extras web name")
         extraExprs.add(web to decodeFrameExpr(exprJson))
+    }
+
+    // --- per-PASS uniforms (`render.pass`): canonical name → web uniform name --
+    // (a "note" key is documentation, not an expression — same convention as
+    // `binding.note`.)
+    val passExprs = ArrayList<Pair<String, FrameExprNode>>()
+    raw["render"]?.get("pass")?.asObject?.forEach { (name, exprJson) ->
+        if (name == "note") return@forEach
+        val web = extraDefs.firstOrNull { it.first == name }?.second
+            ?: throw DopeException("dope: ${doc.id} render.pass.\"$name\" has no binding.extras web name")
+        passExprs.add(web to decodeFrameExpr(exprJson))
+    }
+
+    // The pass-expr SDF inputs: the declared metadata of the first sampler with
+    // an `outline` source, read straight off the raw geometry JSON (no bitmap
+    // decode — portable, whether or not the platform binds the SDF).
+    var passSdfRange = 0.0
+    var passSdfViewBoxW = 0.0
+    samplers.firstOrNull { it.outline != null }?.outline?.let { outlineName ->
+        val sdf = raw["geometry"]?.get("outlines")?.get(outlineName)?.get("sdf")
+        passSdfRange = sdf?.get("range")?.asNumber ?: 0.0
+        passSdfViewBoxW = sdf?.get("viewBox")?.asArray?.getOrNull(2)?.asNumber ?: 0.0
+    }
+
+    // The sampler "on" flags by web uniform name (`on` is a canonical extras name).
+    val samplerOnUniforms = samplers.mapNotNull { s ->
+        s.on?.let { on -> extraDefs.firstOrNull { it.first == on }?.second }
     }
 
     // --- the resolve-call data + reduced motion the factories hardcoded -------
@@ -169,5 +235,9 @@ fun dopePassPlan(doc: DopeDoc, extraUniforms: List<String> = emptyList()): DopeP
         shadowSpec = shadowSpec,
         ampExpr = ampExpr,
         extraExprs = extraExprs,
+        passExprs = passExprs,
+        passSdfRange = passSdfRange,
+        passSdfViewBoxW = passSdfViewBoxW,
+        samplerOnUniforms = samplerOnUniforms,
     )
 }

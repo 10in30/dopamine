@@ -73,8 +73,31 @@ export interface DopeBinding {
   scatterWeb?: string;
   /** Per-frame/host extras (filled by `tempo.frame.extras` or host hooks). */
   extras?: Array<{ name: string; type?: string; web?: string; note?: string }>;
-  /** Texture samplers the shader reads. */
-  samplers?: Array<string | { web: string; name?: string; texture?: number }>;
+  /** Texture samplers the shader reads (see {@link DopeSampler}). */
+  samplers?: Array<string | DopeSampler>;
+}
+
+/**
+ * One texture sampler in the binding contract. Beyond the binding names, a
+ * sampler may declare a DECLARATIVE SDF source: `outline` names a
+ * `geometry.outlines` entry whose baked SDF the runtime decodes + binds at
+ * texture unit `texture` (web; the native runtimes keep their analytic
+ * fallback), and `on` names the `binding.extras` flag the runner flips to 1
+ * when the texture is bound (left at 0 — the analytic path — when the SDF is
+ * absent or undecodable).
+ */
+export interface DopeSampler {
+  /** The web sampler uniform name (e.g. `uSdfTex`). */
+  web: string;
+  /** The canonical/MSL argument name (e.g. `sdfTex`). */
+  name?: string;
+  /** The texture unit it binds at (texture(0) is the panel slot). */
+  texture?: number;
+  /** A `geometry.outlines` key whose baked SDF backs this sampler. */
+  outline?: string;
+  /** The canonical `binding.extras` name of the sampler's "on" flag. */
+  on?: string;
+  note?: string;
 }
 
 /** A `.dope` document (the parts the loader consumes — others are ignored). */
@@ -97,6 +120,13 @@ export interface DopeDoc {
     params: Record<string, DopeParamSpec>;
     /** Shadow occluder height: a params-only frame expression (or a bare number). */
     shadowHeightFrac?: FrameExprNode;
+    /**
+     * PER-PASS scalar uniforms, keyed by the CANONICAL extra name (matching
+     * `binding.extras[].name`): expressions over the resolved params + the
+     * pass-geometry inputs (`targetMinDimPx` / `sdfRange` / `sdfViewBoxW`),
+     * evaluated once per pass by `evalPassExpr` (frame clocks throw).
+     */
+    pass?: Record<string, FrameExprNode>;
     /** Loop-cap consts the param mapping's clampMax/clampMin reference. */
     consts?: Record<string, number>;
     /** Runner config (today: whether the shader reads `uOrigin`). */

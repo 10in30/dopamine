@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   evalFrameExpr,
   evalParamExpr,
+  evalPassExpr,
   clamp01,
   easeOutBack,
   easeOutCubic,
@@ -83,5 +84,43 @@ describe("evalParamExpr (params-only, e.g. shadowHeightFrac)", () => {
 
   it("THROWS on {input} — shadow geometry must not read the frame clock", () => {
     expect(() => evalParamExpr({ input: "life" }, {})).toThrow(/input/);
+    // The pass-geometry inputs are render.pass-only, too.
+    expect(() => evalParamExpr({ input: "targetMinDimPx" }, {})).toThrow(/render\.pass/);
+  });
+});
+
+describe("evalPassExpr (render.pass: params + pass-geometry inputs)", () => {
+  const pass = { targetMinDimPx: 400, sdfRange: 18, sdfViewBoxW: 100 };
+
+  it("evaluates the pass-geometry inputs (supplied by the runner per pass)", () => {
+    expect(evalPassExpr({ input: "targetMinDimPx" }, {}, pass)).toBe(400);
+    expect(evalPassExpr({ input: "sdfRange" }, {}, pass)).toBe(18);
+    expect(evalPassExpr({ input: "sdfViewBoxW" }, {}, pass)).toBe(100);
+    // fail's ✗ box: 0.15 × the target min dim.
+    expect(evalPassExpr({ mul: [0.15, { input: "targetMinDimPx" }] }, {}, pass)).toBe(60);
+    // fail's SDF range mapping: range * (2*boxPx / viewBoxW).
+    expect(
+      evalPassExpr(
+        { mul: [{ input: "sdfRange" }, { div: [{ mul: [2, { mul: [0.15, { input: "targetMinDimPx" }] }] }, { max: [{ input: "sdfViewBoxW" }, 1e-6] }] }] },
+        {},
+        pass,
+      ),
+    ).toBe(18 * ((2 * (0.15 * 400)) / 100));
+  });
+
+  it("addresses resolved params like any other mode", () => {
+    expect(evalPassExpr({ mul: [{ param: "scale" }, { input: "targetMinDimPx" }] }, { scale: 0.5 }, pass)).toBe(200);
+  });
+
+  it("REJECTS frame clocks — pass values are once-per-pass, not frame-clocked", () => {
+    for (const input of ["animMs", "life", "elapsedMs", "loopS", "phase"] as const) {
+      expect(() => evalPassExpr({ input }, {}, pass)).toThrow(/not frame-clocked/);
+    }
+    expect(() => evalPassExpr({ input: "wat" } as unknown as FrameExprNode, {}, pass)).toThrow(/unknown/);
+  });
+
+  it("pass inputs are rejected in frame expressions", () => {
+    expect(() => evalFrameExpr({ input: "targetMinDimPx" }, ctx())).toThrow(/render\.pass/);
+    expect(() => evalFrameExpr({ input: "sdfRange" }, ctx())).toThrow(/render\.pass/);
   });
 });

@@ -149,6 +149,10 @@ class DopeConfigTest {
     }
 
     // ════════════════════════════════ fail ══════════════════════════════════
+    // Fully declarative: the ✗ plumbing that used to be code hooks is data —
+    // `render.pass` (box/stroke/range, sized to targetMinDimPx) and the sampler
+    // `outline`/`on` SDF source (web-only binding; here uSdfOn is pinned off by
+    // the GL config so the analytic ✗ renders).
     @Test
     fun failDerivesTheExpectedConfig() {
         val (_, plan) = load("fail")
@@ -162,5 +166,22 @@ class DopeConfigTest {
         assertEquals("failSeed", plan.scatterKey)
         assertEquals(200.0, plan.reducedMotionPeakMs!!, 0.0)
         assertEquals(320.0, plan.reducedMotionHoldMs!!, 0.0)
+    }
+
+    @Test
+    fun failDerivesTheRenderPassUniforms() {
+        val (_, plan) = load("fail")
+        assertEquals(true, plan.hasPassUniforms)
+        // The sampler "on" flag the GL config pins off (no aux-texture support).
+        assertEquals(listOf("uSdfOn"), plan.samplerOnUniforms)
+        // Evaluated for a 400 px target min dim, emitted under the web uniform
+        // names (`bindScalars`-style by-name binding): boxPx = 0.15·400,
+        // strokePx = boxPx·0.13, rangePx = the baked SDF's range (18) mapped
+        // through 2·boxPx over its declared viewBox width (100).
+        val out = plan.passUniforms(400.0, emptyMap())
+        assertEquals(listOf("uBoxPx", "uSdfStrokePx", "uSdfRangePx"), out.keys.toList())
+        assertEquals(0.15 * 400.0, out["uBoxPx"]!!, 0.0)
+        assertEquals(0.15 * 400.0 * 0.13, out["uSdfStrokePx"]!!, 0.0)
+        assertEquals(18.0 * ((2.0 * (0.15 * 400.0)) / 100.0), out["uSdfRangePx"]!!, 0.0)
     }
 }

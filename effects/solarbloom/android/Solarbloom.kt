@@ -82,7 +82,7 @@ class Solarbloom(context: Context) : DrawableEffect {
             // canvas exactly like the web `passUniforms` (Math.min(w, h)). With no
             // aux-texture support we also pin uCheckTexOn / uSdfOn off so the shader
             // takes its analytic two-segment SDF branch.
-            passUniforms = { widthPx, heightPx, _, _ ->
+            passUniforms = { widthPx, heightPx, _, _, _, _ ->
                 val box = CHECK_BOX_FRAC * min(widthPx, heightPx).toDouble()
                 mapOf(
                     "uCheckBox" to box.toFloat(),
