@@ -142,6 +142,20 @@ jobs:
         working-directory: .
         run: node tools/dopamine/src/cli.mjs build --check
 
+      # --- MUST-PASS: the generated per-frame-geometry parity gates. Effects with
+      # `x-build.logic` carry a GENERATED XCTest target in their dist package that
+      # replays the committed web-dumped fixture against the TRANSPILED Swift
+      # renderer (pure Swift — it runs on Linux too; here it rides the macOS job
+      # because `dopamine build` has already produced dist/). ---
+      - name: dist effect-package logic parity tests
+        run: |
+          set -e
+          for tests in dist/swift/*/Tests; do
+            pkg=$(dirname "$tests")
+            echo "== swift test: $pkg"
+            (cd "$pkg" && swift test)
+          done
+
       # --- MUST-PASS: generate + build the iOS demo for the Simulator ---
       - name: Install XcodeGen
         run: brew install xcodegen

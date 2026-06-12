@@ -345,6 +345,11 @@
   },
   "x-build": {
     "note": "TOOLCHAIN build config (vendor-namespaced `x-` so runtime parsers ignore it; stripped from the embedded .dope). One block per platform: how `dopamine build` assembles the standalone, installable package into dist/<platform>/.",
+    "logic": {
+      "note": "CPU-precomputed per-frame GEOMETRY logic, authored ONCE in the restricted TS subset (`src`) and TRANSPILED to LightningRenderer.swift / LightningRenderer.kt by tools/dopamine/src/logic.mjs. `parityFixture` is the committed grid dumped from the web module (regen: node --experimental-strip-types effects/lightning/web/scripts/regen-logic-parity.mjs); it drives the generated pure-JVM JUnit test (synced into dopamine-core's testGenerated source set) and the generated XCTest target in the dist SwiftPM package.",
+      "src": "web/src/lightning-logic.ts",
+      "parityFixture": "web/test/lightning-logic-parity.json"
+    },
     "swift": {
       "module": "DopamineEffectLightning",
       "sources": "swift",

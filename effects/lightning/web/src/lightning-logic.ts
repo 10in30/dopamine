@@ -1,13 +1,29 @@
 /**
- * Lightning bolt geometry precompute (web).
+ * Lightning bolt geometry precompute — the SINGLE cross-platform source.
  *
- * PERFORMANCE: the original web lightning re-derived every bolt vertex with TWO
- * 4-octave `fbm` calls per segment AT EVERY PIXEL (~220 fbm/pixel), plus a 9-tap
- * shadow re-walk — ~1.1 s/frame under software/ANGLE WebGL. The bolt polyline is
- * fragment-INDEPENDENT, so we compute it ONCE per frame here (a faithful JS port
- * of the shared fbm/hash + the original `boltPoint`) and feed it to the shader as
- * the `uVerts` / `uBoltMeta` uniform arrays. The shader keeps the exact original
- * inverse-distance plasma glow; only the cost moved off the per-pixel path.
+ * The bolt polyline is fragment-INDEPENDENT, so it is computed ONCE per frame
+ * here (a faithful port of the shared fbm/hash + the original shader
+ * `boltPoint`) and fed to the shader as the `uVerts` / `uBoltMeta` arrays. The
+ * shader keeps the exact original inverse-distance plasma glow; only the cost
+ * moved off the per-pixel path.
+ *
+ * THIS FILE IS TRANSPILED to Swift (`LightningRenderer.swift`) and Kotlin
+ * (`LightningRenderer.kt`) by `tools/dopamine/src/logic.mjs` (declared by the
+ * `.dope` `x-build.logic` block) — the per-frame-geometry analog of the scoped
+ * GLSL→MSL shader transpiler. Keep it inside the supported subset:
+ *
+ *   • no imports — the module is self-contained (pure math, no DOM/GL);
+ *   • function declarations with `number` / `Float32Array` / interface-typed
+ *     params; `const`/`let`; `if`/`else`; canonical `for (let i = A; i < B; i++)`
+ *     loops; `break`/`continue`/`return`; ternaries; arithmetic + comparisons;
+ *   • Math.{floor,min,max,abs,sqrt,exp,hypot,sin,cos,pow,round} and Math.PI;
+ *   • `new Float32Array(n)`, element writes, `{ x, y }` vector literals, and a
+ *     `{ verts, meta }` bundle return (declared via an exported interface).
+ *
+ * The transpiler THROWS on anything outside that subset. Numeric semantics are
+ * JS's: every number is a double (loop counters transpile to ints), `/` is
+ * always double division, and array writes narrow to float32 exactly like the
+ * Float32Array stores here do.
  *
  * Output (gl_FragCoord space — device px, y-UP, to match the shader):
  *   verts: Float32Array(MAX_BOLTS * VERTS_PER_BOLT * 2) — vertex i of bolt b at
@@ -15,46 +31,83 @@
  *   meta:  Float32Array(MAX_BOLTS * 4) — per bolt (segCount, radFrac, fadeMul, isMain).
  */
 
-import { MAX_FORKS, BOLT_SEGS, MAX_BOLTS, VERTS_PER_BOLT } from "./lightning-shader.js";
-import { strikeProgress } from "./lightning-tempo.js";
+/** Max secondary forks — shared by the shader + the `.dope` clamp. */
+export const MAX_FORKS = 7;
+/** Polyline segment count of the main bolt (and forks). More = jaggier arc. */
+export const BOLT_SEGS = 14;
+/** Main trunk + forks. */
+export const MAX_BOLTS = MAX_FORKS + 1;
+/** Vertices stored per bolt (BOLT_SEGS + 1). */
+export const VERTS_PER_BOLT = BOLT_SEGS + 1;
+/** Window (ms) over which the bolt cracks in to the strike point. Hard + fast. */
+export const STRIKE_MS = 130;
 
-export interface LightningRenderParams {
-  style: number;       // = whimsy (drives the on-twos cel jitter)
-  thickness: number;   // bolt half-width as fraction of min dim
-  jagged: number;      // fbm perturbation amount of the bolt vertices
-  branches: number;    // number of secondary forks
-  boltSeed: number;    // per-fire hash offset
+interface Vec2 {
+  x: number;
+  y: number;
 }
 
-const clamp = (x: number, lo: number, hi: number): number => (x < lo ? lo : x > hi ? hi : x);
-const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
-const smoothstep = (e0: number, e1: number, x: number): number => {
+/** verts: MAX_BOLTS*VPB*2 ; meta: MAX_BOLTS*4 = (segCount, radFrac, fadeMul, isMain). */
+export interface LightningArrays {
+  verts: Float32Array;
+  meta: Float32Array;
+}
+
+function clamp(x: number, lo: number, hi: number): number {
+  return x < lo ? lo : x > hi ? hi : x;
+}
+
+function clamp01(x: number): number {
+  return x < 0 ? 0 : x > 1 ? 1 : x;
+}
+
+function smoothstep(e0: number, e1: number, x: number): number {
   const t = clamp01((x - e0) / (e1 - e0));
   return t * t * (3 - 2 * t);
-};
-const fract = (x: number): number => x - Math.floor(x);
-const mix = (a: number, b: number, t: number): number => a + (b - a) * t;
+}
 
-// --- Faithful JS port of the shared look/glsl hash + value-noise fbm ---------
+function fract(x: number): number {
+  return x - Math.floor(x);
+}
+
+function mix(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+/**
+ * Bolt strike progress (0..1) over elapsed ms — the jagged arc racing from the
+ * source to the action point. Ease-out quint: a near-instant crack-in that
+ * settles abruptly, so the bolt reads as a strike, not a slow draw.
+ */
+export function strikeProgress(elapsedMs: number): number {
+  const x = clamp01(elapsedMs / STRIKE_MS);
+  return 1 - Math.pow(1 - x, 5);
+}
+
+// --- Faithful port of the shared look/glsl hash + value-noise fbm -----------
+
 function hash11(p: number): number {
   p = fract(p * 0.1031);
   p *= p + 33.33;
   p *= p + p;
   return fract(p);
 }
+
+/** Just the .x channel of the shared hash21 (used for the start jog). */
 function hash21x(p: number): number {
-  // Just the .x channel of the shared hash21 (used for the start jog).
   let x = fract(p * 0.1031), y = fract(p * 0.103), z = fract(p * 0.0973);
   const d = x * (y + 33.33) + y * (z + 33.33) + z * (x + 33.33);
   x += d; y += d; z += d;
   return fract((x + y) * z);
 }
-function hash21(p: number): { x: number; y: number } {
+
+function hash21(p: number): Vec2 {
   let x = fract(p * 0.1031), y = fract(p * 0.103), z = fract(p * 0.0973);
   const d = x * (y + 33.33) + y * (z + 33.33) + z * (x + 33.33);
   x += d; y += d; z += d;
   return { x: fract((x + y) * z), y: fract((x + z) * y) };
 }
+
 function vnoise(x: number, y: number): number {
   const ix = Math.floor(x), iy = Math.floor(y);
   const fx = x - ix, fy = y - iy;
@@ -65,6 +118,7 @@ function vnoise(x: number, y: number): number {
   const d = hash11((ix + 1) * 1 + (iy + 1) * 57);
   return mix(mix(a, b, ux), mix(c, d, ux), uy);
 }
+
 function fbm(x: number, y: number): number {
   let s = 0, a = 0.5;
   for (let i = 0; i < 4; i++) {
@@ -75,8 +129,6 @@ function fbm(x: number, y: number): number {
   }
   return s;
 }
-
-interface Vec2 { x: number; y: number }
 
 /** Port of the shader boltPoint: a jagged vertex at t along A→B. */
 function boltPoint(A: Vec2, B: Vec2, t: number, seedOff: number, seed: number, jagged: number, beat: number): Vec2 {
@@ -114,46 +166,38 @@ function writeBolt(
   return last;
 }
 
-export interface LightningArrays {
-  verts: Float32Array; // MAX_BOLTS * VERTS_PER_BOLT * 2
-  meta: Float32Array;  // MAX_BOLTS * 4 = (segCount, radFrac, fadeMul, isMain)
-}
-
 /**
  * Compute the bolt polyline (trunk + forks) for this frame, in gl_FragCoord
- * space (device px, y-up). `origin` is the strike point (gl coords); `width`/
- * `height` the canvas device px; `elapsedMs`/`life` the timing.
+ * space (device px, y-up). `originX`/`originY` is the strike point (gl coords);
+ * `width`/`height` the canvas device px; `elapsedMs`/`life` the timing.
  */
 export function computeLightningArrays(
-  params: LightningRenderParams,
-  width: number,
-  height: number,
-  origin: { x: number; y: number },
-  elapsedMs: number,
-  life: number,
+  style: number, thickness: number, jagged: number, branches: number, boltSeed: number,
+  width: number, height: number, originX: number, originY: number,
+  elapsedMs: number, life: number,
 ): LightningArrays {
   const verts = new Float32Array(MAX_BOLTS * VERTS_PER_BOLT * 2);
   const meta = new Float32Array(MAX_BOLTS * 4);
   const strike = strikeProgress(elapsedMs);
   if (strike <= 0) return { verts, meta };
 
-  const seed = params.boltSeed;
-  const jagged = params.jagged;
-  const beat = Math.floor((elapsedMs / 1000) * 12) * params.style;
+  const seed = boltSeed;
+  const beat = Math.floor((elapsedMs / 1000) * 12) * style;
 
   // Strike geometry: from near the top edge (biased toward the strike x) down to
   // the strike point. gl coords y-up: top edge is y ≈ height.
   const jx = (hash21x(seed * 1.7) - 0.5) * width * 0.5;
-  const A: Vec2 = { x: clamp(origin.x + jx, width * 0.12, width * 0.88), y: height * 1.02 };
-  const B: Vec2 = { x: origin.x, y: origin.y };
+  const A: Vec2 = { x: clamp(originX + jx, width * 0.12, width * 0.88), y: height * 1.02 };
+  const B: Vec2 = { x: originX, y: originY };
 
   // MAIN BOLT (slot 0).
   const mainSegs = writeBolt(verts, 0, A, B, strike, 0, seed, jagged, beat);
-  meta[0] = mainSegs; meta[1] = params.thickness; meta[2] = 1.0; meta[3] = 1.0;
+  meta[0] = mainSegs; meta[1] = thickness; meta[2] = 1.0; meta[3] = 1.0;
 
   // FORKS (slots 1..).
-  const forks = Math.max(0, Math.min(MAX_FORKS, Math.round(params.branches)));
-  const dlen = Math.hypot(B.x - A.x, B.y - A.y) || 1;
+  const forks = Math.max(0, Math.min(MAX_FORKS, Math.round(branches)));
+  const dlenRaw = Math.hypot(B.x - A.x, B.y - A.y);
+  const dlen = dlenRaw === 0 ? 1 : dlenRaw;
   const dirx = (B.x - A.x) / dlen, diry = (B.y - A.y) / dlen;
   const nrmx = -diry, nrmy = dirx;
   const forkFade = 0.6 + 0.4 * (1 - smoothstep(0.5, 1.0, life));
@@ -170,7 +214,7 @@ export function computeLightningArrays(
     const forkB: Vec2 = { x: forkA.x + ex * reach, y: forkA.y + ey * reach };
     const forkDrawn = clamp((strike - launchT) / Math.max(1 - launchT, 0.05), 0, 1);
     const segs = writeBolt(verts, b, forkA, forkB, forkDrawn, i * 17 + 5, seed, jagged, beat);
-    meta[b * 4] = segs; meta[b * 4 + 1] = params.thickness * 0.6; meta[b * 4 + 2] = forkFade; meta[b * 4 + 3] = 0;
+    meta[b * 4] = segs; meta[b * 4 + 1] = thickness * 0.6; meta[b * 4 + 2] = forkFade; meta[b * 4 + 3] = 0;
   }
 
   return { verts, meta };

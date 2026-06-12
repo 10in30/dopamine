@@ -68,8 +68,10 @@ Why, in three lines:
   source; it promises a *binding contract* (uniform names + semantics) that each
   backend's shader honors. (Separately, at **build time**, the `@dopamine/build`
   toolchain generates MSL and Kotlin shader variants from a single GLSL ES 3.00
-  source for effects that opt in via `x-build.shader` — a build step, not part
-  of the format or the loader.)
+  source for effects that opt in via `x-build.shader`, and Swift/Kotlin
+  renderer logic from a single restricted-TS module for effects with
+  CPU-precomputed per-frame geometry that opt in via `x-build.logic` — build
+  steps, not part of the format or the loader.)
 
 ---
 

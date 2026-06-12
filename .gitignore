@@ -4,6 +4,10 @@ dist/
 # Toolchain-generated portable .dope synced into a web workspace's src. The single
 # source is effects/<id>/<slug>.dope.json; `dopamine build` regenerates these.
 effects/*/web/src/*.dope.json
+# Toolchain-generated per-frame-geometry logic parity gate (the generated Kotlin
+# renderer + JUnit grid test + fixture copy) synced into dopamine-core's test
+# sources; `dopamine build` regenerates these from effects/<id>/web sources.
+android/dopamine-core/src/testGenerated/
 *.tsbuildinfo
 e2e/output/
 test-results/

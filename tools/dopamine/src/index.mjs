@@ -12,3 +12,4 @@ export { generateSwiftPackage } from "./swift.mjs";
 export { generateNpmPackage } from "./web.mjs";
 export { generateAndroidLibrary } from "./android.mjs";
 export { buildFields, emitSwift, emitMSL, emitWeb, STANDARD } from "./uniforms.mjs";
+export { transpileLogic, parseLogicModule, loadLogic } from "./logic.mjs";

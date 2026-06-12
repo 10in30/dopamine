@@ -63,7 +63,7 @@ const MANIFEST = `<?xml version="1.0" encoding="utf-8"?>
  * Generate the Android library artifacts for one loaded effect.
  * @returns {Promise<Array<{ path: string, content: string }>>} dist-relative paths.
  */
-export async function generateAndroidLibrary({ root, eff, fonts = [] }) {
+export async function generateAndroidLibrary({ root, eff, fonts = [], logic = null }) {
   const { dir, doc, slug, dope } = eff;
   const a = doc["x-build"].android ?? {};
   const module = a.module ?? `dopamine-effect-${slug}`;
@@ -79,15 +79,19 @@ export async function generateAndroidLibrary({ root, eff, fonts = [] }) {
   //     `<Name>Shader.kt` is GENERATED from the web GLSL (the same source the MSL is
   //     transpiled from) instead of being hand-written — so the shader can't drift.
   //     A FULLY DECLARATIVE effect ships NO android/ dir at all and gets its
-  //     registration shim GENERATED from the `.dope` too (factory.mjs).
+  //     registration shim GENERATED from the `.dope` too (factory.mjs). When the
+  //     effect declares generated per-frame-geometry logic (`x-build.logic`), its
+  //     `<Name>Renderer.kt` is TRANSPILED from the single web TS source
+  //     (logic.mjs) — never hand-shipped.
   const shaderCfg = doc["x-build"].shader;
   const Name = slug.charAt(0).toUpperCase() + slug.slice(1);
   const generatedShaderFile = shaderCfg ? `${Name}Shader.kt` : null;
+  const generatedRendererFile = logic ? `${Name}Renderer.kt` : null;
   let handNames = null;
   try { handNames = (await readdir(srcAbs)).sort(); } catch { /* no android/ dir */ }
   if (handNames) {
     for (const name of handNames) {
-      if (name.endsWith(".kt") && name !== generatedShaderFile) {
+      if (name.endsWith(".kt") && name !== generatedShaderFile && name !== generatedRendererFile) {
         out.push({ path: join(modRel, "src/main/kotlin", pkgPath, name), content: await readFile(join(srcAbs, name), "utf8") });
       }
     }
@@ -98,6 +102,9 @@ export async function generateAndroidLibrary({ root, eff, fonts = [] }) {
   if (shaderCfg) {
     const gen = await generateAndroidShaderKt({ root, dir, slug, namespace, shaderCfg });
     out.push({ path: join(modRel, "src/main/kotlin", pkgPath, gen.name), content: gen.content });
+  }
+  if (logic) {
+    out.push({ path: join(modRel, "src/main/kotlin", pkgPath, `${Name}Renderer.kt`), content: logic.kotlin });
   }
 
   // (2) the PORTABLE .dope asset (byte-identical to the swift/web embeds).

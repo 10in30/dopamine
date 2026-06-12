@@ -23,6 +23,7 @@ import { generateSwiftPackage } from "./swift.mjs";
 import { generateNpmPackage } from "./web.mjs";
 import { generateAndroidLibrary } from "./android.mjs";
 import { convertFonts } from "./fonts.mjs";
+import { loadLogic, emitKotlinLogicParityTest } from "./logic.mjs";
 
 /**
  * Top-level `.dope` keys that are TOOLCHAIN-only — consumed here, never shipped.
@@ -73,8 +74,13 @@ export async function buildEffect({ root, effectDir, outDir }) {
   // package bundles its own lettering. The web embeds them base64 separately.
   const fonts = convertFonts(eff);
 
+  // Transpile the CPU-precomputed per-frame GEOMETRY logic ONCE (gated: no
+  // `x-build.logic` ⇒ null): the single web TS module → the generated Swift +
+  // Kotlin renderers the platform emitters embed (logic.mjs).
+  const logic = await loadLogic(eff);
+
   if (build.swift) {
-    dist.push(...(await generateSwiftPackage({ root, eff, outDir, fonts })));
+    dist.push(...(await generateSwiftPackage({ root, eff, outDir, fonts, logic })));
   }
   if (build.web) {
     dist.push(...(await generateNpmPackage({ eff })));
@@ -87,7 +93,22 @@ export async function buildEffect({ root, effectDir, outDir }) {
     });
   }
   if (build.android) {
-    dist.push(...(await generateAndroidLibrary({ root, eff, fonts })));
+    dist.push(...(await generateAndroidLibrary({ root, eff, fonts, logic })));
+    // The pure-JVM numeric parity gate for the generated Kotlin: sync the
+    // generated renderer + a generated JUnit grid test + the committed web-dumped
+    // fixture into dopamine-core's `testGenerated` test source set (gitignored),
+    // so `:dopamine-core:test` COMPILES the generated Kotlin and replays the grid
+    // on a plain JVM with no Android SDK (CI runs `dopamine build` first).
+    if (logic?.fixture) {
+      const Name = eff.slug.charAt(0).toUpperCase() + eff.slug.slice(1);
+      const gen = join("android", "dopamine-core", "src", "testGenerated");
+      sync.push({ path: join(gen, "kotlin", `${Name}Renderer.kt`), content: logic.kotlin });
+      sync.push({
+        path: join(gen, "kotlin", `${Name}LogicParityTest.kt`),
+        content: emitKotlinLogicParityTest(logic.model, eff.slug, logic.namespace),
+      });
+      sync.push({ path: join(gen, "resources", `${eff.slug}-logic-parity.json`), content: logic.fixture });
+    }
   }
 
   return { dist, sync };

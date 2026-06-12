@@ -17,10 +17,10 @@ import DopamineCore
 import simd
 #endif
 
-/// The single source of truth for the secondary-fork cap: BOTH the MSL
-/// `#define MAX_FORKS` and the integer-clamp const the `.dope` references
-/// (`clampMax: "MAX_FORKS"`).
-public let MAX_FORKS: Double = 7
+// NOTE: `MAX_FORKS` (the secondary-fork cap the `.dope`'s `clampMax` references,
+// matching the MSL `#define MAX_FORKS`) now lives in the GENERATED
+// `LightningRenderer.swift` — transpiled with the bolt precompute from the single
+// web source (lightning-logic.ts) by tools/dopamine/src/logic.mjs.
 
 /// Lightning: resolves a feeling → the flat `.dope` param bag. The drawable
 /// side is Metal-only (below).
@@ -37,7 +37,7 @@ public final class Lightning: EffectFactory {
     /// Resolve via the shared loader. `MAX_FORKS` is the only const; `boltSeed`
     /// is the scatter key — both byte-identical to the web call.
     public func resolve(_ feeling: DopeResolveInput) throws -> [String: DopeValue] {
-        try resolveDopeParams(doc, feeling, consts: ["MAX_FORKS": MAX_FORKS], scatterKey: "boltSeed")
+        try resolveDopeParams(doc, feeling, consts: ["MAX_FORKS": Double(MAX_FORKS)], scatterKey: "boltSeed")
     }
 }
 
@@ -80,7 +80,7 @@ public struct LightningConfig: PassConfig {
         // the reworked web `frame()` (so the strike + the precomputed bolt step in
         // lockstep at high whimsy). Composed on top of the resolved bag.
         return (amp, [
-            "strike": strikeProgress(info.animMs),
+            "strike": strikeProgress(elapsedMs: info.animMs),
             "flash": flashStrobe(info.life, flicker: flicker),
         ])
     }

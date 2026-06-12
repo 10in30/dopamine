@@ -24,7 +24,7 @@ import {
   LIGHTNING_VERTEX_SRC,
   MAX_FORKS,
 } from "./lightning-shader.js";
-import { computeLightningArrays, type LightningRenderParams } from "./lightning-renderer.js";
+import { computeLightningArrays } from "./lightning-logic.js";
 import {
   envelope,
   registerEffect,
@@ -52,6 +52,7 @@ interface LightningParams extends PassParams {
   flicker: number;
   overshoot: number;
   boltSeed: number;
+  style: number; // = whimsy (drives the on-twos cel jitter)
 }
 
 // Pure-shader pass effect, but the jagged bolt polyline (the part that used to
@@ -83,8 +84,11 @@ const CONFIG: PassConfig = {
     };
   },
   frameArrays: ({ animMs, life }, params, geom) => {
-    const p = params as unknown as LightningRenderParams;
-    const { verts, meta } = computeLightningArrays(p, geom.width, geom.height, geom.origin, animMs, life);
+    const p = params as LightningParams;
+    const { verts, meta } = computeLightningArrays(
+      p.style, p.thickness, p.jagged, p.branches, p.boltSeed,
+      geom.width, geom.height, geom.origin.x, geom.origin.y, animMs, life,
+    );
     return [
       { name: "uVerts", size: 2, data: verts },
       { name: "uBoltMeta", size: 4, data: meta },
