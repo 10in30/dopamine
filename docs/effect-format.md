@@ -13,6 +13,11 @@ backends (WebGL2, Metal, OpenGL ES 3.0, and declared fallbacks).
 
 ## 0. TL;DR / recommendation
 
+> **Authoring an effect?** You probably don't need this whole spec:
+> [`authoring-quickstart.md`](./authoring-quickstart.md) is the complete path
+> for the common case, and [`README.md`](./README.md) routes every task to its
+> smallest read. This document is the format's full definition + rationale.
+
 **Recommendation: an *inspired-by-Lottie* greenfield JSON schema, with a Lottie
 compatibility seam — NOT a literal Lottie extension.**
 

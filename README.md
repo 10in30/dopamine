@@ -242,7 +242,13 @@ that opt in, generates the MSL + Kotlin shader variants from the effect's one
 GLSL ES 3.00 source), then compiles the single effect folder into standalone,
 installable packages for every platform.
 
+## Authoring effects
+
+**Start at [`docs/README.md`](docs/README.md)** — it routes every task to its
+smallest read. The common case (a fully declarative pure-shader effect: one
+`.dope` + one GLSL shader, every platform generated) is covered end to end by
+the self-sufficient [`docs/authoring-quickstart.md`](docs/authoring-quickstart.md);
+the deep dives are [`docs/authoring-effects.md`](docs/authoring-effects.md)
+(how-to) and [`docs/effect-format.md`](docs/effect-format.md) (the spec).
 See [`CLAUDE.md`](CLAUDE.md) for the full architecture, the generalization
-boundary, the parity/staleness gates, and the conventions for adding effects.
-Format spec: [`docs/effect-format.md`](docs/effect-format.md). Authoring guide:
-[`docs/authoring-effects.md`](docs/authoring-effects.md).
+boundary, the parity/staleness gates, and the repo conventions.
