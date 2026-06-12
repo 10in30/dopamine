@@ -11,14 +11,10 @@ import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.sin
 
-/** Window (ms) over which the bolt cracks in to the strike point. Hard + fast. */
-const val STRIKE_MS: Double = 130.0
-
-/** Bolt strike progress (0..1) over elapsed ms — ease-out quint (near-instant crack-in). */
-fun strikeProgress(elapsedMs: Double): Double {
-    val x = tempoClamp01(elapsedMs / STRIKE_MS)
-    return 1.0 - (1.0 - x).pow(5.0)
-}
+// NOTE: STRIKE_MS + strikeProgress now live in the GENERATED LightningRenderer.kt
+// (same package) — the bolt precompute keys off the strike clock, so they ride
+// the single transpiled web source (lightning-logic.ts). Only the flash/strobe
+// shape below remains hand-written here.
 
 /** FLASH / STROBE amplitude (0..1+) over normalized life — the signature electric hit. */
 fun flashStrobe(life: Double, flicker: Double = 1.0): Double {

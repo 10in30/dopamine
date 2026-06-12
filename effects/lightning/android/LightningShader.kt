@@ -17,14 +17,10 @@ import ai.dopamine.core.GLSL_LIGHT_OUT
 import ai.dopamine.core.GLSL_SD_SEG
 import ai.dopamine.core.GLSL_TONEMAP_ACES
 
-/** Max secondary forks — shared by the renderer + the `.dope` clamp (MAX_FORKS). */
-const val MAX_FORKS = 7
-/** Polyline segment count of the main bolt (and forks). More = jaggier arc. */
-const val BOLT_SEGS = 14
-/** Main trunk + forks. */
-const val MAX_BOLTS = 1 + MAX_FORKS
-/** Vertices stored per bolt (BOLT_SEGS + 1). */
-const val VERTS_PER_BOLT = BOLT_SEGS + 1
+// NOTE: MAX_FORKS / BOLT_SEGS / MAX_BOLTS / VERTS_PER_BOLT now live in the
+// GENERATED LightningRenderer.kt (same package) — transpiled with the bolt
+// precompute from the single web source (lightning-logic.ts), so the geometry
+// constants can't drift from the logic that fills the arrays.
 
 val LIGHTNING_VERTEX_SRC: String = GLSL_FULLSCREEN_VERTEX
 

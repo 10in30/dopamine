@@ -21,15 +21,27 @@ handle (halo rides it end to end). Still open:
 - **More continuous effects** (a pulsing "recording" dot, a breathing skeleton
   placeholder) to exercise the contract beyond halo.
 
-## A transpiler for CPU-precomputed per-frame geometry
+## A transpiler for CPU-precomputed per-frame geometry — LANDED; remaining work
 
-Effects that precompute per-frame geometry on the CPU — e.g. lightning's bolt
-vertex array, fed to the shader as a vertex buffer — author that logic per
-platform today, and their shaders can't be generated until the logic is
-portable. A restricted TypeScript-subset transpiler (`<name>.logic.ts` →
-Swift + Kotlin, the same posture as the scoped GLSL→MSL shader transpiler)
-would let that logic be authored once. This is the largest and most niche
-single-source gap.
+The restricted TypeScript-subset transpiler now exists
+(`tools/dopamine/src/logic.mjs`, declared per effect via `x-build.logic`):
+lightning's bolt precompute is authored ONCE in
+`effects/lightning/web/src/lightning-logic.ts` and the toolchain generates
+`LightningRenderer.swift` / `LightningRenderer.kt` from it — gated byte-for-byte
+(`tools/dopamine/test/logic.test.mjs`, `golden-logic/`) and numerically by a
+committed web-dumped fixture replayed through a generated pure-JVM JUnit test
+(dopamine-core's `testGenerated` source set) and a generated XCTest target in
+the dist SwiftPM package (Linux-runnable). Still open:
+
+- **Generate lightning's shaders too.** The hand `.metal` reads the polyline
+  from `constant float2 *uVerts [[buffer(1)]]` while the web GLSL uses uniform
+  arrays, so `x-build.shader.generateMSL` needs a buffer-array seam in the
+  GLSL→MSL transpiler (see the PENDING note in
+  `tools/dopamine/test/shader-msl.test.mjs`) before lightning's `.metal`/`.kt`
+  shaders can be generated.
+- **Datafy lightning's remaining tempo** (`flashStrobe` is ~10 lines — likely
+  fits `tempo.frame`) and grow a generated-factory `frameArrays` seam so
+  lightning can drop its platform folders entirely.
 
 ## Extend the declarative path to panel/hybrid effects
 

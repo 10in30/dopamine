@@ -1,10 +1,15 @@
 # Authoring a Dopamine effect
 
-This is the **practical how-to** for adding a new visual effect to Dopamine. For
-the *design rationale* of the `.dope` file format (why it looks like it does, the
-multi-backend story, the Lottie lineage) read
-[`effect-format.md`](./effect-format.md) — this guide is the build instructions,
-that doc is the spec.
+This is the **deep-dive how-to** for adding a new visual effect to Dopamine.
+Two smaller documents may serve you better: for the COMMON case (a fully
+declarative pure-shader effect) read the self-sufficient
+[`authoring-quickstart.md`](./authoring-quickstart.md) (~3k tokens) instead of
+this file, and [`README.md`](./README.md) routes every task to its smallest
+read. The sections here are written to be read independently — jump straight
+to the one your task needs. For the *design rationale* of the `.dope` file
+format (why it looks like it does, the multi-backend story, the Lottie
+lineage) read [`effect-format.md`](./effect-format.md) — this guide is the
+build instructions, that doc is the spec.
 
 > **Architecture (one folder per effect).** The monorepo is a slim runtime core
 > plus one folder per effect:
@@ -417,8 +422,10 @@ Both runners set these automatically (`framework/pass-common.ts`,
 | `uResolution` | canvas size, device px |
 | `uOrigin` *(pass)* | anchor in gl coords (y-up), set only if `usesOrigin: true` |
 | `uCenter` *(panel)* | canvas center, device px |
+| `uTarget` | targeted element box (device px); full canvas when untargeted |
 | `uLife` | normalized life 0..1 |
 | `uTimeS` | elapsed seconds (the "on twos"-snapped clock for the pass runner) |
+| `uLoopS` / `uPhase` | seconds within / normalized phase of the `tempo.loop` period (continuous effects; 0 otherwise) |
 | `uStyle` | `style` (= whimsy) |
 | `uC0` / `uC1` / `uC2` | the three palette stops |
 | `uAmp` | the envelope amplitude returned by your `frame()` hook |
@@ -945,6 +952,9 @@ no shared-file edits**.
 
 ## See also
 
+- [`README.md`](./README.md) — the docs index: the smallest read per task.
+- [`authoring-quickstart.md`](./authoring-quickstart.md) — the complete,
+  self-sufficient path for a fully declarative effect (the common case).
 - [`effect-format.md`](./effect-format.md) — the `.dope` format spec + design
   rationale (multi-backend, Lottie lineage).
 - `effect-format.schema.json` — the JSON Schema for `.dope` documents.

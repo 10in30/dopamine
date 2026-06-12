@@ -13,6 +13,11 @@ backends (WebGL2, Metal, OpenGL ES 3.0, and declared fallbacks).
 
 ## 0. TL;DR / recommendation
 
+> **Authoring an effect?** You probably don't need this whole spec:
+> [`authoring-quickstart.md`](./authoring-quickstart.md) is the complete path
+> for the common case, and [`README.md`](./README.md) routes every task to its
+> smallest read. This document is the format's full definition + rationale.
+
 **Recommendation: an *inspired-by-Lottie* greenfield JSON schema, with a Lottie
 compatibility seam — NOT a literal Lottie extension.**
 
@@ -63,8 +68,10 @@ Why, in three lines:
   source; it promises a *binding contract* (uniform names + semantics) that each
   backend's shader honors. (Separately, at **build time**, the `@dopamine/build`
   toolchain generates MSL and Kotlin shader variants from a single GLSL ES 3.00
-  source for effects that opt in via `x-build.shader` — a build step, not part
-  of the format or the loader.)
+  source for effects that opt in via `x-build.shader`, and Swift/Kotlin
+  renderer logic from a single restricted-TS module for effects with
+  CPU-precomputed per-frame geometry that opt in via `x-build.logic` — build
+  steps, not part of the format or the loader.)
 
 ---
 

@@ -3,7 +3,9 @@
 # TWO jobs:
 #   1. deploy-demo — build the Vite demo and publish it to GitHub Pages (fast).
 #      Runs first so the live site updates without waiting on the slow reel.
-#      Only on main / workflow_dispatch — PRs don't publish to the live site.
+#      Only on MAIN (push or dispatch) — PRs and branch dispatches (CI re-kicks,
+#      media refreshes) must not publish to the live site, and the Pages
+#      environment would reject a non-main deploy anyway.
 #   2. reel — render every web effect in headless Chromium (WebGL via SwiftShader,
 #      so no GPU is needed) frame-by-frame, stitch them into one reel
 #      `e2e/output/dopamine-suite.mp4`, uploaded as an artifact. Runs AFTER the
@@ -53,7 +55,7 @@ jobs:
   # promptly, ahead of the slow headless reel render. main / dispatch only.
   # ---------------------------------------------------------------------------
   deploy-demo:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     # Serialize Pages deployments (don't cancel an in-flight one); scoped to this
     # job so the reel isn't queued behind it.

@@ -33,6 +33,11 @@ on:
       - "tools/dopamine/**"
       - ".github/workflows/android.yml"
   workflow_dispatch:
+    inputs:
+      refresh_media:
+        description: "Commit refreshed per-effect GIFs back to docs/media/android/"
+        type: boolean
+        default: false
 
 jobs:
   # ===========================================================================
@@ -154,12 +159,20 @@ jobs:
 
   # ===========================================================================
   # emulator — BEST-EFFORT. Boots an emulator with a real GL ES driver, installs
-  # the demo, autoplays every effect at slow-mo, and screen-records a clip. This
-  # is what actually proves the GLSL compiles + runs (a build can't).
+  # the demo, records every effect as its OWN clip (recorder rolling before each
+  # fire; dwell driven by the app's resolved durationMs), converts them to
+  # real-time mp4s + per-effect gallery GIFs, and concats the full-sequence
+  # dopamine.mp4. This is what actually proves the GLSL compiles + runs (a build
+  # can't). The final step optionally commits the GIFs to docs/media/android/ —
+  # ONLY when explicitly asked (workflow_dispatch refresh_media, or a "[media]"
+  # commit-message marker), so recordings (never byte-stable) don't bloat history
+  # on every push.
   # ===========================================================================
   emulator:
     runs-on: ubuntu-latest
     continue-on-error: true
+    permissions:
+      contents: write   # the guarded docs/media write-back below
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -198,8 +211,10 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - name: Boot emulator, autoplay all nine, record + speed to real time
+      - name: Boot emulator, record every effect per-clip + speed to real time
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          SLOWMO: "0.25"
         with:
           api-level: 34
           target: google_apis
@@ -222,3 +237,37 @@ jobs:
           name: dopamine-android-clip
           path: /tmp/out
           if-no-files-found: warn
+
+      - name: Upload per-effect gallery GIFs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dopamine-android-media
+          path: /tmp/media/android
+          if-no-files-found: warn
+
+      # Write-back is OPT-IN ONLY (recordings are never byte-stable; committing on
+      # every push would bloat history): dispatch this workflow with
+      # refresh_media=true, or push with "[media]" in the commit message.
+      # Loop-safety: the commit touches only docs/media/** (matched by NO
+      # workflow's paths filter), carries [skip ci], and is pushed with
+      # GITHUB_TOKEN (whose pushes don't trigger workflows anyway).
+      - name: Commit refreshed media to docs/media/android (guarded)
+        if: >-
+          (github.event_name == 'workflow_dispatch' && inputs.refresh_media) ||
+          (github.event_name == 'push' && contains(github.event.head_commit.message, '[media]'))
+        continue-on-error: true
+        run: |
+          set -x
+          if ! ls /tmp/media/android/*.gif >/dev/null 2>&1; then echo "no media produced — nothing to commit"; exit 0; fi
+          git config user.email noreply@anthropic.com
+          git config user.name Claude
+          mkdir -p docs/media/android
+          cp /tmp/media/android/*.gif docs/media/android/
+          git add docs/media/android
+          if git diff --cached --quiet; then echo "media unchanged — no commit"; exit 0; fi
+          git commit -m "docs(media): refresh Android gallery GIFs [skip ci]"
+          for i in 1 2 3; do
+            git push origin "HEAD:${GITHUB_REF_NAME}" && break
+            git pull --rebase origin "${GITHUB_REF_NAME}" || true
+          done

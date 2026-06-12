@@ -7,7 +7,7 @@
  * WebGL: the old shader re-derived every bolt vertex with TWO 4-octave `fbm`
  * calls per segment AT EVERY PIXEL (~220 fbm/pixel). The bolt polyline is
  * fragment-INDEPENDENT, so it's now computed ONCE per frame on the CPU (see
- * lightning-renderer.ts — a faithful JS port of the same fbm/boltPoint) and fed
+ * lightning-logic.ts — a faithful JS port of the same fbm/boltPoint) and fed
  * in as the `uVerts` / `uBoltMeta` uniform arrays. The fragment shader just walks
  * those segments with cheap `sdSeg` + the same glow accumulation, so the look is
  * unchanged while the per-pixel cost drops from ~220 fbm to a single fbm (the
@@ -27,15 +27,11 @@ import {
   GLSL_SD_SEG,
   GLSL_TONEMAP_ACES,
 } from "@dopamine/core";
+// The bolt-geometry constants live with the CPU precompute (the single
+// transpiled source, lightning-logic.ts); re-exported here for consumers.
+import { MAX_FORKS, BOLT_SEGS, MAX_BOLTS, VERTS_PER_BOLT } from "./lightning-logic.js";
 
-/** Max secondary forks — shared by the renderer + the `.dope` clamp. */
-export const MAX_FORKS = 7;
-/** Polyline segment count of the main bolt (and forks). More = jaggier arc. */
-export const BOLT_SEGS = 14;
-/** Main trunk + forks. */
-export const MAX_BOLTS = 1 + MAX_FORKS;
-/** Vertices stored per bolt (BOLT_SEGS + 1). */
-export const VERTS_PER_BOLT = BOLT_SEGS + 1;
+export { MAX_FORKS, BOLT_SEGS, MAX_BOLTS, VERTS_PER_BOLT };
 
 export const LIGHTNING_VERTEX_SRC = /* glsl */ `#version 300 es
 void main() {

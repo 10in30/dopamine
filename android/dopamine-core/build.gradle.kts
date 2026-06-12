@@ -17,7 +17,18 @@ kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
+
+    // Toolchain-SYNCED generated parity tests (gitignored; `dopamine build`
+    // writes them): for every effect with `x-build.logic`, the GENERATED Kotlin
+    // renderer + a generated JUnit grid test + the committed web-dumped fixture
+    // land in src/testGenerated — so this pure-JVM module COMPILES the generated
+    // Kotlin and replays the numeric parity grid with no Android SDK (the jvm CI
+    // job runs `dopamine build` first). Absent (fresh clone, no build yet) the
+    // dirs contribute nothing and the suite still runs.
+    sourceSets["test"].kotlin.srcDir("src/testGenerated/kotlin")
 }
+
+sourceSets["test"].resources.srcDir("src/testGenerated/resources")
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17

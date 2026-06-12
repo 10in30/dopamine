@@ -21,16 +21,34 @@ whimsy controls, every effect, in your browser.
 
 ## Gallery
 
-The built-in effects, all driven by the same `.dope` format. (Animated
-previews — rendered headlessly in CI; `npm run media` regenerates them.)
+The built-in effects, all driven by the same `.dope` format — **one row per
+effect, one column per platform**, each cell rendered by that platform's real
+stack:
 
-|  |  |
-|:---:|:---:|
-| <img src="docs/media/solarbloom.gif" width="380" alt="solarbloom"><br>**solarbloom** · success | <img src="docs/media/aurora.gif" width="380" alt="aurora"><br>**aurora** · success |
-| <img src="docs/media/comic.gif" width="380" alt="comic"><br>**comic** · success | <img src="docs/media/confetti.gif" width="380" alt="confetti"><br>**confetti** · celebration |
-| <img src="docs/media/fail.gif" width="380" alt="fail"><br>**fail** · error | <img src="docs/media/heartburst.gif" width="380" alt="heartburst"><br>**heartburst** · love |
-| <img src="docs/media/inkstroke.gif" width="380" alt="inkstroke"><br>**inkstroke** · success | <img src="docs/media/lightning.gif" width="380" alt="lightning"><br>**lightning** · power-up |
-| <img src="docs/media/ripple.gif" width="380" alt="ripple"><br>**ripple** · success | <img src="docs/media/halo.gif" width="380" alt="halo"><br>**halo** · loading (continuous) |
+- **Web** — headless Chromium / WebGL2 (`npm run media`, committed manually).
+- **iOS** — the demo app rendering each effect off-screen through Metal on a CI
+  Simulator (`swift.yml`'s MediaRecorder step).
+- **Android** — the demo app screen-recorded per effect on a CI emulator's
+  GL ES driver (`android.yml`'s emulator job).
+
+The iOS / Android cells are captured **in CI** and committed back to
+`docs/media/ios/` / `docs/media/android/` only on an explicit refresh: dispatch
+the `swift` / `android` workflow with `refresh_media: true`, or push with
+`[media]` in the commit message. (Until the first refresh run those cells are
+empty.)
+
+| Effect | Web (WebGL2) | iOS (Metal) | Android (GL ES 3.0) |
+|---|:---:|:---:|:---:|
+| **solarbloom**<br>success | <img src="docs/media/solarbloom.gif" width="380" alt="solarbloom — web"> | <img src="docs/media/ios/solarbloom.gif" width="380" alt="solarbloom — iOS"> | <img src="docs/media/android/solarbloom.gif" width="380" alt="solarbloom — Android"> |
+| **aurora**<br>success | <img src="docs/media/aurora.gif" width="380" alt="aurora — web"> | <img src="docs/media/ios/aurora.gif" width="380" alt="aurora — iOS"> | <img src="docs/media/android/aurora.gif" width="380" alt="aurora — Android"> |
+| **comic**<br>success | <img src="docs/media/comic.gif" width="380" alt="comic — web"> | <img src="docs/media/ios/comic.gif" width="380" alt="comic — iOS"> | <img src="docs/media/android/comic.gif" width="380" alt="comic — Android"> |
+| **confetti**<br>celebration | <img src="docs/media/confetti.gif" width="380" alt="confetti — web"> | <img src="docs/media/ios/confetti.gif" width="380" alt="confetti — iOS"> | <img src="docs/media/android/confetti.gif" width="380" alt="confetti — Android"> |
+| **fail**<br>error | <img src="docs/media/fail.gif" width="380" alt="fail — web"> | <img src="docs/media/ios/fail.gif" width="380" alt="fail — iOS"> | <img src="docs/media/android/fail.gif" width="380" alt="fail — Android"> |
+| **heartburst**<br>love | <img src="docs/media/heartburst.gif" width="380" alt="heartburst — web"> | <img src="docs/media/ios/heartburst.gif" width="380" alt="heartburst — iOS"> | <img src="docs/media/android/heartburst.gif" width="380" alt="heartburst — Android"> |
+| **inkstroke**<br>success | <img src="docs/media/inkstroke.gif" width="380" alt="inkstroke — web"> | <img src="docs/media/ios/inkstroke.gif" width="380" alt="inkstroke — iOS"> | <img src="docs/media/android/inkstroke.gif" width="380" alt="inkstroke — Android"> |
+| **lightning**<br>power-up | <img src="docs/media/lightning.gif" width="380" alt="lightning — web"> | <img src="docs/media/ios/lightning.gif" width="380" alt="lightning — iOS"> | <img src="docs/media/android/lightning.gif" width="380" alt="lightning — Android"> |
+| **ripple**<br>success | <img src="docs/media/ripple.gif" width="380" alt="ripple — web"> | <img src="docs/media/ios/ripple.gif" width="380" alt="ripple — iOS"> | <img src="docs/media/android/ripple.gif" width="380" alt="ripple — Android"> |
+| **halo**<br>loading (continuous) | <img src="docs/media/halo.gif" width="380" alt="halo — web"> | <img src="docs/media/ios/halo.gif" width="380" alt="halo — iOS"> | <img src="docs/media/android/halo.gif" width="380" alt="halo — Android"> |
 
 <details>
 <summary>📸 Still frames</summary>
@@ -242,7 +260,13 @@ that opt in, generates the MSL + Kotlin shader variants from the effect's one
 GLSL ES 3.00 source), then compiles the single effect folder into standalone,
 installable packages for every platform.
 
+## Authoring effects
+
+**Start at [`docs/README.md`](docs/README.md)** — it routes every task to its
+smallest read. The common case (a fully declarative pure-shader effect: one
+`.dope` + one GLSL shader, every platform generated) is covered end to end by
+the self-sufficient [`docs/authoring-quickstart.md`](docs/authoring-quickstart.md);
+the deep dives are [`docs/authoring-effects.md`](docs/authoring-effects.md)
+(how-to) and [`docs/effect-format.md`](docs/effect-format.md) (the spec).
 See [`CLAUDE.md`](CLAUDE.md) for the full architecture, the generalization
-boundary, the parity/staleness gates, and the conventions for adding effects.
-Format spec: [`docs/effect-format.md`](docs/effect-format.md). Authoring guide:
-[`docs/authoring-effects.md`](docs/authoring-effects.md).
+boundary, the parity/staleness gates, and the repo conventions.
