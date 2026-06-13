@@ -142,6 +142,8 @@
           0 40px 60px -30px #000;
       }
       .fire:active { transform: translateZ(60px) translateY(1px); }
+      .fire:disabled { opacity: 0.45; cursor: default; box-shadow: 0 6px 12px -4px #0007; }
+      #pause { background: linear-gradient(180deg, #e9edff, #b9c3ea); transform: translateZ(64px); }
       .hint { color: var(--muted); font-size: 12px; text-align: center; transform: translateZ(10px); }
     </style>
   </head>
@@ -173,6 +175,7 @@
             <button data-effect="heartburst">Heart</button>
             <button data-effect="lightning">Lightning</button>
             <button data-effect="halo">Halo</button>
+            <button data-effect="dots">Dots</button>
           </div>
         </div>
         <div class="control">
@@ -192,7 +195,8 @@
           <input id="whimsy" type="range" min="0" max="1" step="0.01" value="0.5" />
         </div>
         <button class="fire" id="fire">Complete order ✨</button>
-        <p class="hint">Each fire seeds a unique palette — watch the cards catch the light and throw shadow.</p>
+        <button class="fire" id="pause" disabled>Pause loop</button>
+        <p class="hint">Each fire seeds a unique palette — watch the cards catch the light and throw shadow. For a CONTINUOUS effect (Halo, Dots), Fire toggles the loop and <b>Pause loop</b> freezes it mid-breath, then resumes it drift-free.</p>
       </section>
     </main>
     <script type="module" src="/src/main.ts"></script>

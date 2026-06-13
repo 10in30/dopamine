@@ -50,6 +50,8 @@ packages:
     path: "../../dist/swift/DopamineEffectRipple"
   DopamineEffectHalo:
     path: "../../dist/swift/DopamineEffectHalo"
+  DopamineEffectDots:
+    path: "../../dist/swift/DopamineEffectDots"
 
 targets:
   DopamineDemo:
@@ -114,6 +116,8 @@ targets:
         product: DopamineEffectRipple
       - package: DopamineEffectHalo
         product: DopamineEffectHalo
+      - package: DopamineEffectDots
+        product: DopamineEffectDots
 
 schemes:
   DopamineDemo:

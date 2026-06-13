@@ -26,6 +26,7 @@ import { RIPPLE_FRAGMENT_SRC } from "../../../effects/ripple/web/src/ripple-shad
 import { LIGHTNING_FRAGMENT_SRC } from "../../../effects/lightning/web/src/lightning-shader.ts";
 import { INK_FRAGMENT_SRC } from "../../../effects/inkstroke/web/src/inkstroke-shader.ts";
 import { HALO_FRAGMENT_SRC } from "../../../effects/halo/web/src/halo-shader.ts";
+import { DOTS_FRAGMENT_SRC } from "../../../effects/dots/web/src/dots-shader.ts";
 import { FAIL_FRAGMENT_SRC } from "../../../effects/fail/web/src/fail-shader.ts";
 import { HEARTBURST_FRAGMENT_SRC } from "../../../effects/heartburst/web/src/heartburst-shader.ts";
 import { COMIC_FRAGMENT_SRC } from "../../../effects/comic/web/src/comic-shader.ts";
@@ -44,6 +45,9 @@ const SNAPSHOT = [
   { slug: "ripple", fragment: RIPPLE_FRAGMENT_SRC },
   { slug: "inkstroke", fragment: INK_FRAGMENT_SRC },
   { slug: "halo", fragment: HALO_FRAGMENT_SRC },
+  // dots exercises the dynamic-count loop seam: a `for (i < MAX_DOTS) if (i >= count)
+  // break;` row, the int-as-float uDotCount uniform, and a fully declarative looper.
+  { slug: "dots", fragment: DOTS_FRAGMENT_SRC },
   { slug: "fail", fragment: FAIL_FRAGMENT_SRC },
   { slug: "lightning", fragment: LIGHTNING_FRAGMENT_SRC },
   // heartburst exercises the PANEL seams: the `vUv` reconstruction (the panel

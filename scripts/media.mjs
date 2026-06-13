@@ -38,6 +38,7 @@ const EFFECTS = [
   { name: "lightning", mood: "electric", intensity: 0.95, whimsy: 0.4, still: 0.3 },
   { name: "ripple", mood: "celebratory", intensity: 0.85, whimsy: 0.4, still: 0.4 },
   { name: "halo", mood: "serene", intensity: 0.8, whimsy: 0.45, still: 0.5 },
+  { name: "dots", mood: "celebratory", intensity: 0.8, whimsy: 0.4, still: 0.5 },
 ];
 
 function ffmpegBin() {

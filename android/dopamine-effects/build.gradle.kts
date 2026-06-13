@@ -37,4 +37,5 @@ dependencies {
     api(project(":dopamine-effect-lightning"))
     api(project(":dopamine-effect-ripple"))
     api(project(":dopamine-effect-halo"))
+    api(project(":dopamine-effect-dots"))
 }

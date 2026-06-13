@@ -280,7 +280,7 @@ class MainActivity : Activity() {
             "comic" to "celebratory", "confetti" to "celebratory",
             "fail" to "electric", "heartburst" to "celebratory",
             "inkstroke" to "celebratory", "lightning" to "electric",
-            "ripple" to "celebratory", "halo" to "serene",
+            "ripple" to "celebratory", "halo" to "serene", "dots" to "celebratory",
         )
 
         fun moodFor(name: String, i: Int) =

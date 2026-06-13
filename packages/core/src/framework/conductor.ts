@@ -47,6 +47,22 @@ interface ActiveEffect {
   loop: boolean;
   /** Set by the play handle's `stop()`; the next frame disposes + resolves. */
   stopRequested: boolean;
+  /**
+   * Wall-clock time (`performance.now()`) at which the effect was paused, or 0
+   * while running. A paused effect's timeline is frozen — the frame loop neither
+   * advances its clock nor draws it — and `resume()` shifts `startedAt` forward
+   * by the paused span, so the clock (and a loop's seam) resumes exactly where
+   * it left off: drift-free, no battery spent on a paused background loop.
+   */
+  pausedAt: number;
+  /**
+   * `true` when the pause was triggered automatically by the document going
+   * hidden (the visibility/idle economics), not by an explicit `handle.pause()`.
+   * Auto-pause is lifted only when the document becomes visible again — so a
+   * manual `pause()` survives a tab hide/show, and a manual `resume()` does not
+   * defeat the host's idle policy.
+   */
+  autoPaused: boolean;
 }
 
 /** A persistent overlay + GL contexts + RAF loop bound to one target element. */
@@ -178,6 +194,10 @@ function ensureLoop(host: Host): void {
   const frame = (now: number): void => {
     host.raf = 0;
     if (host.active.size === 0) return;
+    // Visibility economics: a perpetual loop (or any effect) in a hidden tab is
+    // AUTO-PAUSED — its timeline freezes so it costs no battery in a long-lived
+    // background view — and resumes drift-free when the tab is shown again.
+    if (isDocumentHidden()) autoPauseHidden(host);
     const hidden = isDocumentHidden();
     if (!hidden) {
       syncHostSize(host);
@@ -185,14 +205,20 @@ function ensureLoop(host: Host): void {
       beginShadow(host);
     }
     for (const fx of [...host.active]) {
-      const elapsed = now - fx.startedAt;
-      // Skip the (invisible) draw on hidden tabs, but keep the timeline moving.
-      if (!hidden) fx.renderAt(Math.min(elapsed, fx.durationMs));
       if (fx.stopRequested) {
         host.active.delete(fx);
         fx.dispose();
         fx.resolve();
-      } else if (elapsed >= fx.durationMs) {
+        continue;
+      }
+      // A paused effect (manual pause() or the hidden-tab auto-pause) holds: its
+      // clock does not advance and it is not redrawn. The last drawn frame stays
+      // on screen until resume() (or a stop/teardown).
+      if (fx.pausedAt) continue;
+      const elapsed = now - fx.startedAt;
+      // Skip the (invisible) draw on hidden tabs, but keep the timeline moving.
+      if (!hidden) fx.renderAt(Math.min(elapsed, fx.durationMs));
+      if (elapsed >= fx.durationMs) {
         if (fx.loop) {
           // CONTINUOUS effect: re-arm at the seam instead of tearing down. The
           // .dope loop contract guarantees t == durationMs renders as t == 0, so
@@ -206,13 +232,93 @@ function ensureLoop(host: Host): void {
         }
       }
     }
-    if (host.active.size > 0) {
-      host.raf = requestAnimationFrame(frame);
-    } else {
+    if (host.active.size === 0) {
       quiesce(host);
+      return;
     }
+    // When EVERY live effect is paused there is nothing to advance or draw, so
+    // we stop spinning the RAF (no idle churn). The pause's resume() — or, for
+    // the hidden-tab auto-pause, the visibilitychange listener — re-arms it.
+    if (allPaused(host)) {
+      if (host.raf) {
+        cancelAnimationFrame(host.raf);
+        host.raf = 0;
+      }
+      return;
+    }
+    host.raf = requestAnimationFrame(frame);
   };
   host.raf = requestAnimationFrame(frame);
+}
+
+/** True when every live effect on the host is paused (manual or auto). */
+function allPaused(host: Host): boolean {
+  for (const fx of host.active) if (!fx.pausedAt) return false;
+  return host.active.size > 0;
+}
+
+/**
+ * Pause an effect: freeze its timeline at `now` so it neither advances nor
+ * draws. `auto` marks a hidden-tab auto-pause (lifted only by the tab becoming
+ * visible). A re-pause keeps the original `pausedAt` so the frozen clock is
+ * stable; `auto` only ever escalates (a manual pause that later goes hidden
+ * stays manual; an auto-pause that the host later pauses manually becomes
+ * manual, so showing the tab won't auto-resume it).
+ */
+function pauseEffect(fx: ActiveEffect, now: number, auto: boolean): void {
+  if (!fx.pausedAt) fx.pausedAt = now;
+  if (!auto) fx.autoPaused = false;
+}
+
+/**
+ * Resume a paused effect: shift `startedAt` forward by the span it was paused,
+ * so its clock continues exactly where it froze (drift-free; a loop's seam is
+ * preserved). No-op if it isn't paused.
+ */
+function resumeEffect(fx: ActiveEffect, now: number): void {
+  if (!fx.pausedAt) return;
+  fx.startedAt += now - fx.pausedAt;
+  fx.pausedAt = 0;
+  fx.autoPaused = false;
+}
+
+/** Auto-pause every running effect on a host because the document went hidden. */
+function autoPauseHidden(host: Host): void {
+  const now = performance.now();
+  for (const fx of host.active) {
+    if (!fx.pausedAt) {
+      fx.pausedAt = now;
+      fx.autoPaused = true;
+    }
+  }
+}
+
+/** Auto-resume the effects a hidden-tab auto-pause paused (the tab is visible). */
+function autoResumeVisible(host: Host): void {
+  const now = performance.now();
+  let any = false;
+  for (const fx of host.active) {
+    if (fx.pausedAt && fx.autoPaused) {
+      resumeEffect(fx, now);
+      any = true;
+    }
+  }
+  if (any) ensureLoop(host);
+}
+
+/**
+ * Install ONE document-level `visibilitychange` listener that auto-resumes
+ * every host when the tab is shown again (the hide path is handled in-loop, so
+ * a tab that's already hidden when an effect fires is covered too). Idempotent.
+ */
+let visibilityListenerInstalled = false;
+function ensureVisibilityListener(): void {
+  if (visibilityListenerInstalled || typeof document === "undefined") return;
+  visibilityListenerInstalled = true;
+  document.addEventListener("visibilitychange", () => {
+    if (isDocumentHidden()) return;
+    for (const host of hosts.values()) autoResumeVisible(host);
+  });
 }
 
 /**
@@ -273,12 +379,20 @@ export interface PlayRequest {
 /**
  * What `play()` returns: awaitable as before (resolves when the effect has
  * fully played out — or, for a CONTINUOUS effect, when the host stops it), plus
- * a `stop()` for looping effects. `stop()` on a one-shot ends it early; on an
- * already-finished effect it is a no-op.
+ * lifecycle controls. `stop()` ends it (a one-shot early; an already-finished
+ * effect: a no-op). `pause()`/`resume()` FREEZE and RESUME the timeline — for a
+ * perpetual loop in a long-lived view, pausing parks it so it costs no battery,
+ * and resuming continues drift-free (the loop seam is preserved). All three are
+ * no-ops off-DOM or once the effect has resolved.
  */
-export type PlayHandle = Promise<void> & { stop(): void };
+export type PlayHandle = Promise<void> & {
+  stop(): void;
+  pause(): void;
+  resume(): void;
+};
 
-const resolvedHandle = (): PlayHandle => Object.assign(Promise.resolve(), { stop() {} });
+const resolvedHandle = (): PlayHandle =>
+  Object.assign(Promise.resolve(), { stop() {}, pause() {}, resume() {} });
 
 /**
  * Play an effect in real time. Resolves when it has fully played out. A
@@ -300,7 +414,7 @@ export function play(req: PlayRequest): PlayHandle {
     instance = req.factory.create(params, buildEffectContext(host, req.anchor, req.targetSize));
   } catch (err) {
     if (host.active.size === 0) quiesce(host);
-    return Object.assign(Promise.reject(err), { stop() {} });
+    return Object.assign(Promise.reject(err), { stop() {}, pause() {}, resume() {} });
   }
 
   // Reduced motion: draw one calm frame, hold briefly (a looping effect holds
@@ -319,10 +433,26 @@ export function play(req: PlayRequest): PlayHandle {
     resolve,
     loop: !!req.factory.loop,
     stopRequested: false,
+    pausedAt: 0,
+    autoPaused: false,
   };
   host.active.add(fx);
+  ensureVisibilityListener();
   ensureLoop(host);
-  return Object.assign(done, { stop: () => { fx.stopRequested = true; } });
+  return Object.assign(done, {
+    stop: () => {
+      fx.stopRequested = true;
+      // Stopping a paused effect must still wake the loop so the next frame
+      // disposes + resolves it (the loop is parked while everything's paused).
+      fx.pausedAt = 0;
+      ensureLoop(host);
+    },
+    pause: () => pauseEffect(fx, performance.now(), false),
+    resume: () => {
+      resumeEffect(fx, performance.now());
+      ensureLoop(host);
+    },
+  });
 }
 
 function playReduced(
@@ -353,7 +483,10 @@ function playReduced(
   // A CONTINUOUS effect's calm frame holds until the host stops it (the
   // reduced-motion analog of the loop); a one-shot's holds for holdMs.
   if (!factory.loop) setTimeout(finish, holdMs);
-  return Object.assign(done, { stop: finish });
+  // Reduced motion renders one static held frame (no animation, no loop), so
+  // pause/resume have nothing to freeze — they are no-ops, but present so the
+  // handle's shape is identical to the animated path.
+  return Object.assign(done, { stop: finish, pause() {}, resume() {} });
 }
 
 /**

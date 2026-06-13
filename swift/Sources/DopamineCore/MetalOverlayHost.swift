@@ -145,6 +145,12 @@ public final class MetalOverlayHost<Config: PassConfig> {
     public let shadowLayer: CAMetalLayer?
     private var runner: MetalPassRunner<Config>?
     private var startTime: CFTimeInterval = 0
+    /// Wall-clock time the effect was paused, or nil while running. While paused
+    /// `tick` is a no-op (the last frame holds on screen) — so a perpetual
+    /// `tempo.loop` effect in a backgrounded view costs no GPU/battery. `resume`
+    /// shifts `startTime` forward by the paused span, so the clock (and a loop's
+    /// seam) continues exactly where it froze: drift-free.
+    private var pausedAt: CFTimeInterval?
     private var config: Config
     private let library: MTLLibrary
     private let wantsShadow: Bool
@@ -275,6 +281,28 @@ public final class MetalOverlayHost<Config: PassConfig> {
     /// build, no texture upload.
     public func play() {
         startTime = CACurrentMediaTime()
+        pausedAt = nil
+    }
+
+    /// Whether the effect's clock is currently frozen.
+    public var isPaused: Bool { pausedAt != nil }
+
+    /// Freeze the animation clock at `now` (default: the current media time). A
+    /// paused effect's `tick` does nothing — the host KEEPS the last frame on the
+    /// layer and spends no GPU — the analog of the web conductor parking its RAF
+    /// for a paused/hidden loop. Idempotent. The host that owns the display link
+    /// should stop pumping `tick` (or just let the no-op ticks pass).
+    public func pause(now: CFTimeInterval = CACurrentMediaTime()) {
+        if pausedAt == nil { pausedAt = now }
+    }
+
+    /// Resume a paused clock: shift `startTime` forward by the paused span so the
+    /// effect continues exactly where it froze — drift-free, the loop seam intact.
+    /// No-op if not paused.
+    public func resume(now: CFTimeInterval = CACurrentMediaTime()) {
+        guard let p = pausedAt else { return }
+        startTime += now - p
+        pausedAt = nil
     }
 
     /// Allocate an RGBA panel CGContext (top-left origin, matching Canvas2D), run
@@ -369,6 +397,8 @@ public final class MetalOverlayHost<Config: PassConfig> {
     public func tick(now: CFTimeInterval, dpr: Float, anchorPx: SIMD2<Float>,
                      targetPx: SIMD2<Float> = .zero) {
         guard let runner else { return }
+        // Paused: hold the last frame, advance nothing, draw nothing (no battery).
+        if pausedAt != nil { return }
         let elapsedMs = (now - startTime) * 1000 * timeScale
 
         // Re-draw the hybrid panel for this frame's life (the web redraws its
