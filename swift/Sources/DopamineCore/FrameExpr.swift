@@ -69,10 +69,14 @@ public struct PassExprInputs {
     public var sdfRange: Double
     /// That SDF's `viewBox[2]` (author-units width); 0 when absent.
     public var sdfViewBoxW: Double
-    public init(targetMinDimPx: Double, sdfRange: Double = 0, sdfViewBoxW: Double = 0) {
+    /// The device-pixel ratio (the layer's content scale) — so a pass value
+    /// authored in CSS-ish units can scale to device px (web parity).
+    public var dpr: Double
+    public init(targetMinDimPx: Double, sdfRange: Double = 0, sdfViewBoxW: Double = 0, dpr: Double = 1) {
         self.targetMinDimPx = targetMinDimPx
         self.sdfRange = sdfRange
         self.sdfViewBoxW = sdfViewBoxW
+        self.dpr = dpr
     }
 }
 
@@ -80,7 +84,7 @@ public struct PassExprInputs {
 private enum ExprMode { case frame, params, pass }
 
 private let frameInputs: Set<String> = ["animMs", "life", "elapsedMs", "loopS", "phase"]
-private let passInputs: Set<String> = ["targetMinDimPx", "sdfRange", "sdfViewBoxW"]
+private let passInputs: Set<String> = ["targetMinDimPx", "sdfRange", "sdfViewBoxW", "dpr"]
 
 /// Errors the per-frame grammar can raise. Messages mirror the web evaluator's.
 public enum FrameExprError: Error, CustomStringConvertible {
@@ -118,6 +122,7 @@ private func evalInput(_ name: String, _ ctx: FrameExprCtx, _ mode: ExprMode) th
         case "targetMinDimPx": return ctx.pass?.targetMinDimPx ?? 0
         case "sdfRange": return ctx.pass?.sdfRange ?? 0
         case "sdfViewBoxW": return ctx.pass?.sdfViewBoxW ?? 0
+        case "dpr": return ctx.pass?.dpr ?? 0
         default: throw FrameExprError.unknownInput(name)
         }
     }
@@ -191,6 +196,7 @@ private func evalNode(_ node: JSONValue, _ ctx: FrameExprCtx, _ mode: ExprMode) 
         return pow(try eval(a[0]), try eval(a[1]))
     }
     if let s = node["sin"] { return sin(try eval(s)) }
+    if let c = node["cos"] { return cos(try eval(c)) }
     if let e = node["exp"] { return exp(try eval(e)) }
     if let c = node["clamp01"] { return tempoClamp01(try eval(c)) }
     if node["lt"] != nil {

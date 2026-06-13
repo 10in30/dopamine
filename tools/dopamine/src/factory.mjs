@@ -107,7 +107,7 @@ const genHeader = (slug) =>
  * `buildFrameArraysSpec` wiring) emits the closure that calls the generated
  * renderer and binds its bundle through `binding.arrays`.
  */
-export function emitSwiftFactory(slug, frameArrays = null) {
+export function emitSwiftFactory(slug, frameArrays = null, panel = false) {
   const Name = pascal(slug);
   let frameArraysArg = "";
   if (frameArrays) {
@@ -134,14 +134,26 @@ ${buffers}
                 ]
             }`;
   }
+  const configType = panel ? `DopePanelPassConfig<${Name}Uniforms>` : `DopePassConfig<${Name}Uniforms>`;
+  const panelArg = panel
+    ? `,
+            // The hand-written per-effect panel draw (the panel-draw seam:
+            // effects/${slug}/swift/${Name}Panel.swift) — the ONLY per-effect
+            // Swift; the backbone redraws + uploads it every frame.
+            drawPanel: draw${Name}Panel`
+    : "";
+  const handNote = panel
+    ? `// shell. The ONLY hand-written Swift is the Core Graphics panel draw
+// (${Name}Panel.swift — panel geometry is code by design); everything that isn't the`
+    : `// shell. This effect ships NO hand-written Swift: everything that isn't the`;
   return `${genHeader(slug)}
 //
 // ${Name} as a Dopamine effect on the Swift backbone — the DATA-DRIVEN factory
-// shell. This effect ships NO hand-written Swift: everything that isn't the
+${handNote}
 // shader lives in ${slug}.dope.json — the mood→params mapping + OKLCH palette
 // (the loader), the per-frame logic (\`tempo.frame\`), \`render.shadowHeightFrac\`,
 // \`render.consts\`, \`render.config\`, any \`tempo.loop\` contract and the uniform
-// \`binding\` contract. The generic \`DopePassConfig\` interprets that data through
+// \`binding\` contract. The generic \`${panel ? "DopePanelPassConfig" : "DopePassConfig"}\` interprets that data through
 // the shared Metal pass runner. (The MSL is transpiled from the canonical web
 // GLSL by the toolchain; \`${Name}Uniforms\` + \`pack${Name}Uniforms\` are generated
 // from the \`.dope\` binding contract.)
@@ -171,17 +183,17 @@ public final class ${Name}: EffectFactory {
 
 // MARK: - Metal drawable side (macOS/iOS only).
 
-#if canImport(Metal)
+${panel ? "#if canImport(Metal) && canImport(QuartzCore)" : "#if canImport(Metal)"}
 public extension ${Name} {
     /// The DATA-DRIVEN pass config: \`tempo.frame\`, \`render.shadowHeightFrac\`
     /// and \`render.config\` all come from the bundled \`.dope\`, evaluated by the
     /// shared backbone.
-    static func passConfig() throws -> DopePassConfig<${Name}Uniforms> {
-        try DopePassConfig(
+    static func passConfig() throws -> ${configType} {
+        try ${panel ? "DopePanelPassConfig" : "DopePassConfig"}(
             doc: DopeResource.loadDope("${slug}.dope", bundle: .module),
             vertexFunction: "${slug}_vertex",
             fragmentFunction: "${slug}_fragment",
-            packUniforms: pack${Name}Uniforms${frameArraysArg}
+            packUniforms: pack${Name}Uniforms${frameArraysArg}${panelArg}
         )
     }
 }
@@ -226,10 +238,19 @@ public enum ${Name}Resources {
  * renderer and binds its bundle through `binding.arrays` (by NAME — GL sets
  * uniform arrays like the web does).
  */
-export function emitKotlinFactory(slug, namespace, frameArrays = null) {
+export function emitKotlinFactory(slug, namespace, frameArrays = null, panel = false) {
   const Name = pascal(slug);
   const SLUG = slug.toUpperCase();
   let configDecl = `private val config: PassConfig = dopePassConfig(doc, ${SLUG}_VERTEX_SRC, ${SLUG}_FRAGMENT_SRC, plan)`;
+  if (panel) {
+    configDecl = `private val config: PanelConfig = dopePanelConfig(
+        doc, ${SLUG}_VERTEX_SRC, ${SLUG}_FRAGMENT_SRC, plan,
+        // The hand-written per-effect panel draw (the panel-draw seam:
+        // effects/${slug}/android/${Name}Panel.kt) — the ONLY per-effect
+        // Kotlin; the backbone redraws + uploads it every frame.
+        draw = ::draw${Name}Panel,
+    )`;
+  }
   let numberImport = "";
   let uniformArrayImport = "";
   if (frameArrays) {
@@ -262,12 +283,15 @@ ${uniformArrays}
   return `${genHeader(slug)}
 //
 // ${Name} as a Dopamine effect on the Android backbone — the DATA-DRIVEN
-// registration shim. This effect ships NO hand-written Kotlin: everything that
+// registration shim. ${panel
+    ? `The ONLY hand-written Kotlin is the Canvas panel draw
+// (${Name}Panel.kt — panel geometry is code by design); everything else that`
+    : "This effect ships NO hand-written Kotlin: everything that"}
 // isn't the GLSL lives in ${slug}.dope.json — the mood→params mapping + palette
 // (the loader), the per-frame logic (\`tempo.frame\`), \`render.shadowHeightFrac\`,
 // \`render.consts\`, \`render.config\`, \`tempo.reducedMotion\`, any \`tempo.loop\`
-// contract and the uniform \`binding\` contract. \`dopePassPlan\` + \`dopePassConfig\`
-// interpret that data through the generic pass runner. (The shader Kotlin is
+// contract and the uniform \`binding\` contract. \`dopePassPlan\` + \`${panel ? "dopePanelConfig" : "dopePassConfig"}\`
+// interpret that data through the generic ${panel ? "panel" : "pass"} runner. (The shader Kotlin is
 // toolchain-generated from the same canonical web GLSL as the MSL.) The \`.dope\`
 // bytes are the SAME as the web's (byte-parity proven by the 192-case grid).
 
@@ -285,9 +309,9 @@ import ai.dopamine.core.resolveDopeParams
 import ai.dopamine.gl.DrawableEffect
 import ai.dopamine.gl.EffectContext
 import ai.dopamine.gl.EffectInstance
-import ai.dopamine.gl.PassConfig
-${uniformArrayImport}import ai.dopamine.gl.createPassInstance
-import ai.dopamine.gl.dopePassConfig
+import ai.dopamine.gl.${panel ? "PanelConfig" : "PassConfig"}
+${uniformArrayImport}import ai.dopamine.gl.${panel ? "createPanelInstance" : "createPassInstance"}
+import ai.dopamine.gl.${panel ? "dopePanelConfig" : "dopePassConfig"}
 import android.content.Context
 
 class ${Name}(context: Context) : DrawableEffect {
@@ -311,7 +335,7 @@ class ${Name}(context: Context) : DrawableEffect {
         resolveDopeParams(doc, feeling, consts = plan.consts, scatterKey = scatterKey)
 
     override fun create(params: Map<String, DopeValue>, ctx: EffectContext): EffectInstance =
-        createPassInstance(config, params, ctx)
+        ${panel ? "createPanelInstance" : "createPassInstance"}(config, params, ctx)
 
     override val reducedMotionPeakMs: Double? = plan.reducedMotionPeakMs
     override val reducedMotionHoldMs: Double? = plan.reducedMotionHoldMs

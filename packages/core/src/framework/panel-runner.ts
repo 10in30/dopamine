@@ -98,12 +98,19 @@ export interface PanelConfig<P extends PassParams = PassParams> {
    * not plain params (e.g. `uDotSize = dotSize * dpr`, `uInkBoost`). Computed per
    * pass.
    */
-  passUniforms?(canvas: HTMLCanvasElement, params: P, dpr: number): Record<string, number>;
+  passUniforms?(
+    canvas: HTMLCanvasElement,
+    params: P,
+    dpr: number,
+    targetPx: { width: number; height: number },
+  ): Record<string, number>;
 }
 
 // The panel runner adds `uCenter` (the panel composites around screen center)
-// to the shared standard set.
-const STANDARD = ["uCenter", ...STANDARD_COMMON] as const;
+// to the shared standard set — and binds the SAME anchor under the pass-runner's
+// `uOrigin` name, so a panel shader may use either spelling (the single-source
+// GLSL→MSL path maps `uOrigin` onto the packed struct's `origin` field).
+const STANDARD = ["uCenter", "uOrigin", ...STANDARD_COMMON] as const;
 
 /**
  * Build a drawable {@link EffectInstance} for a Canvas2D-panel effect from its
@@ -161,7 +168,7 @@ export function createPanelInstance<P extends PassParams>(
     if (u[sampler]) gl.uniform1i(u[sampler], 0);
 
     // Extra per-pass scalar uniforms (dpr-scaled etc.).
-    applyFloatMap(gl, u, config.passUniforms?.(c, params, dpr));
+    applyFloatMap(gl, u, config.passUniforms?.(c, params, dpr, info.targetPx));
 
     // Standard uniforms.
     gl.uniform2f(u.uResolution, c.width, c.height);
@@ -173,6 +180,7 @@ export function createPanelInstance<P extends PassParams>(
     // (y-up, matching the flipped panel texture), so flip the anchor's y exactly as
     // the pure-shader runner does for uOrigin.
     gl.uniform2f(u.uCenter, ctx.anchor.x * dpr, c.height - ctx.anchor.y * dpr);
+    if (u.uOrigin) gl.uniform2f(u.uOrigin, ctx.anchor.x * dpr, c.height - ctx.anchor.y * dpr);
     gl.uniform1f(u.uLife, info.life);
     gl.uniform1f(u.uTimeS, info.elapsedMs / 1000);
     gl.uniform1f(u.uStyle, params.style);

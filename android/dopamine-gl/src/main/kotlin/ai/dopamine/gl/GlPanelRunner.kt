@@ -40,12 +40,17 @@ class PanelConfig(
     val draw: PanelDraw,
     /** Time-varying uniforms (presence, flash, …); `amp` feeds the shadow geometry. */
     val frame: (PanelFrameInfo, Map<String, DopeValue>) -> Map<String, Float>,
-    /** Extra per-pass scalar uniforms depending on the live canvas / density. */
-    val passUniforms: ((widthPx: Int, heightPx: Int, params: Map<String, DopeValue>, density: Float) -> Map<String, Float>)? = null,
+    /**
+     * Extra per-pass scalar uniforms depending on the live canvas / density /
+     * targeted element box (device px, full-canvas fallback applied).
+     */
+    val passUniforms: ((widthPx: Int, heightPx: Int, params: Map<String, DopeValue>, density: Float, targetWidthPx: Float, targetHeightPx: Float) -> Map<String, Float>)? = null,
 )
 
+// `uOrigin` carries the SAME anchor as `uCenter` so a panel shader may use the
+// pass-runner spelling (the single-source GLSL→MSL path maps it onto `origin`).
 private val STANDARD_PANEL = listOf(
-    "uCenter", "uResolution", "uTarget", "uLife", "uTimeS", "uStyle", "uAmp",
+    "uCenter", "uOrigin", "uResolution", "uTarget", "uLife", "uTimeS", "uStyle", "uAmp",
     "uC0", "uC1", "uC2", "uShadow", "uShadowOffset", "uShadowSoft", "uShadowStrength",
 )
 
@@ -112,13 +117,14 @@ fun createPanelInstance(config: PanelConfig, params: Map<String, DopeValue>, ctx
             uploadBitmap(panelTex, bmp)
             prog.uniform(config.panelSampler).let { if (it >= 0) GLES30.glUniform1i(it, 0) }
 
-            applyFloatMap(prog, config.passUniforms?.invoke(w, h, params, ctx.density))
+            applyFloatMap(prog, config.passUniforms?.invoke(w, h, params, ctx.density, targetW, targetH))
 
             prog.uniform("uResolution").let { if (it >= 0) GLES30.glUniform2f(it, w.toFloat(), h.toFloat()) }
             bindTarget(prog, w, h, ctx.targetWidthPx, ctx.targetHeightPx)
             // uCenter: the impact/heart centre the procedural parts radiate from —
             // matches the anchor, y-flipped to the y-up frag space (web parity).
             prog.uniform("uCenter").let { if (it >= 0) GLES30.glUniform2f(it, ctx.anchorX, h - ctx.anchorY) }
+            prog.uniform("uOrigin").let { if (it >= 0) GLES30.glUniform2f(it, ctx.anchorX, h - ctx.anchorY) }
             setF(prog, "uLife", life.toFloat())
             setF(prog, "uTimeS", (elapsedMs / 1000.0).toFloat()) // panels don't step "on twos"
             setF(prog, "uStyle", style.toFloat())

@@ -108,26 +108,39 @@ export async function generateSwiftPackage({ root, eff, outDir, fonts = [], logi
   const srcRel = join(pkgRel, "Sources", module);
   const out = [];
 
-  // (1) the Swift sources. An effect with hand-written sources (a panel draw, a
-  //     code-shaped hook) ships them from its swift/ dir; a FULLY DECLARATIVE
-  //     effect ships NO swift/ dir at all and gets its factory shell + resource
-  //     -bundle accessor GENERATED from the `.dope` (factory.mjs) — zero
-  //     per-effect Swift to write or drift. When the effect declares generated
-  //     per-frame-geometry logic (`x-build.logic`), its `<Name>Renderer.swift`
-  //     is TRANSPILED from the single web TS source — never hand-shipped.
+  // (1) the Swift sources. An effect with a hand-written FACTORY (`<Name>.swift`
+  //     — a code-shaped hook, a hand pass config) ships its swift/ dir verbatim.
+  //     When no hand factory exists, the factory shell + resource-bundle
+  //     accessor are GENERATED from the `.dope` (factory.mjs): a FULLY
+  //     DECLARATIVE effect ships NO swift/ dir at all, and a PANEL effect
+  //     (`render.panel`) ships ONLY its `<Name>Panel.swift` draw — the
+  //     panel-draw seam the generated factory wires (`draw<Name>Panel`). When
+  //     the effect declares generated per-frame-geometry logic
+  //     (`x-build.logic`), its `<Name>Renderer.swift` is TRANSPILED from the
+  //     single web TS source — never hand-shipped.
   const generatedRendererFile = logic ? `${Name}Renderer.swift` : null;
-  let handNames = null;
+  let handNames = [];
   try { handNames = (await readdir(srcAbs)).sort(); } catch { /* no swift/ dir */ }
-  if (handNames) {
-    for (const name of handNames) {
-      if (name.endsWith(".swift") && name !== generatedRendererFile) {
-        out.push({ path: join(srcRel, name), content: await readFile(join(srcAbs, name), "utf8") });
-      }
-    }
-  } else {
+  const hand = handNames.filter((n) => n.endsWith(".swift") && n !== generatedRendererFile);
+  for (const name of hand) {
+    out.push({ path: join(srcRel, name), content: await readFile(join(srcAbs, name), "utf8") });
+  }
+  if (!hand.includes(`${Name}.swift`)) {
     assertFactoryGeneratable(doc, slug, "swift");
-    out.push({ path: join(srcRel, `${Name}.swift`), content: emitSwiftFactory(slug, buildFrameArraysSpec(doc, slug, logic)) });
-    out.push({ path: join(srcRel, `${Name}Bundle.swift`), content: emitSwiftBundle(slug) });
+    const panel = !!doc.render?.panel;
+    if (panel && !hand.includes(`${Name}Panel.swift`)) {
+      throw new Error(
+        `dopamine: effects/${slug} declares render.panel but has no swift/${Name}Panel.swift — ` +
+          `the generated factory wires the hand-written draw${Name}Panel (the panel-draw seam).`,
+      );
+    }
+    if (panel && (doc.render.panel.texture ?? 0) !== 0) {
+      throw new Error(`dopamine: effects/${slug} render.panel.texture must be 0 (the Metal panel slot)`);
+    }
+    out.push({ path: join(srcRel, `${Name}.swift`), content: emitSwiftFactory(slug, buildFrameArraysSpec(doc, slug, logic), panel) });
+    if (!hand.includes(`${Name}Bundle.swift`)) {
+      out.push({ path: join(srcRel, `${Name}Bundle.swift`), content: emitSwiftBundle(slug) });
+    }
   }
 
   // (2) the bespoke per-effect shader. When the effect declares a generated MSL

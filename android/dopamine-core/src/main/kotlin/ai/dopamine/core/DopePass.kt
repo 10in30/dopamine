@@ -78,6 +78,14 @@ class DopePassPlan internal constructor(
      * aux-texture support, so the GL config pins these OFF each pass.
      */
     val samplerOnUniforms: List<String> = emptyList(),
+    /**
+     * `render.panel.sampler` — the dynamic-panel sampler (web uniform name)
+     * the host redraws + uploads every frame; null when the doc declares no
+     * panel. The DRAW stays code (the per-effect panel-draw seam).
+     */
+    val panelSampler: String? = null,
+    /** `render.panel.texture` — the panel's texture unit (default 0, the panel slot). */
+    val panelTexture: Int = 0,
 ) {
     /** Shadow occluder height (fraction of min canvas dim) — params-only. */
     fun shadowHeightFrac(params: Map<String, DopeValue>): Double = evalParamExpr(shadowSpec, params)
@@ -90,13 +98,18 @@ class DopePassPlan internal constructor(
      * evaluated over the resolved params + the pass-geometry inputs.
      * `targetMinDimPx` is the min dimension of the targeted element box in
      * device px (full-canvas fallback already applied by the caller — the same
-     * box `uTarget` binds).
+     * box `uTarget` binds); `dpr` the surface density (web `devicePixelRatio`).
      */
-    fun passUniforms(targetMinDimPx: Double, params: Map<String, DopeValue>): LinkedHashMap<String, Double> {
+    fun passUniforms(
+        targetMinDimPx: Double,
+        params: Map<String, DopeValue>,
+        dpr: Double = 1.0,
+    ): LinkedHashMap<String, Double> {
         val pass = PassExprInputs(
             targetMinDimPx = targetMinDimPx,
             sdfRange = passSdfRange,
             sdfViewBoxW = passSdfViewBoxW,
+            dpr = dpr,
         )
         val out = LinkedHashMap<String, Double>()
         for ((web, expr) in passExprs) out[web] = evalPassExpr(expr, params, pass)
@@ -230,6 +243,11 @@ fun dopePassPlan(doc: DopeDoc, extraUniforms: List<String> = emptyList()): DopeP
     raw["render"]?.get("consts")?.asObject?.forEach { (k, v) -> v.asNumber?.let { consts[k] = it } }
     val reducedMotion = raw["tempo"]?.get("reducedMotion")
 
+    // --- `render.panel` — the dynamic-panel wiring (the draw stays code) ------
+    val panelJson = raw["render"]?.get("panel")
+    val panelSampler = panelJson?.get("sampler")?.asString
+    val panelTexture = panelJson?.get("texture")?.asNumber?.toInt() ?: 0
+
     return DopePassPlan(
         uniforms = uniforms.toList(),
         bindings = bindings,
@@ -246,5 +264,7 @@ fun dopePassPlan(doc: DopeDoc, extraUniforms: List<String> = emptyList()): DopeP
         passSdfRange = passSdfRange,
         passSdfViewBoxW = passSdfViewBoxW,
         samplerOnUniforms = samplerOnUniforms,
+        panelSampler = panelSampler,
+        panelTexture = panelTexture,
     )
 }

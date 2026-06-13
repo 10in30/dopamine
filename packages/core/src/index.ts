@@ -69,7 +69,9 @@ export {
 } from "./framework/loader.js";
 export {
   dopePassConfig,
+  dopePanelConfig,
   registerDopeEffect,
+  registerDopePanelEffect,
   type DopePassHooks,
   type DopeShader,
   type RegisterDopeEffectOptions,

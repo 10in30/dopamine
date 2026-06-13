@@ -69,6 +69,73 @@ public extension PanelDrawing {
     func panelSizePx(canvasPx: CGSize, params: [String: DopeValue]) -> CGSize { canvasPx }
 }
 
+/// A DATA-DRIVEN config for a PANEL effect (`render.panel`): the generic
+/// `DopePassConfig` plus the ONE genuinely code-shaped piece — the per-frame
+/// Core Graphics panel draw (the panel-draw seam; the generated factory shells
+/// wire `draw<Name>Panel` here). Everything else — `tempo.frame`,
+/// `render.shadowHeightFrac`, `render.pass`, `render.config.stepping: "none"`
+/// (panels never snap on twos), the binding contract — is the same `.dope`
+/// data the base config interprets; this wrapper just forwards to it and
+/// conforms to `PanelDrawing` so the overlay host redraws + uploads the panel
+/// (bound at fragment texture(0), the cross-platform panel slot) every tick.
+public struct DopePanelPassConfig<U>: PassConfig, PanelDrawing {
+    public typealias Uniforms = U
+    /// The hand-written per-effect panel draw (CGContext is top-left/y-down,
+    /// matching the web Canvas2D space the host pre-flips to).
+    public typealias DrawPanel = (CGContext, CGSize, [String: DopeValue], PanelFrame) -> Void
+
+    private let base: DopePassConfig<U>
+    private let draw: DrawPanel
+
+    public init(
+        doc: DopeDoc,
+        vertexFunction: String,
+        fragmentFunction: String,
+        packUniforms: @escaping DopePassConfig<U>.Packer,
+        drawPanel: @escaping DrawPanel,
+        packExtras: DopePassConfig<U>.ExtrasHook? = nil
+    ) throws {
+        self.base = try DopePassConfig(
+            doc: doc,
+            vertexFunction: vertexFunction,
+            fragmentFunction: fragmentFunction,
+            packUniforms: packUniforms,
+            packExtras: packExtras
+        )
+        self.draw = drawPanel
+    }
+
+    // PassConfig — forwarded to the data-driven base.
+    public var vertexFunction: String { base.vertexFunction }
+    public var fragmentFunction: String { base.fragmentFunction }
+    public var usesOrigin: Bool { base.usesOrigin }
+    public var loopPeriodMs: Double? { base.loopPeriodMs }
+    public var snapsOnTwos: Bool { base.snapsOnTwos }
+    public func shadowHeightFrac(_ params: [String: DopeValue]) -> Double {
+        base.shadowHeightFrac(params)
+    }
+    public func frame(_ info: FrameInfo, _ params: [String: DopeValue]) -> (amp: Double, extras: [String: Double]) {
+        base.frame(info, params)
+    }
+    public func passExtras(
+        targetMinDimPx: Double, dpr: Double, params: [String: DopeValue]
+    ) -> [String: Double] {
+        base.passExtras(targetMinDimPx: targetMinDimPx, dpr: dpr, params: params)
+    }
+    public func packUniforms(
+        standard: StandardUniforms,
+        params: [String: DopeValue],
+        extras: [String: Double]
+    ) -> U {
+        base.packUniforms(standard: standard, params: params, extras: extras)
+    }
+
+    // PanelDrawing — the code-shaped seam.
+    public func drawPanel(_ ctx: CGContext, sizePx: CGSize, params: [String: DopeValue], frame: PanelFrame) {
+        draw(ctx, sizePx, params, frame)
+    }
+}
+
 /// A minimal overlay host: owns a CAMetalLayer for the light pass and (optionally)
 /// one for the shadow pass, plus the device/library, and drives a runner.
 public final class MetalOverlayHost<Config: PassConfig> {

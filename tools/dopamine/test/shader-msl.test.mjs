@@ -27,6 +27,7 @@ import { LIGHTNING_FRAGMENT_SRC } from "../../../effects/lightning/web/src/light
 import { INK_FRAGMENT_SRC } from "../../../effects/inkstroke/web/src/inkstroke-shader.ts";
 import { HALO_FRAGMENT_SRC } from "../../../effects/halo/web/src/halo-shader.ts";
 import { FAIL_FRAGMENT_SRC } from "../../../effects/fail/web/src/fail-shader.ts";
+import { HEARTBURST_FRAGMENT_SRC } from "../../../effects/heartburst/web/src/heartburst-shader.ts";
 
 const root = new URL("../../../", import.meta.url);
 const readDope = (slug) =>
@@ -44,6 +45,9 @@ const SNAPSHOT = [
   { slug: "halo", fragment: HALO_FRAGMENT_SRC },
   { slug: "fail", fragment: FAIL_FRAGMENT_SRC },
   { slug: "lightning", fragment: LIGHTNING_FRAGMENT_SRC },
+  // heartburst exercises the PANEL seams: the `vUv` reconstruction (the panel
+  // shaders sample in a y-up vUv) and the panel sampler at texture(0).
+  { slug: "heartburst", fragment: HEARTBURST_FRAGMENT_SRC },
 ];
 
 const transpile = (slug, fragment) => {

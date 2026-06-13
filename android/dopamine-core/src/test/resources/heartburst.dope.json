@@ -2,8 +2,6 @@
   "fmt": "dopamine-effect",
   "v": "1.0.0",
   "id": "dopamine.love.heartburst",
-  "slug": "heartburst",
-  "kind": "panel",
   "meta": {
     "name": "Heartburst",
     "description": "A love / like / favorite moment: a heart swells with a double-beat (lub-dub) then bursts into a flurry of small hearts that fly outward, arc, and fade — warm OKLCH reds/pinks/corals.",
@@ -71,7 +69,7 @@
       "burstCount": 10,
       "burstSpread": 0.32,
       "beatStrength": 0.6,
-      "doubleBeat": 0.0
+      "doubleBeat": 0
     },
     "celebratory": {
       "durationMs": 2000,
@@ -82,8 +80,8 @@
       "heartScale": 0.3,
       "burstCount": 18,
       "burstSpread": 0.46,
-      "beatStrength": 1.0,
-      "doubleBeat": 1.0
+      "beatStrength": 1,
+      "doubleBeat": 1
     },
     "electric": {
       "durationMs": 1600,
@@ -95,7 +93,7 @@
       "burstCount": 26,
       "burstSpread": 0.58,
       "beatStrength": 1.35,
-      "doubleBeat": 1.0
+      "doubleBeat": 1
     }
   },
   "palette": {
@@ -108,7 +106,7 @@
     "lightness": {
       "baseline": "lightness",
       "perStop": [
-        0.0,
+        0,
         0.07,
         -0.06
       ]
@@ -129,7 +127,7 @@
         ]
       },
       "perStop": [
-        0.0,
+        0,
         0.02,
         -0.01
       ]
@@ -1639,7 +1637,7 @@
           "lerp": [
             "intensity",
             0.45,
-            1.0
+            1
           ]
         }
       },
@@ -1649,8 +1647,8 @@
         "from": {
           "lerp": [
             "whimsy",
-            1.0,
-            0.0
+            1,
+            0
           ]
         }
       },
@@ -1661,7 +1659,7 @@
           "lerp": [
             "whimsy",
             0.15,
-            1.0
+            1
           ]
         }
       },
@@ -1670,8 +1668,8 @@
         "from": {
           "lerp": [
             "whimsy",
-            5.0,
-            10.0
+            5,
+            10
           ]
         }
       },
@@ -1684,7 +1682,7 @@
               "lerp": [
                 "whimsy",
                 0.35,
-                1.0
+                1
               ]
             },
             {
@@ -1704,8 +1702,8 @@
             {
               "lerp": [
                 "whimsy",
-                3.0,
-                9.0
+                3,
+                9
               ]
             },
             {
@@ -1825,38 +1823,5 @@
         "note": "the per-frame panel texture (render.panel)"
       }
     ]
-  },
-  "x-build": {
-    "note": "TOOLCHAIN build config (vendor-namespaced `x-` so runtime parsers ignore it; stripped from the embedded .dope). One block per platform: how `dopamine build` assembles the standalone, installable package into dist/<platform>/.",
-    "shader": {
-      "note": "Single-source shader: the canonical web GLSL is the ONLY hand-written shader; the MSL and the Kotlin are generated from it. The panel samples at texture(0).",
-      "web": "web/src/heartburst-shader.ts",
-      "vertexExport": "HEARTBURST_VERTEX_SRC",
-      "fragmentExport": "HEARTBURST_FRAGMENT_SRC",
-      "generateMSL": true
-    },
-    "swift": {
-      "module": "DopamineEffectHeartburst",
-      "sources": "swift",
-      "platforms": [
-        "iOS(.v15)",
-        "macOS(.v12)"
-      ],
-      "core": {
-        "mode": "path",
-        "package": "Dopamine",
-        "product": "DopamineCore",
-        "path": "swift"
-      }
-    },
-    "web": {
-      "package": "@dopamine/effect-heartburst",
-      "sources": "web"
-    },
-    "android": {
-      "module": "dopamine-effect-heartburst",
-      "namespace": "ai.dopamine.effect.heartburst",
-      "sources": "android"
-    }
   }
 }

@@ -31,6 +31,7 @@ import {
   type PassConfig,
   type PassParams,
 } from "./pass-runner.js";
+import { createPanelInstance, type PanelConfig, type PanelDraw } from "./panel-runner.js";
 import { registerEffect } from "./registry.js";
 import { registerProgram, type RenderProgram } from "./programs.js";
 import type { EffectContext, EffectFactory, EffectInstance, FeelingInput } from "./effect.js";
@@ -41,6 +42,13 @@ export type DopePassHooks = Partial<
 > & {
   /** Additional uniform names (beyond the derived set) the shader reads. */
   extraUniforms?: readonly string[];
+  /**
+   * The Canvas2D draw for a PASS effect's dynamic sprite panel (`render.panel`
+   * with the doc still pass-shaped — e.g. solarbloom's motes). The `.dope`
+   * `render.panel` block supplies the unit + sampler; this hook supplies only
+   * the genuinely code-shaped draw. Ignored when `hooks.panel` is given whole.
+   */
+  panelDraw?: NonNullable<PassConfig["panel"]>["draw"];
 };
 
 /** The vertex + fragment GLSL pair (the per-effect look — code by design). */
@@ -50,35 +58,13 @@ export interface DopeShader {
 }
 
 /**
- * Derive a {@link PassConfig} from a datafied `.dope` + its shader (+ optional
- * code hooks). The derived contract is pinned by the per-effect dope-config
- * vitests:
- *
- *   - `uniforms`: every `render.params` key not in `binding.excludeParams` and
- *     not the scatter key → `u<Name>`; the scatter key contributes
- *     `binding.scatterWeb` when present (else it is not a shader uniform); every
- *     `binding.extras[].web`; every `binding.samplers[].web`; every
- *     `binding.arrays[].web` (the `frameArrays` uniform arrays); plus
- *     `hooks.extraUniforms`.
- *   - `bindings`: the scatter key → `scatterWeb` (or `null`), plus `null` for
- *     each excluded param that would otherwise auto-bind. (`style` and
- *     `durationMs` need no entry: `durationMs` is skipped by
- *     `computeScalarBinds`, and `style`'s conventional `uStyle` auto-bind is the
- *     same value the runner already sets as a standard uniform.)
- *   - `frame`: `tempo.frame.amp` + `tempo.frame.extras` evaluated per frame
- *     (extras keyed by canonical name, emitted under their `binding` web name).
- *   - `shadowHeightFrac`: `render.shadowHeightFrac` (bare number passes
- *     through; an expression is params-only — `{input}` throws).
- *   - `passUniforms`: `render.pass` evaluated ONCE PER PASS (canonical names →
- *     `binding` web names) over the resolved params + the pass-geometry inputs
- *     (`targetMinDimPx`, plus `sdfRange`/`sdfViewBoxW` from the first sampler
- *     with an `outline` source).
- *   - `auxTextures`: every `binding.samplers` entry with an `outline` whose
- *     baked SDF decodes → a `kind:"sdf"` spec at its `texture` unit, flipping
- *     its `on` extra to 1; absent/undecodable → analytic fallback.
- *   - `usesOrigin`: `render.config.usesOrigin`.
+ * The shared pass/panel derivation over a datafied `.dope`: the uniform list,
+ * the binding exceptions, the per-frame and per-pass expression tables and the
+ * declared SDF pass inputs — everything both `dopePassConfig` and
+ * `dopePanelConfig` read identically (the rules in the {@link dopePassConfig}
+ * doc comment).
  */
-export function dopePassConfig(doc: DopeDoc, shader: DopeShader, hooks: DopePassHooks = {}): PassConfig {
+function deriveDope(doc: DopeDoc, extraUniforms?: readonly string[]) {
   const binding = doc.binding ?? {};
   const exclude = binding.excludeParams ?? [];
   const scatterKey = binding.scatterKey ?? undefined;
@@ -102,7 +88,7 @@ export function dopePassConfig(doc: DopeDoc, shader: DopeShader, hooks: DopePass
   for (const e of extraDefs) if (e.web) uniforms.add(e.web);
   for (const s of binding.samplers ?? []) uniforms.add(typeof s === "string" ? s : s.web);
   for (const a of binding.arrays ?? []) uniforms.add(a.web);
-  for (const u of hooks.extraUniforms ?? []) uniforms.add(u);
+  for (const u of extraUniforms ?? []) uniforms.add(u);
 
   // --- bindings (exceptions to the `name → u<Name>` auto-bind) --------------
   const bindings: Record<string, string | null> = {};
@@ -143,12 +129,49 @@ export function dopePassConfig(doc: DopeDoc, shader: DopeShader, hooks: DopePass
   const sdfSrc = sdfOutline ? getOutline(doc, sdfOutline.outline!)?.sdf : undefined;
   const sdfInputs = { range: sdfSrc?.range ?? 0, viewBoxW: sdfSrc?.viewBox?.[2] ?? 0 };
 
+  return { binding, frameSpec, loopPeriodMs, shadowSpec, uniforms, bindings, extraExprs, passExprs, sdfInputs };
+}
+
+/**
+ * Derive a {@link PassConfig} from a datafied `.dope` + its shader (+ optional
+ * code hooks). The derived contract is pinned by the per-effect dope-config
+ * vitests:
+ *
+ *   - `uniforms`: every `render.params` key not in `binding.excludeParams` and
+ *     not the scatter key → `u<Name>`; the scatter key contributes
+ *     `binding.scatterWeb` when present (else it is not a shader uniform); every
+ *     `binding.extras[].web`; every `binding.samplers[].web`; every
+ *     `binding.arrays[].web` (the `frameArrays` uniform arrays); plus
+ *     `hooks.extraUniforms`.
+ *   - `bindings`: the scatter key → `scatterWeb` (or `null`), plus `null` for
+ *     each excluded param that would otherwise auto-bind. (`style` and
+ *     `durationMs` need no entry: `durationMs` is skipped by
+ *     `computeScalarBinds`, and `style`'s conventional `uStyle` auto-bind is the
+ *     same value the runner already sets as a standard uniform.)
+ *   - `frame`: `tempo.frame.amp` + `tempo.frame.extras` evaluated per frame
+ *     (extras keyed by canonical name, emitted under their `binding` web name).
+ *   - `shadowHeightFrac`: `render.shadowHeightFrac` (bare number passes
+ *     through; an expression is params-only — `{input}` throws).
+ *   - `passUniforms`: `render.pass` evaluated ONCE PER PASS (canonical names →
+ *     `binding` web names) over the resolved params + the pass-geometry inputs
+ *     (`targetMinDimPx`, plus `sdfRange`/`sdfViewBoxW` from the first sampler
+ *     with an `outline` source).
+ *   - `auxTextures`: every `binding.samplers` entry with an `outline` whose
+ *     baked SDF decodes → a `kind:"sdf"` spec at its `texture` unit, flipping
+ *     its `on` extra to 1; absent/undecodable → analytic fallback.
+ *   - `usesOrigin`: `render.config.usesOrigin`.
+ */
+export function dopePassConfig(doc: DopeDoc, shader: DopeShader, hooks: DopePassHooks = {}): PassConfig {
+  const { binding, frameSpec, loopPeriodMs, shadowSpec, uniforms, bindings, extraExprs, passExprs, sdfInputs } =
+    deriveDope(doc, hooks.extraUniforms);
+
   const derivedPassUniforms: PassConfig["passUniforms"] | undefined = passExprs.length
-    ? (_canvas, params, targetPx) => {
+    ? (_canvas, params, targetPx, dpr) => {
         const pass = {
           targetMinDimPx: Math.min(targetPx.width, targetPx.height),
           sdfRange: sdfInputs.range,
           sdfViewBoxW: sdfInputs.viewBoxW,
+          dpr,
         };
         const out: Record<string, number> = {};
         for (const [web, expr] of passExprs) out[web] = evalPassExpr(expr, params, pass);
@@ -156,9 +179,20 @@ export function dopePassConfig(doc: DopeDoc, shader: DopeShader, hooks: DopePass
       }
     : undefined;
 
+  // The declarative dynamic-panel WIRING (`render.panel`): the unit + sampler
+  // are data; the Canvas2D draw is the code-shaped hook. (A whole `hooks.panel`
+  // still overrides, like the other hooks.)
+  const panelSpec = doc.render.panel;
+  const derivedPanel: PassConfig["panel"] | undefined =
+    panelSpec && hooks.panelDraw
+      ? { unit: panelSpec.texture ?? 0, sampler: panelSpec.sampler, draw: hooks.panelDraw }
+      : undefined;
+
   // Declarative aux textures: each sampler with an `outline` whose baked SDF
   // decodes becomes a kind:"sdf" spec (its `on` extra flips to 1 when bound);
   // an absent/undecodable SDF contributes nothing — the analytic fallback.
+  const extraDefs = binding.extras ?? [];
+  const samplerDefs = (binding.samplers ?? []).filter((s): s is DopeSampler => typeof s !== "string");
   const sdfAux: AuxTextureSpec[] = [];
   for (const s of samplerDefs) {
     if (!s.outline) continue;
@@ -208,8 +242,87 @@ export function dopePassConfig(doc: DopeDoc, shader: DopeShader, hooks: DopePass
     },
     auxTextures: hooks.auxTextures ?? derivedAux,
     passUniforms: hooks.passUniforms ?? derivedPassUniforms,
-    panel: hooks.panel,
+    panel: hooks.panel ?? derivedPanel,
     frameArrays: hooks.frameArrays,
+  };
+}
+
+/**
+ * Derive a {@link PanelConfig} (the Canvas2D-panel runner's config) from a
+ * datafied PANEL `.dope` + its shader + the one genuinely code-shaped piece —
+ * the per-frame Canvas2D `draw`. The derivation rules are the SAME as
+ * {@link dopePassConfig} (uniforms / bindings / `tempo.frame` /
+ * `render.shadowHeightFrac` / `render.pass`), with the panel runner's shape:
+ *
+ *   - `panelSampler`: `render.panel.sampler` (required; `render.panel.texture`
+ *     must be 0 — the panel runner binds the panel at TEXTURE0, the
+ *     cross-platform panel slot).
+ *   - `frame`: evaluated with `animMs := elapsedMs` — the panel runner never
+ *     snaps "on twos" (declared as `render.config.stepping: "none"`).
+ *   - `passUniforms`: `render.pass` over the resolved params + the pass inputs
+ *     (`targetMinDimPx` from the targeted element box, `dpr`, and the SDF
+ *     metadata when a sampler declares an outline).
+ */
+export function dopePanelConfig(
+  doc: DopeDoc,
+  shader: DopeShader,
+  draw: PanelDraw,
+  hooks: Pick<DopePassHooks, "extraUniforms"> = {},
+): PanelConfig {
+  const { frameSpec, shadowSpec, uniforms, bindings, extraExprs, passExprs, sdfInputs } = deriveDope(
+    doc,
+    hooks.extraUniforms,
+  );
+  const panelSpec = doc.render.panel;
+  if (!panelSpec) throw new Error(`dope: ${doc.id} has no render.panel (not a panel effect)`);
+  if ((panelSpec.texture ?? 0) !== 0) {
+    throw new Error(
+      `dope: ${doc.id} render.panel.texture must be 0 for a panel-kind effect (TEXTURE0 is the panel slot)`,
+    );
+  }
+  if (doc.tempo.loop) throw new Error(`dope: ${doc.id} tempo.loop is not supported by the panel runner`);
+
+  const derivedPassUniforms: PanelConfig["passUniforms"] | undefined = passExprs.length
+    ? (_canvas, params, dpr, targetPx) => {
+        const pass = {
+          targetMinDimPx: Math.min(targetPx.width, targetPx.height),
+          sdfRange: sdfInputs.range,
+          sdfViewBoxW: sdfInputs.viewBoxW,
+          dpr,
+        };
+        const out: Record<string, number> = {};
+        for (const [web, expr] of passExprs) out[web] = evalPassExpr(expr, params, pass);
+        return out;
+      }
+    : undefined;
+
+  return {
+    vertex: shader.vertex,
+    fragment: shader.fragment,
+    uniforms: [...uniforms],
+    panelSampler: panelSpec.sampler,
+    bindings,
+    shadowHeightFrac:
+      typeof shadowSpec === "number" ? shadowSpec : (params) => evalParamExpr(shadowSpec, params),
+    draw,
+    frame(info, params) {
+      // Panels never snap on twos (`render.config.stepping: "none"`), so the
+      // snapped clock IS the wall clock — `animMs := elapsedMs`.
+      const ctx = {
+        animMs: info.elapsedMs,
+        life: info.life,
+        elapsedMs: info.elapsedMs,
+        params,
+        loopS: 0,
+        phase: 0,
+      };
+      const out: { amp: number } & Record<string, number> = {
+        amp: evalFrameExpr(frameSpec.amp, ctx),
+      };
+      for (const [web, expr] of extraExprs) out[web] = evalFrameExpr(expr, ctx);
+      return out;
+    },
+    passUniforms: derivedPassUniforms,
   };
 }
 
@@ -225,10 +338,13 @@ export interface RegisterDopeEffectOptions {
   name?: string;
   /** Also register as a bundled program for `loadEffect()`. Default true. */
   program?: boolean;
+  /**
+   * Compose non-numeric, code-shaped params on top of the loader bag — applied
+   * to the factory's `resolve` AND forwarded to the bundled program.
+   */
+  composeParams?: RenderProgram["composeParams"];
   /** Override `tempo.reducedMotion`. */
   reducedMotion?: { peakMs?: number; holdMs?: number };
-  /** Compose non-numeric, code-shaped params on top of the loader bag. */
-  composeParams?: RenderProgram["composeParams"];
 }
 
 /**
@@ -244,19 +360,56 @@ export function registerDopeEffect(
   shader: DopeShader,
   opts: RegisterDopeEffectOptions = {},
 ): EffectFactory<PassParams> {
+  const config = dopePassConfig(doc, shader, opts.hooks);
+  const create = (params: PassParams, ctx: EffectContext): EffectInstance =>
+    createPassInstance(config, params, ctx);
+  return registerDerived(doc, create, opts);
+}
+
+/**
+ * Build + register a data-driven Canvas2D-PANEL effect from
+ * `(dope, shader, draw)`: the same registration as {@link registerDopeEffect}
+ * but `create` is the generic PANEL runner over the {@link dopePanelConfig}
+ * derivation. The only hand-written web sources left for such an effect are
+ * its GLSL and the Canvas2D `draw` — the per-platform panel-draw seam.
+ */
+export function registerDopePanelEffect(
+  doc: DopeDoc,
+  shader: DopeShader,
+  draw: PanelDraw,
+  opts: RegisterDopeEffectOptions = {},
+): EffectFactory<PassParams> {
+  const config = dopePanelConfig(doc, shader, draw, { extraUniforms: opts.hooks?.extraUniforms });
+  const create = (params: PassParams, ctx: EffectContext): EffectInstance =>
+    createPanelInstance(config, params, ctx);
+  return registerDerived(doc, create, opts);
+}
+
+/** The shared registration tail: resolve/reducedMotion/loop + the bundled program. */
+function registerDerived(
+  doc: DopeDoc,
+  create: (params: PassParams, ctx: EffectContext) => EffectInstance,
+  opts: RegisterDopeEffectOptions,
+): EffectFactory<PassParams> {
   const scatterKey = doc.binding?.scatterKey;
   if (!scatterKey) throw new Error(`dope: ${doc.id} has no binding.scatterKey`);
   const consts = doc.render.consts ?? {};
   const name = opts.name ?? doc.id.split(".").pop()!;
   const reducedMotion = opts.reducedMotion ?? doc.tempo.reducedMotion;
-  const config = dopePassConfig(doc, shader, opts.hooks);
-  const create = (params: PassParams, ctx: EffectContext): EffectInstance =>
-    createPassInstance(config, params, ctx);
 
   const factory: EffectFactory<PassParams> = {
     name,
-    resolve: (feeling: FeelingInput) =>
-      resolveDopeParams(doc, feeling, consts, scatterKey) as unknown as PassParams,
+    resolve: (feeling: FeelingInput) => {
+      const numeric = resolveDopeParams(doc, feeling, consts, scatterKey);
+      return (
+        opts.composeParams
+          ? opts.composeParams(
+              numeric as Record<string, unknown>,
+              feeling as { mood: string; intensity: number; whimsy: number; seed: number },
+            )
+          : numeric
+      ) as unknown as PassParams;
+    },
     create,
     reducedMotion,
     // The continuous-loop contract: the conductor re-arms at durationMs instead

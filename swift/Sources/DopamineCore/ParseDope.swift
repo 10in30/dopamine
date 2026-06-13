@@ -218,8 +218,9 @@ public func parseDope(_ src: String) throws -> DopeDoc {
         if let n = value.asNumber { consts[name] = n }
     }
 
-    // render.config — runner config (today: usesOrigin).
+    // render.config — runner config (usesOrigin + the clock stepping).
     let usesOrigin = renderObj["config"]?["usesOrigin"]?.asBool
+    let stepping = renderObj["config"]?["stepping"]?.asString
 
     // binding — the uniform-binding contract (now SHIPS in the portable doc).
     var binding: DopeBinding?
@@ -249,7 +250,7 @@ public func parseDope(_ src: String) throws -> DopeDoc {
         baselineOrder: baselineOrder, controlsMoodDefault: controlsMoodDefault,
         frame: frame, loop: loop, reducedMotion: reducedMotion,
         shadowHeightFrac: shadowHeightFrac, renderPass: renderPass, consts: consts,
-        usesOrigin: usesOrigin, binding: binding,
+        usesOrigin: usesOrigin, stepping: stepping, binding: binding,
         raw: json
     )
 }

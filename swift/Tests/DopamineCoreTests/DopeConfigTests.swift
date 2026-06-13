@@ -176,4 +176,91 @@ final class DopeConfigTests: XCTestCase {
             XCTAssertEqual(try evalFrameExpr(try XCTUnwrap(extras["flash"]), ctx), flash)
         }
     }
+
+    // ── heartburst (the PANEL-class prover: render.panel + stepping "none") ──
+    func testHeartburstDopeConfig() throws {
+        let doc = try loadCanonicalDope("heartburst")
+        XCTAssertEqual(doc.consts, [:])
+        XCTAssertEqual(doc.binding?.scatterKey, "heartburstSeed")
+        XCTAssertEqual(doc.usesOrigin, true)
+        // Panel effects never snap on twos — declared in the data.
+        XCTAssertEqual(doc.stepping, "none")
+        XCTAssertEqual(doc.reducedMotion, DopeReducedMotion(peakMs: 180, holdMs: 360))
+        try assertResolveMatchesExplicitArgs(doc, consts: [:], scatterKey: "heartburstSeed")
+
+        // The panel sampler binds at texture(0) — the cross-platform panel slot.
+        XCTAssertEqual(doc.binding?.samplers, [DopeBindingSampler(
+            web: "uPanel", name: "panel", texture: 0, outline: nil, on: nil)])
+
+        // render.pass: the dpr-scaled halftone cell (uDotSize = dotSize · dpr).
+        let pass = try XCTUnwrap(doc.renderPass)
+        XCTAssertEqual(pass.entries.map { $0.0 }, ["dotSize"])
+        let values = Dictionary(uniqueKeysWithValues: pass.evaluate(
+            targetMinDimPx: 400, dpr: 2, params: ["dotSize": .number(7.5)]))
+        XCTAssertEqual(values["dotSize"], 15)
+
+        // tempo.frame is DELTA-0 with the hand-written lub-dub/burst tempo it
+        // replaced (the formulas below are the old HeartburstTempo.swift).
+        func beatPulse(_ t: Double, _ center: Double, _ width: Double) -> Double {
+            let x = (t - center) / width
+            if x <= -1 || x >= 1 { return 0 }
+            let lobe = 0.5 + 0.5 * cos(x * Double.pi)
+            return x < 0 ? pow(lobe, 0.7) : pow(lobe, 1.4)
+        }
+        func heartbeatScale(_ life: Double, _ strength: Double, _ doubleBeat: Double) -> Double {
+            let t = tempoClamp01(life)
+            let lub = beatPulse(t, 0.1, 0.1)
+            let dub = beatPulse(t, 0.21, 0.075) * 0.62 * tempoClamp01(doubleBeat)
+            let beat = max(lub, dub)
+            let sag = t > 0.3 ? 0.06 * easeOutCubic((t - 0.3) / (1 - 0.3)) : 0
+            return 1 + beat * 0.42 * strength - sag
+        }
+        func burstProgress(_ life: Double) -> Double {
+            let t = tempoClamp01(life)
+            if t <= 0.3 { return 0 }
+            return easeOutCubic((t - 0.3) / (1 - 0.3))
+        }
+        func heartburstEnvelope(_ life: Double, _ strength: Double, _ doubleBeat: Double) -> Double {
+            let t = tempoClamp01(life)
+            if t <= 0 || t >= 1 { return 0 }
+            let lub = beatPulse(t, 0.1, 0.1)
+            let dub = beatPulse(t, 0.21, 0.075) * 0.62 * tempoClamp01(doubleBeat)
+            let beats = max(lub, dub) * 0.9 * strength
+            let b = burstProgress(life)
+            let flare = b * pow(1 - b, 1.1) * 2.4
+            return tempoClamp01(max(beats, flare * (0.7 + 0.3 * strength)))
+        }
+        func heartPresence(_ life: Double) -> Double {
+            let t = tempoClamp01(life)
+            if t < 0.04 { return t / 0.04 }
+            if t < 0.8 { return 1 }
+            let fade = 1 - (t - 0.8) / 0.2
+            return pow(max(0, fade), 1.4)
+        }
+        func heartFlash(_ life: Double, _ strength: Double, _ doubleBeat: Double) -> Double {
+            let beat = max(0, heartbeatScale(life, strength, doubleBeat) - 1)
+            let b = burstProgress(life)
+            let spike = b > 0 ? exp(-pow((b - 0.06) / 0.12, 2)) : 0
+            return min(1.2, beat * 1.6 + spike * 0.8)
+        }
+        guard let frame = doc.frame else { return XCTFail("heartburst has no tempo.frame") }
+        let extras = Dictionary(uniqueKeysWithValues: frame.extras)
+        for (strength, doubleBeat) in [(0.6, 0.0), (1.0, 1.0), (1.25, 0.3)] {
+            let params: [String: DopeValue] = [
+                "beatStrength": .number(strength), "doubleBeat": .number(doubleBeat),
+            ]
+            for i in stride(from: -10, through: 120, by: 1) {
+                let life = Double(i) / 100
+                // Panels never snap: animMs == elapsedMs (what the runner feeds).
+                let ms = life * 2000
+                let ctx = FrameExprCtx(animMs: ms, life: life, elapsedMs: ms, params: params)
+                XCTAssertEqual(try evalFrameExpr(frame.amp, ctx), heartburstEnvelope(life, strength, doubleBeat))
+                XCTAssertEqual(try evalFrameExpr(try XCTUnwrap(extras["presence"]), ctx), heartPresence(life))
+                let beat = max(0, heartbeatScale(life, strength, doubleBeat) - 1)
+                XCTAssertEqual(try evalFrameExpr(try XCTUnwrap(extras["beat"]), ctx), min(1, beat * 2.2))
+                XCTAssertEqual(try evalFrameExpr(try XCTUnwrap(extras["burst"]), ctx), burstProgress(life))
+                XCTAssertEqual(try evalFrameExpr(try XCTUnwrap(extras["flash"]), ctx), heartFlash(life, strength, doubleBeat))
+            }
+        }
+    }
 }

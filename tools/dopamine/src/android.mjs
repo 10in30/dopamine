@@ -87,19 +87,30 @@ export async function generateAndroidLibrary({ root, eff, fonts = [], logic = nu
   const Name = slug.charAt(0).toUpperCase() + slug.slice(1);
   const generatedShaderFile = shaderCfg ? `${Name}Shader.kt` : null;
   const generatedRendererFile = logic ? `${Name}Renderer.kt` : null;
-  let handNames = null;
+  let handNames = [];
   try { handNames = (await readdir(srcAbs)).sort(); } catch { /* no android/ dir */ }
-  if (handNames) {
-    for (const name of handNames) {
-      if (name.endsWith(".kt") && name !== generatedShaderFile && name !== generatedRendererFile) {
-        out.push({ path: join(modRel, "src/main/kotlin", pkgPath, name), content: await readFile(join(srcAbs, name), "utf8") });
-      }
-    }
-  } else {
+  const hand = handNames.filter(
+    (n) => n.endsWith(".kt") && n !== generatedShaderFile && n !== generatedRendererFile,
+  );
+  for (const name of hand) {
+    out.push({ path: join(modRel, "src/main/kotlin", pkgPath, name), content: await readFile(join(srcAbs, name), "utf8") });
+  }
+  // No hand-written factory (`<Name>.kt`) ⇒ generate the registration shim: a
+  // FULLY DECLARATIVE effect ships NO android/ dir at all, and a PANEL effect
+  // (`render.panel`) ships ONLY its `<Name>Panel.kt` draw — the panel-draw seam
+  // the generated factory wires (`draw<Name>Panel`).
+  if (!hand.includes(`${Name}.kt`)) {
     assertFactoryGeneratable(doc, slug, "android");
+    const panel = !!doc.render?.panel;
+    if (panel && !hand.includes(`${Name}Panel.kt`)) {
+      throw new Error(
+        `dopamine: effects/${slug} declares render.panel but has no android/${Name}Panel.kt — ` +
+          `the generated factory wires the hand-written draw${Name}Panel (the panel-draw seam).`,
+      );
+    }
     out.push({
       path: join(modRel, "src/main/kotlin", pkgPath, `${Name}.kt`),
-      content: emitKotlinFactory(slug, namespace, buildFrameArraysSpec(doc, slug, logic)),
+      content: emitKotlinFactory(slug, namespace, buildFrameArraysSpec(doc, slug, logic), panel),
     });
   }
   if (shaderCfg) {

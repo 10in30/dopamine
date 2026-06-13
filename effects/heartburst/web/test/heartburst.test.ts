@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   heartbeatScale,
   heartburstEnvelope,
+  heartPresence,
   burstProgress,
   HEARTBEAT_PHASE,
-} from "../src/heartburst-tempo.js";
+} from "../src/heartburst-renderer.js";
 import { heartburst } from "../src/index.js";
 
 describe("heartbeatScale (lub-dub)", () => {
@@ -105,5 +106,9 @@ describe("heartburst effect factory", () => {
     ) as Record<string, unknown>;
     expect(serene.doubleBeat).toBe(0);
     expect(celeb.doubleBeat).toBe(1);
+  });
+
+  it("declares reduced motion from tempo.reducedMotion", () => {
+    expect(heartburst.reducedMotion).toEqual({ peakMs: 180, holdMs: 360 });
   });
 });

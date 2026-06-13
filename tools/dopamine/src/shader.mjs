@@ -355,6 +355,11 @@ export function glslToMSL({ slug, fragment, uniformMap, samplers = [], arrays = 
   // Pass 2: emit each bespoke fn (non-main) with inline + u param + thread& outs.
   const emitFn = (f) => {
     const info = sigInfo[f.name];
+    // `vUv` is reconstructed as a LOCAL of the fragment entry (see emitFragment);
+    // a helper reading the varying directly is outside the supported subset.
+    if (/\bvUv\b/.test(f.bodyText)) {
+      throw new Error(`shader: ${f.name}() reads vUv — pass it as a parameter instead`);
+    }
     const params = info.params.map((p) => {
       const ty = TYPE_MAP[p.type] ?? p.type;
       return p.isOut ? `thread ${ty} &${p.name}` : `${ty} ${p.name}`;
@@ -417,6 +422,15 @@ function emitFragment(mainFn, { uniformMap, sigInfo, ctx }) {
   let body = rewriteCalls(rewriteTokens(mainFn.bodyText, { uniformMap }), sigInfo, ctx);
   // y-flip: gl_FragCoord.xy reads Metal's top-left [[position]] flipped to y-up.
   body = body.replace(/gl_FragCoord\.xy/g, "float2(in.position.x, u.resolution.y - in.position.y)");
+  // The standard fullscreen-triangle varying: at a fragment, the web's `vUv`
+  // equals gl_FragCoord.xy / uResolution (y-up). Metal's VSOut carries only
+  // [[position]], so reconstruct it as a local at the top of the body.
+  if (/\bvUv\b/.test(body)) {
+    body = body.replace(
+      /^\{/,
+      "{\n    float2 vUv = float2(in.position.x, u.resolution.y - in.position.y) / u.resolution;",
+    );
+  }
   // `fragColor = X; return;` (early outs, e.g. shadow) → `return X;`
   body = body.replace(/fragColor\s*=\s*([^;]+);\s*return\s*;/g, "return $1;");
   // Terminal light-out: the web returns opaque `fragColor = vec4(<rgb>, 1.0)` over a
