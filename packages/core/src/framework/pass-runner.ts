@@ -227,7 +227,7 @@ export function createPassInstance(
   // brightness) so it composites source-over and stays visible on any surface;
   // the SHADOW pass keeps the original opaque fragment for its multiply blend.
   const lightFragment = ctx.composite?.premultiplied
-    ? compositeLightFragment(config.fragment)
+    ? compositeLightFragment(config.fragment, ctx.composite.luminance)
     : config.fragment;
   const allUniforms = [
     ...new Set([...STANDARD, ...config.uniforms, ...(panelCfg ? [panelCfg.sampler] : [])]),

@@ -129,7 +129,7 @@ export function createPanelInstance<P extends PassParams>(
   // Backdrop-aware mode: the light pass emits premultiplied light (source-over,
   // visible on any surface); the shadow pass keeps the opaque multiply fragment.
   const lightFragment = ctx.composite?.premultiplied
-    ? compositeLightFragment(config.fragment)
+    ? compositeLightFragment(config.fragment, ctx.composite.luminance)
     : config.fragment;
 
   // The numeric params that auto-bind to a uniform.

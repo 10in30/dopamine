@@ -15,13 +15,14 @@
  */
 
 import { shadowGeometry } from "../engine/shadow.js";
-import { GLSL_LIGHT_OUT } from "../engine/look/glsl.js";
+import { dopLightOutGLSL } from "../engine/look/glsl.js";
 import type { RGB } from "../engine/color.js";
 import type { CachedProgram, GLContext } from "../engine/context.js";
 
-// Cache the (idempotent) source transform by input string so repeated fires of
-// the same effect don't re-run the regex; the GLContext program cache keys on
-// the transformed source, so a backdrop-mode fire links its own variant once.
+// Cache the (idempotent) source transform by `${luminance} ${fragment}` so
+// repeated fires of the same effect+backdrop don't re-run the regex; the
+// GLContext program cache keys on the transformed source, so each distinct
+// backdrop links its own variant once.
 const compositeFragCache = new Map<string, string>();
 
 /**
@@ -32,14 +33,22 @@ const compositeFragCache = new Map<string, string>();
  * (`tools/dopamine/src/android-shader.mjs`), so the web backdrop path and the
  * native overlays share one premultiplied-light convention.
  *
- * The replace is global on purpose: a hybrid's shader has a SHADOW branch with
- * its own opaque emit, but the light pass runs with `uShadow == 0` so that
+ * `luminance` (the backdrop's relative luminance, 0..1) is BAKED into the
+ * injected helper as a literal so the saturation + presence boost ramps with how
+ * light the surface is (vivid colour on white instead of pale wash); at 0 the
+ * helper is byte-equivalent to plain `dopLightOut`, so a dark backdrop is
+ * unchanged. (Native stacks drive the same math from a uniform — see
+ * `dopLightOutGLSL`.)
+ *
+ * The emit replace is global on purpose: a hybrid's shader has a SHADOW branch
+ * with its own opaque emit, but the light pass runs with `uShadow == 0` so that
  * branch is dead code here — rewriting it is harmless, and it guarantees the
  * LIVE light-path emit (wherever it sits in the source) is the premultiplied
  * one. The shadow CONTEXT keeps the original, untouched fragment.
  */
-export function compositeLightFragment(fragment: string): string {
-  const cached = compositeFragCache.get(fragment);
+export function compositeLightFragment(fragment: string, luminance: number): string {
+  const key = `${luminance.toFixed(4)} ${fragment}`;
+  const cached = compositeFragCache.get(key);
   if (cached) return cached;
   let out = fragment
     .replace(/fragColor\s*=\s*vec4\(\s*max\(\s*(\w+)\s*,\s*0\.0\s*\)\s*,\s*1\.0\s*\)\s*;/g, "fragColor = dopLightOut($1);")
@@ -47,8 +56,10 @@ export function compositeLightFragment(fragment: string): string {
   // Only inject the helper if we actually swapped an emit (an effect that
   // already emits premultiplied light — e.g. a `vec4(col, brightness)` — is
   // left exactly as-is and needs no helper).
-  if (out !== fragment) out = out.replace(/\nvoid main\s*\(/, "\n" + GLSL_LIGHT_OUT + "\nvoid main(");
-  compositeFragCache.set(fragment, out);
+  if (out !== fragment) {
+    out = out.replace(/\nvoid main\s*\(/, "\n" + dopLightOutGLSL(luminance.toFixed(4)) + "\nvoid main(");
+  }
+  compositeFragCache.set(key, out);
   return out;
 }
 
