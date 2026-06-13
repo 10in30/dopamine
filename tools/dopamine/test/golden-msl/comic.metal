@@ -65,7 +65,7 @@ fragment float4 comic_fragment(
     return float4(float3(1.0 - dark), 1.0);
   }
 
-  float2 fromC = frag - uCenter;
+  float2 fromC = frag - u.origin;
   float rad = length(fromC);
   float ang = atan2(fromC.y, fromC.x);
 

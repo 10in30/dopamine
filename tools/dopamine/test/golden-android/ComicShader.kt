@@ -29,7 +29,7 @@ out vec4 fragColor;
 uniform sampler2D uPanel;     // R=wordFill G=ink B=burstFill
 uniform vec2  uResolution;    // device pixels
 uniform vec2  uTarget;        // targeted element size (device px); scales the action lines
-uniform vec2  uCenter;        // impact centre, device px
+uniform vec2  uOrigin;        // impact centre (the anchor), device px
 uniform float uLife;          // whole-effect progress 0..1
 uniform float uTimeS;         // elapsed seconds
 uniform float uPresence;      // panel opacity / presence 0..1
@@ -96,7 +96,7 @@ void main(){
     return;
   }
 
-  vec2 fromC = frag - uCenter;
+  vec2 fromC = frag - uOrigin;
   float rad = length(fromC);
   float ang = atan(fromC.y, fromC.x);
 
