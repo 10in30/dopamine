@@ -23,7 +23,7 @@
  */
 
 import { HALO_FRAGMENT_SRC, HALO_VERTEX_SRC } from "./halo-shader.js";
-import { parseDope, registerDopeEffect, type EffectFactory, type PassParams } from "@dopamine/core";
+import { parseDope, registerDopeEffect, type EffectFactory, type PassParams } from "@dopaminefx/core";
 import doc from "./halo.dope.json";
 
 const DOPE = parseDope(doc as object);

@@ -66,7 +66,7 @@ Why, in three lines:
   feeling-driven moments (one-shot or looping) — not arbitrary timelines.
 - Not a runtime shader transpiler. The loader does not cross-compile shader
   source; it promises a *binding contract* (uniform names + semantics) that each
-  backend's shader honors. (Separately, at **build time**, the `@dopamine/build`
+  backend's shader honors. (Separately, at **build time**, the `@dopaminefx/build`
   toolchain generates MSL and Kotlin shader variants from a single GLSL ES 3.00
   source for effects that opt in via `x-build.shader`, and Swift/Kotlin
   renderer logic from a single restricted-TS module for effects with
@@ -627,7 +627,7 @@ web uniform name), `extras` (the per-frame/host-filled uniforms, by canonical
 name; see §7.1), `samplers` (texture units) and `arrays` (per-frame
 CPU-precomputed geometry arrays — below). The runtime derives its uniform
 bindings from it at load time (web: `framework/dope-pass.ts`), and the
-`@dopamine/build` toolchain consumes the same contract to generate the Metal
+`@dopaminefx/build` toolchain consumes the same contract to generate the Metal
 `Uniforms` struct + packer. Only `slug`, `kind` and `x-build` stay
 toolchain-only.
 
@@ -796,7 +796,7 @@ which `backends.*.shader` is selected.
 ### 9.1 Loading & overriding
 
 ```ts
-import { loadEffect } from "@dopamine/core";
+import { loadEffect } from "@dopaminefx/core";
 
 const fx = await loadEffect("/effects/verdict.dope", {
   overrides: {

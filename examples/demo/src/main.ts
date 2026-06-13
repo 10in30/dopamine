@@ -1,9 +1,9 @@
-// The demo imports the LEAN runtime from `@dopamine/core` and pulls each effect
-// explicitly from its own package (`@dopamine/effect-<name>`) via dynamic
+// The demo imports the LEAN runtime from `@dopaminefx/core` and pulls each effect
+// explicitly from its own package (`@dopaminefx/effect-<name>`) via dynamic
 // import, so Vite code-splits every effect (shader + .dope + fonts/SDF) into its
 // OWN chunk — a consumer pays only for what they import. The demo is a showcase
 // of all nine, so it preloads them during init; a real app would import only the
-// ones it fires (or pull the whole set from the `@dopamine/effects` umbrella).
+// ones it fires (or pull the whole set from the `@dopaminefx/effects` umbrella).
 import {
   getEffect,
   play,
@@ -11,7 +11,7 @@ import {
   type PlayHandle,
   type PreparedEffect,
   type DopamineMood,
-} from "@dopamine/core";
+} from "@dopaminefx/core";
 
 const $ = <T extends HTMLElement>(sel: string): T => {
   const el = document.querySelector<T>(sel);
@@ -26,16 +26,16 @@ type EffectName =
 // Lazy per-effect chunks. Each module self-registers its effect on import; we
 // await them so the generic `play("name", …)` can find the registered factory.
 const EFFECT_LOADERS: Record<EffectName, () => Promise<unknown>> = {
-  solarbloom: () => import("@dopamine/effect-solarbloom"),
-  inkstroke: () => import("@dopamine/effect-inkstroke"),
-  comic: () => import("@dopamine/effect-comic"),
-  fail: () => import("@dopamine/effect-fail"),
-  aurora: () => import("@dopamine/effect-aurora"),
-  ripple: () => import("@dopamine/effect-ripple"),
-  confetti: () => import("@dopamine/effect-confetti"),
-  heartburst: () => import("@dopamine/effect-heartburst"),
-  lightning: () => import("@dopamine/effect-lightning"),
-  halo: () => import("@dopamine/effect-halo"),
+  solarbloom: () => import("@dopaminefx/effect-solarbloom"),
+  inkstroke: () => import("@dopaminefx/effect-inkstroke"),
+  comic: () => import("@dopaminefx/effect-comic"),
+  fail: () => import("@dopaminefx/effect-fail"),
+  aurora: () => import("@dopaminefx/effect-aurora"),
+  ripple: () => import("@dopaminefx/effect-ripple"),
+  confetti: () => import("@dopaminefx/effect-confetti"),
+  heartburst: () => import("@dopaminefx/effect-heartburst"),
+  lightning: () => import("@dopaminefx/effect-lightning"),
+  halo: () => import("@dopaminefx/effect-halo"),
 };
 
 // The fail effect speaks failure moods; map the shared success-mood toggle onto
@@ -178,8 +178,8 @@ interface DopamineDemo {
 void Promise.all(Object.values(EFFECT_LOADERS).map((load) => load()))
   .then(async () => {
     const [comicMod, solarMod] = await Promise.all([
-      import("@dopamine/effect-comic"),
-      import("@dopamine/effect-solarbloom"),
+      import("@dopaminefx/effect-comic"),
+      import("@dopaminefx/effect-solarbloom"),
     ]);
     await Promise.all([
       (comicMod as { ensureComicFonts(): Promise<void> }).ensureComicFonts(),

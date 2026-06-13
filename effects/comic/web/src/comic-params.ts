@@ -7,7 +7,7 @@
  * TYPOGRAPHY are composed on top (see `index.ts`).
  */
 
-import type { RGB } from "@dopamine/core";
+import type { RGB } from "@dopaminefx/core";
 
 /**
  * The SUCCESS-AFFIRMATION set — this is a successful-completion effect, so the

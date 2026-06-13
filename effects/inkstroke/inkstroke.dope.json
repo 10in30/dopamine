@@ -157,7 +157,7 @@
       }
     },
     "web": {
-      "package": "@dopamine/effect-inkstroke",
+      "package": "@dopaminefx/effect-inkstroke",
       "sources": "web"
     },
     "android": {

@@ -1,5 +1,5 @@
 /**
- * @dopamine/core — the EFFECT-FREE runtime + public API.
+ * @dopaminefx/core — the EFFECT-FREE runtime + public API.
  *
  * This is the slim runtime: the conductor (overlay + shared program-cached GL
  * contexts + RAF loop), the registry, the mood registry, the `.dope` loader +
@@ -8,8 +8,8 @@
  * PRIMITIVES) and the generic `play(name, …)` / `prepare(name, …)` API.
  *
  * Core imports + registers NO effect. Each effect ships as its own
- * `@dopamine/effect-<name>` package that depends on this and self-registers on
- * import; the `@dopamine/effects` umbrella bundles all nine + the `celebrate*`
+ * `@dopaminefx/effect-<name>` package that depends on this and self-registers on
+ * import; the `@dopaminefx/effects` umbrella bundles all nine + the `celebrate*`
  * conveniences + the `<dopamine-success>` element.
  */
 
@@ -169,8 +169,8 @@ function resolveRequest(
  * animation has fully played out. A CONTINUOUS effect (one whose `.dope`
  * declares `tempo.loop`, e.g. halo) loops seamlessly until the host calls the
  * returned handle's `stop()`. SSR-safe (resolves immediately off-DOM). The
- * effect must already be registered (import `@dopamine/effect-<name>` or the
- * `@dopamine/effects` umbrella, or load one via `loadEffect`).
+ * effect must already be registered (import `@dopaminefx/effect-<name>` or the
+ * `@dopaminefx/effects` umbrella, or load one via `loadEffect`).
  */
 export function play(effect: string, options: DopamineSuccessOptions = {}): PlayHandle {
   if (!isBrowser()) return Object.assign(Promise.resolve(), { stop() {} });

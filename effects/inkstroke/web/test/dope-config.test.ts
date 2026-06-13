@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { dopePassConfig, parseDope } from "@dopamine/core";
+import { dopePassConfig, parseDope } from "@dopaminefx/core";
 import { INK_FRAGMENT_SRC, INK_VERTEX_SRC } from "../src/inkstroke-shader.js";
 import doc from "../src/inkstroke.dope.json";
 

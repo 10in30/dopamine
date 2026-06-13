@@ -1,5 +1,5 @@
 /**
- * @dopamine/build — the cross-platform effect build toolchain (programmatic API).
+ * @dopaminefx/build — the cross-platform effect build toolchain (programmatic API).
  *
  * A single file `effects/<id>/<slug>.dope.json` (the expanded `.dope`: the data
  * spine + the cross-platform binding contract + the per-platform `x-build` config)

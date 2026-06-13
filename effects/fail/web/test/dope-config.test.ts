@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { dopePassConfig, parseDope, type PassParams } from "@dopamine/core";
+import { dopePassConfig, parseDope, type PassParams } from "@dopaminefx/core";
 import { FAIL_FRAGMENT_SRC, FAIL_VERTEX_SRC } from "../src/fail-shader.js";
 import doc from "../src/fail.dope.json";
 

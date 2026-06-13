@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 
 import { confetti } from "../src/index.js";
-import { resolveMood, type FeelingInput } from "@dopamine/core";
+import { resolveMood, type FeelingInput } from "@dopaminefx/core";
 
 const MOODS = ["serene", "celebratory", "electric"] as const;
 

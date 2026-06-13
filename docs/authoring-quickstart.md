@@ -33,11 +33,11 @@ offset silhouette.
 cp -r effects/ripple effects/sparkle
 cd effects/sparkle && mv ripple.dope.json sparkle.dope.json
 # in web/: rename ripple-shader.ts → sparkle-shader.ts, fix package.json name
-# (@dopamine/effect-sparkle), then from the repo root:
+# (@dopaminefx/effect-sparkle), then from the repo root:
 npm install                              # link the new workspace package
 ```
 
-Wire two root entries: add `-w @dopamine/effect-sparkle` to the root
+Wire two root entries: add `-w @dopaminefx/effect-sparkle` to the root
 `package.json` `build` script, and (to ship it in the batteries-included
 bundle) add the package to `packages/effects` deps + re-exports.
 
@@ -129,7 +129,7 @@ parses and derives a complete pass config as-is). Grammar reference:
                 "fragmentExport": "SPARKLE_FRAGMENT_SRC", "generateMSL": true },
     "swift":   { "module": "DopamineEffectSparkle", "platforms": ["iOS(.v15)", "macOS(.v12)"],
                  "core": { "mode": "path", "package": "Dopamine", "product": "DopamineCore", "path": "swift" } },
-    "web":     { "package": "@dopamine/effect-sparkle", "sources": "web" },
+    "web":     { "package": "@dopaminefx/effect-sparkle", "sources": "web" },
     "android": { "module": "dopamine-effect-sparkle", "namespace": "ai.dopamine.effect.sparkle" }
   }
 }
@@ -149,7 +149,7 @@ paste your own `fbm`/`paletteMix` copies.
 
 ```ts
 import { GLSL_CONSTANTS, GLSL_HASH, GLSL_FBM, GLSL_PALETTE_MIX,
-         GLSL_TONEMAP_ACES, GLSL_DITHER } from "@dopamine/core";
+         GLSL_TONEMAP_ACES, GLSL_DITHER } from "@dopaminefx/core";
 
 export const SPARKLE_VERTEX_SRC = /* glsl */ `#version 300 es
 void main() {
@@ -193,7 +193,7 @@ Standard uniforms the runner always provides: `uResolution`, `uTarget`
 
 ```ts
 import { SPARKLE_FRAGMENT_SRC, SPARKLE_VERTEX_SRC } from "./sparkle-shader.js";
-import { parseDope, registerDopeEffect } from "@dopamine/core";
+import { parseDope, registerDopeEffect } from "@dopaminefx/core";
 import doc from "./sparkle.dope.json";   // the toolchain-synced portable copy
 
 export const sparkle = registerDopeEffect(parseDope(doc as object), {

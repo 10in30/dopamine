@@ -1,6 +1,6 @@
 /**
  * Toolchain test: the single `effects/comic/comic.dope.json` (data + binding
- * contract + x-build), run through `@dopamine/build`, emits COMPLETE, standalone
+ * contract + x-build), run through `@dopaminefx/build`, emits COMPLETE, standalone
  * packages — a SwiftPM package and an npm package — each with a PORTABLE embedded
  * `.dope` (the toolchain keys stripped, not a symlink), plus the gitignored
  * in-workspace `.dope` the web package imports. `swift build` / `tsc` prove they
@@ -22,7 +22,7 @@ describe("dopamine toolchain — comic → standalone platform packages", () => 
     expect(eff.doc.kind).toBe("panel");
     expect(eff.doc.binding.scatterKey).toBe("comicSeed");
     expect(eff.doc["x-build"].swift.module).toBe("DopamineEffectComic");
-    expect(eff.doc["x-build"].web.package).toBe("@dopamine/effect-comic");
+    expect(eff.doc["x-build"].web.package).toBe("@dopaminefx/effect-comic");
   });
 
   it("strips the toolchain-only keys (but SHIPS binding) in the PORTABLE embedded .dope", () => {
@@ -71,8 +71,8 @@ describe("dopamine toolchain — comic → standalone platform packages", () => 
       `${W}/src/comic-fonts.ts`, `${W}/src/comic-params.ts`, `${W}/src/comic.dope.json`,
     ]) expect(byPath.has(p), p).toBe(true);
     const pkg = JSON.parse(byPath.get(`${W}/package.json`));
-    expect(pkg.name).toBe("@dopamine/effect-comic");
-    expect(pkg.dependencies["@dopamine/core"]).toBeTruthy();
+    expect(pkg.name).toBe("@dopaminefx/effect-comic");
+    expect(pkg.dependencies["@dopaminefx/core"]).toBeTruthy();
     // the embedded npm .dope is the portable subset.
     expect(byPath.get(`${W}/src/comic.dope.json`)).not.toContain('"x-build"');
     expect(JSON.parse(byPath.get(`${W}/src/comic.dope.json`)).render.params.exposure).toBeTruthy();

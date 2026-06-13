@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDope, resolveDopeParams, NPR_TIME_STEP_MS } from "@dopamine/core";
+import { parseDope, resolveDopeParams, NPR_TIME_STEP_MS } from "@dopaminefx/core";
 import doc from "../src/halo.dope.json";
 
 // The breathe gate lives in halo.dope.json (`tempo.frame.amp` — a steady

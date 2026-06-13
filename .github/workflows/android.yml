@@ -64,7 +64,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       # The headline data-spine invariant. Every effect now lives in the
-      # single-folder model (effects/<name>/) and the @dopamine/build toolchain
+      # single-folder model (effects/<name>/) and the @dopaminefx/build toolchain
       # emits the .dope into each platform package under dist/. Assert, for EVERY
       # effect, that the .dope embedded in all three platform packages (android
       # assets / web src / swift Resources) is byte-identical — the cross-platform

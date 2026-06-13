@@ -7,7 +7,7 @@
 // mood-registry, and the resolve pipeline). Every EFFECT has migrated to the
 // consolidated single-folder model under `effects/<name>/` and is built into a
 // STANDALONE, installable SwiftPM package under `dist/swift/DopamineEffect<Name>`
-// by the `@dopamine/build` toolchain (run `node tools/dopamine/src/cli.mjs build`).
+// by the `@dopaminefx/build` toolchain (run `node tools/dopamine/src/cli.mjs build`).
 // The iOS demo (swift/Demo/project.yml) consumes those dist packages by path,
 // exactly like an external app would — the effect packages are no longer targets
 // of this package.

@@ -6,7 +6,7 @@
  * the word reads as a punch landing, not a tween. Built on `easeOutCubic`.
  */
 
-import { easeOutCubic, clamp01 } from "@dopamine/core";
+import { easeOutCubic, clamp01 } from "@dopaminefx/core";
 
 /** Window (ms) over which the comic onomatopoeia word SLAMS in. */
 export const IMPACT_MS = 200;

@@ -3,7 +3,7 @@
 This SwiftPM package ships the shared **`DopamineCore`** runtime for iOS/macOS,
 driven by the same portable `.dope` data as every other stack. Each effect
 lives in the single-folder model at `effects/<name>/` (repo root) and is
-compiled by the `@dopamine/build` toolchain into a STANDALONE
+compiled by the `@dopaminefx/build` toolchain into a STANDALONE
 `dist/swift/DopamineEffect<Name>` SwiftPM package — so this package is just the
 runtime + its tests; the iOS demo consumes each effect from its `dist/` package
 by path.

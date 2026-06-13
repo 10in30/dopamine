@@ -42,7 +42,7 @@ import {
   GLSL_HASH,
   GLSL_PALETTE_MIX,
   GLSL_TONEMAP_ACES,
-} from "@dopamine/core";
+} from "@dopaminefx/core";
 
 /**
  * Number of curtain ribbons. Single source of truth: BOTH the GLSL

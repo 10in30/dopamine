@@ -34,7 +34,7 @@ import {
   registerDopeEffect,
   type EffectFactory,
   type PassParams,
-} from "@dopamine/core";
+} from "@dopaminefx/core";
 import doc from "./lightning.dope.json";
 
 const DOPE = parseDope(doc as object);

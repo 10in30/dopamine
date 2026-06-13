@@ -12,7 +12,7 @@ import {
   decodeSdf,
   resolveMood,
   type DopamineMood,
-} from "@dopamine/core";
+} from "@dopaminefx/core";
 // The mote cap is owned by the shader that `#define`s it (single source of truth).
 import { MAX_MOTES } from "../src/solarbloom-shader.js";
 // Importing the effect registers it (self-registers on import).

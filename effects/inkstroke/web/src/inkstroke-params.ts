@@ -4,7 +4,7 @@
  * loader (see `index.ts`); these pure interfaces just describe the bag's shape.
  */
 
-import type { RGB } from "@dopamine/core";
+import type { RGB } from "@dopaminefx/core";
 
 export interface InkRenderParams {
   seed: number;

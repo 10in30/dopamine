@@ -15,7 +15,7 @@
  */
 
 import { type ComicRenderParams, isCheckmark } from "./comic-params.js";
-import { mulberry32 } from "@dopamine/core";
+import { mulberry32 } from "@dopaminefx/core";
 import { EMBEDDED_FACES } from "./comic-fonts.js";
 
 // ---------------------------------------------------------------------------

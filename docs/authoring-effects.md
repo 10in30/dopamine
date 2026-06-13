@@ -14,7 +14,7 @@ build instructions, that doc is the spec.
 > **Architecture (one folder per effect).** The monorepo is a slim runtime core
 > plus one folder per effect:
 >
-> - **`packages/core`** (`@dopamine/core`) — the runtime ONLY: the conductor +
+> - **`packages/core`** (`@dopaminefx/core`) — the runtime ONLY: the conductor +
 >   registries + `.dope` loader + the generic runners + the per-frame expression
 >   evaluator (`framework/frame-expr.ts`), and the SHARED engine bits
 >   (`color`, `sdf`, `shadow`, `seed`, `context`, `gl`, the `look/*` GLSL chunks,
@@ -23,17 +23,17 @@ build instructions, that doc is the spec.
 > - **`effects/<name>/`** — one folder per effect: the canonical
 >   `<name>.dope.json` (the data + the `binding` contract + the per-platform
 >   `x-build` config) and the effect's platform sources. The **web workspace
->   package** at `effects/<name>/web` (`@dopamine/effect-<name>`) carries the
+>   package** at `effects/<name>/web` (`@dopaminefx/effect-<name>`) carries the
 >   GLSL `<name>-shader.ts`, any per-effect timing code, panel `draw()`/renderer
 >   + embedded fonts/SDF where applicable, and a factory `index.ts` that
->   **self-registers on import**. The `@dopamine/build` toolchain
+>   **self-registers on import**. The `@dopaminefx/build` toolchain
 >   (`node tools/dopamine/src/cli.mjs build`) compiles the folder into
 >   standalone, installable packages under `dist/` (npm + SwiftPM + Gradle),
 >   each embedding a byte-identical portable `.dope`.
-> - **`packages/effects`** (`@dopamine/effects`) — the batteries-included
+> - **`packages/effects`** (`@dopaminefx/effects`) — the batteries-included
 >   umbrella: depends on every built-in effect, re-exports them, and hosts the
 >   `celebrate*` conveniences, `builtinEffectNames`, and the
->   `<dopamine-success>` element. `import "@dopamine/effects"` registers
+>   `<dopamine-success>` element. `import "@dopaminefx/effects"` registers
 >   everything.
 >
 > Adding an effect means **scaffolding a new `effects/<name>/` folder** —
@@ -447,12 +447,12 @@ bindings: {
 
 ### 4.3 The standard shader scaffold
 
-Compose the shared GLSL "look" chunks (re-exported from `@dopamine/core`) rather
+Compose the shared GLSL "look" chunks (re-exported from `@dopaminefx/core`) rather
 than copying functions. A pass shader looks like:
 
 ```ts
 import { GLSL_CONSTANTS, GLSL_HASH, GLSL_FBM, GLSL_PALETTE_MIX,
-         GLSL_SD_SEG, GLSL_TONEMAP_ACES, GLSL_DITHER } from "@dopamine/core";
+         GLSL_SD_SEG, GLSL_TONEMAP_ACES, GLSL_DITHER } from "@dopaminefx/core";
 
 export const VERTEX_SRC = /* glsl */ `#version 300 es
 void main() {                                   // full-screen triangle, no buffers
@@ -506,7 +506,7 @@ frame: ({ animMs, life }, params) => ({
 }),
 ```
 
-The **generic** timing PRIMITIVES live in `@dopamine/core` and are imported from
+The **generic** timing PRIMITIVES live in `@dopaminefx/core` and are imported from
 there: `envelope` (held-breath attack + overshoot + decay), `easeOutCubic`/
 `easeOutBack`, `clamp01`, and `NPR_TIME_STEP_MS`. An effect's **own** timing —
 a draw window / slam / stamp / lub-dub envelope — lives either in its
@@ -533,8 +533,8 @@ no core edits, no shared-file edits. The folder is: the canonical
 effects/sparkle/
   sparkle.dope.json     # the CANONICAL data document (§5.1)
   web/
-    package.json        # name @dopamine/effect-sparkle, keyword "dopamine-effect",
-                        # dep @dopamine/core, build "tsc -p tsconfig.json",
+    package.json        # name @dopaminefx/effect-sparkle, keyword "dopamine-effect",
+                        # dep @dopaminefx/core, build "tsc -p tsconfig.json",
                         # "sideEffects": ["./src/index.ts", "./dist/index.js"]
     tsconfig.json       # extends ../../../tsconfig.base.json, outDir ./dist, rootDir ./src
     src/
@@ -556,7 +556,7 @@ package up with no alias edits. `web/package.json`:
 
 ```jsonc
 {
-  "name": "@dopamine/effect-sparkle",
+  "name": "@dopaminefx/effect-sparkle",
   "version": "0.1.0",
   "description": "Sparkle — a success effect for Dopamine.",
   "keywords": ["dopamine-effect"],
@@ -566,7 +566,7 @@ package up with no alias edits. `web/package.json`:
   "files": ["dist", "src"],
   "sideEffects": ["./src/index.ts", "./dist/index.js"],
   "scripts": { "build": "tsc -p tsconfig.json" },
-  "dependencies": { "@dopamine/core": "0.1.0" }
+  "dependencies": { "@dopaminefx/core": "0.1.0" }
 }
 ```
 
@@ -632,11 +632,11 @@ generate the MSL + Kotlin shader variants from your GLSL):
 
 The shader, composing the look chunks (§4.3). Read `uExposure`, `uSpread`,
 `uAmp`, `uStyle`, `uC0..2`, and output light; on `uShadow==1` output a dark
-silhouette. Import the `GLSL_*` chunks from `@dopamine/core`.
+silhouette. Import the `GLSL_*` chunks from `@dopaminefx/core`.
 
 ### 5.3 `src/index.ts` — the factory, config, registration
 
-Everything is imported from `@dopamine/core`; the only local imports are this
+Everything is imported from `@dopaminefx/core`; the only local imports are this
 package's own shader + (optional) `<name>-tempo.ts`.
 
 **The declarative path (preferred where it fits).** If the `.dope` carries
@@ -646,7 +646,7 @@ for the live version):
 
 ```ts
 import { SPARKLE_FRAGMENT_SRC, SPARKLE_VERTEX_SRC } from "./sparkle-shader.js";
-import { parseDope, registerDopeEffect } from "@dopamine/core";
+import { parseDope, registerDopeEffect } from "@dopaminefx/core";
 import doc from "./sparkle.dope.json";
 
 export const sparkle = registerDopeEffect(parseDope(doc as object), {
@@ -681,7 +681,7 @@ import {
   type FeelingInput,
   type PassConfig,
   type PassParams,
-} from "@dopamine/core";
+} from "@dopaminefx/core";
 import doc from "./sparkle.dope.json";
 
 const DOPE = parseDope(doc as object);
@@ -730,30 +730,30 @@ being auto-bound. The factory's own `package.json` `"sideEffects"` entry for
 
 ### 5.4 Wire it into the build + (optionally) the umbrella
 
-- **Root build.** Add `-w @dopamine/effect-sparkle` to the effects step of the
+- **Root build.** Add `-w @dopaminefx/effect-sparkle` to the effects step of the
   root `package.json` `build` script (between core and the umbrella).
 - **Demo (optional).** Add the package to `examples/demo/package.json` deps and a
   loader entry in `src/main.ts`; the demo's auto-discovering Vite alias already
-  resolves `@dopamine/effect-sparkle` to `effects/sparkle/web/src/index.ts` (no
+  resolves `@dopaminefx/effect-sparkle` to `effects/sparkle/web/src/index.ts` (no
   alias edit needed). The same auto-discovery is in `vitest.config.ts`.
 - **Umbrella (optional, for the batteries set).** Add it to
   `packages/effects/package.json` deps and `import { sparkle } from
-  "@dopamine/effect-sparkle"` in `packages/effects/src/index.ts`, referencing it
+  "@dopaminefx/effect-sparkle"` in `packages/effects/src/index.ts`, referencing it
   in `BUILTINS` (which also feeds `builtinEffectNames`). Pure standalone effects
   can skip the umbrella entirely.
 
 ### 5.5 Fire it
 
-A consumer installs `@dopamine/core` + your effect package and imports it (the
+A consumer installs `@dopaminefx/core` + your effect package and imports it (the
 import self-registers):
 
 ```ts
-import "@dopamine/effect-sparkle";          // self-registers
-import { play } from "@dopamine/core";
+import "@dopaminefx/effect-sparkle";          // self-registers
+import { play } from "@dopaminefx/core";
 await play("sparkle", { mood: "electric", intensity: 0.8 });
 ```
 
-…or, if it's in the umbrella, `import "@dopamine/effects"` registers everything.
+…or, if it's in the umbrella, `import "@dopaminefx/effects"` registers everything.
 
 ---
 
@@ -764,7 +764,7 @@ Same shape as §5, but use the **panel runner**. The differences:
 ### 6.1 The config is a `PanelConfig`
 
 ```ts
-import { createPanelInstance, type PanelConfig, type PassParams } from "@dopamine/core";
+import { createPanelInstance, type PanelConfig, type PassParams } from "@dopaminefx/core";
 import { impactPresence } from "./badge-tempo.js"; // this package's own timing
 
 const CONFIG: PanelConfig<BadgeParams & PassParams> = {
@@ -829,7 +829,7 @@ To make a mood available to *all* effects (so a custom brand mood lights up
 everywhere), register it in the shared register:
 
 ```ts
-import { registerMood } from "@dopamine/core";
+import { registerMood } from "@dopaminefx/core";
 registerMood("triumphant", { hueCenter: 280, hueRange: 160, lightness: 0.8, chroma: 0.22, energy: 0.9 });
 ```
 
@@ -877,7 +877,7 @@ out with `castsShadow: false` on the factory if your effect casts no shadow.
   pins a seed, and asserts the params/look you expect — determinism, ranges, and
   the mood/intensity/whimsy axes (see the existing effects' tests for the
   pattern). `npm test` discovers tests across all packages (see
-  `vitest.config.ts`, which aliases every `@dopamine/*` to source).
+  `vitest.config.ts`, which aliases every `@dopaminefx/*` to source).
 - **Cross-platform byte-parity** is gated by the Swift/Android 192-case grids
   (`ParityTests.swift` / `ParityTest.kt`), which assert against a shared
   fixture regenerated by `swift/Scripts/regen-parity.sh`; the generated shader
@@ -893,8 +893,8 @@ Everything is inside the new `effects/<name>/` folder — **no core edits,
 no shared-file edits**.
 
 1. [ ] **Scaffold** `effects/<name>/` + `effects/<name>/web/` — `package.json`
-   (name `@dopamine/effect-<name>`, keyword `dopamine-effect`, dep
-   `@dopamine/core`, build script,
+   (name `@dopaminefx/effect-<name>`, keyword `dopamine-effect`, dep
+   `@dopaminefx/core`, build script,
    `"sideEffects": ["./src/index.ts", "./dist/index.js"]`),
    `tsconfig.json` (extends `../../../tsconfig.base.json`), `src/`, `test/`. Run
    `npm install` once.
@@ -908,7 +908,7 @@ no shared-file edits**.
    `node tools/dopamine/src/cli.mjs build` to sync the portable copy into
    `web/src/`.
 3. [ ] `src/<name>-shader.ts` — vertex (full-screen triangle) + fragment,
-   composing the `GLSL_*` chunks imported from `@dopamine/core`; handle the
+   composing the `GLSL_*` chunks imported from `@dopaminefx/core`; handle the
    `uShadow` pass; single-source any `#define` loop bound.
 4. [ ] `src/<name>-tempo.ts` — only if your timing is code-shaped (skip when
    `tempo.frame` or the `envelope`/`easeOut*` primitives suffice).
@@ -920,9 +920,9 @@ no shared-file edits**.
    (declarative), or a `PassConfig`/`PanelConfig` (uniforms, bindings,
    shadowHeightFrac, frame, and for hybrids draw/passUniforms) with `resolve`
    via `resolveDopeParams`, `create` via `createPass/PanelInstance`,
-   `registerEffect`, optional `registerProgram`. Imports come from `@dopamine/core`.
-7. [ ] **Wire the build**: add `-w @dopamine/effect-<name>` to the root
-   `package.json` `build` script; optionally add to the `@dopamine/effects`
+   `registerEffect`, optional `registerProgram`. Imports come from `@dopaminefx/core`.
+7. [ ] **Wire the build**: add `-w @dopaminefx/effect-<name>` to the root
+   `package.json` `build` script; optionally add to the `@dopaminefx/effects`
    umbrella + the demo (§5.4).
 8. [ ] `test/<name>.test.ts` — pin a seed, assert params/look.
 9. [ ] `npm test` (green) and `npm run build` (per-effect chunk appears).

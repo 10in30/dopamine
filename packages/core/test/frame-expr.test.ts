@@ -9,7 +9,7 @@ import {
   envelope,
   type FrameExprCtx,
   type FrameExprNode,
-} from "@dopamine/core";
+} from "@dopaminefx/core";
 
 const ctx = (over: Partial<FrameExprCtx> = {}): FrameExprCtx => ({
   animMs: 250,

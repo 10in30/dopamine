@@ -346,7 +346,7 @@
       }
     },
     "web": {
-      "package": "@dopamine/effect-confetti",
+      "package": "@dopaminefx/effect-confetti",
       "sources": "web"
     },
     "android": {

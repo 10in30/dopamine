@@ -1850,7 +1850,7 @@
       }
     },
     "web": {
-      "package": "@dopamine/effect-heartburst",
+      "package": "@dopaminefx/effect-heartburst",
       "sources": "web"
     },
     "android": {

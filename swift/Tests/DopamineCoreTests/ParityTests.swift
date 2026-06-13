@@ -54,7 +54,7 @@ final class ParityTests: XCTestCase {
             Bundle.module.path(forResource: "solarbloom-parity", ofType: "json"))
         XCTAssertFalse(effectURL.isEmpty)
         // Assert the core-bundled bytes parse + match the web id; full byte-equality
-        // across the platform packages is enforced by the @dopamine/build toolchain
+        // across the platform packages is enforced by the @dopaminefx/build toolchain
         // (all embeds are emitted from one source — md5-checked in android.yml).
         let doc = try loadSolarbloomDoc()
         XCTAssertEqual(doc.id, "dopamine.success.solarbloom")

@@ -52,7 +52,7 @@ import {
   GLSL_PALETTE_MIX,
   GLSL_ROT2,
   GLSL_TONEMAP_ACES,
-} from "@dopamine/core";
+} from "@dopaminefx/core";
 
 export const HALO_VERTEX_SRC = /* glsl */ `#version 300 es
 out vec2 vUv;

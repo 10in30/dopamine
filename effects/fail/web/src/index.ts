@@ -24,7 +24,7 @@ import {
   type RGB,
   type EffectFactory,
   type PassParams,
-} from "@dopamine/core";
+} from "@dopaminefx/core";
 import doc from "./fail.dope.json";
 
 const DOPE = parseDope(doc as object);

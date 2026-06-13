@@ -1,5 +1,5 @@
 {
-  "name": "@dopamine/effects",
+  "name": "@dopaminefx/effects",
   "version": "0.1.0",
   "description": "Batteries-included umbrella for Dopamine: registers all built-in effects + the celebrate* conveniences + the <dopamine-success> element.",
   "type": "module",
@@ -18,16 +18,16 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@dopamine/core": "0.1.0",
-    "@dopamine/effect-solarbloom": "0.1.0",
-    "@dopamine/effect-inkstroke": "0.1.0",
-    "@dopamine/effect-comic": "0.1.0",
-    "@dopamine/effect-fail": "0.1.0",
-    "@dopamine/effect-aurora": "0.1.0",
-    "@dopamine/effect-ripple": "0.1.0",
-    "@dopamine/effect-confetti": "0.1.0",
-    "@dopamine/effect-heartburst": "0.1.0",
-    "@dopamine/effect-lightning": "0.1.0",
-    "@dopamine/effect-halo": "0.1.0"
+    "@dopaminefx/core": "0.1.0",
+    "@dopaminefx/effect-solarbloom": "0.1.0",
+    "@dopaminefx/effect-inkstroke": "0.1.0",
+    "@dopaminefx/effect-comic": "0.1.0",
+    "@dopaminefx/effect-fail": "0.1.0",
+    "@dopaminefx/effect-aurora": "0.1.0",
+    "@dopaminefx/effect-ripple": "0.1.0",
+    "@dopaminefx/effect-confetti": "0.1.0",
+    "@dopaminefx/effect-heartburst": "0.1.0",
+    "@dopaminefx/effect-lightning": "0.1.0",
+    "@dopaminefx/effect-halo": "0.1.0"
   }
 }

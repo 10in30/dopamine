@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { dopePassConfig, parseDope } from "@dopamine/core";
+import { dopePassConfig, parseDope } from "@dopaminefx/core";
 import { AURORA_FRAGMENT_SRC, AURORA_VERTEX_SRC } from "../src/aurora-shader.js";
 import doc from "../src/aurora.dope.json";
 

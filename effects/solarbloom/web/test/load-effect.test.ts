@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { loadEffectSync, resolveDopeParams, parseDope, getOutline, oklchToLinearSrgb, resolveMood } from "@dopamine/core";
+import { loadEffectSync, resolveDopeParams, parseDope, getOutline, oklchToLinearSrgb, resolveMood } from "@dopaminefx/core";
 import { MAX_MOTES } from "../src/solarbloom-shader.js";
 // Importing the effect registers its render program ("solarbloom").
 import { solarbloom } from "../src/index.js";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { lightning } from "../src/index.js";
-import { dopePassConfig, parseDope, resolveMood, type FeelingInput } from "@dopamine/core";
+import { dopePassConfig, parseDope, resolveMood, type FeelingInput } from "@dopaminefx/core";
 import { strikeProgress, STRIKE_MS } from "../src/lightning-logic.js";
 import {
   LIGHTNING_FRAGMENT_SRC,

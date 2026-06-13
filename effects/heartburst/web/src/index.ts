@@ -22,7 +22,7 @@ import {
   HEARTBURST_VERTEX_SRC,
 } from "./heartburst-shader.js";
 import { drawHeartburstFrame } from "./heartburst-renderer.js";
-import { parseDope, registerDopePanelEffect } from "@dopamine/core";
+import { parseDope, registerDopePanelEffect } from "@dopaminefx/core";
 import doc from "./heartburst.dope.json";
 
 export type { HeartburstRenderParams } from "./heartburst-renderer.js";

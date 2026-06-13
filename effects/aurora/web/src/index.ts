@@ -27,7 +27,7 @@
  */
 
 import { AURORA_FRAGMENT_SRC, AURORA_VERTEX_SRC } from "./aurora-shader.js";
-import { parseDope, registerDopeEffect, type EffectFactory, type PassParams } from "@dopamine/core";
+import { parseDope, registerDopeEffect, type EffectFactory, type PassParams } from "@dopaminefx/core";
 import doc from "./aurora.dope.json";
 
 const DOPE = parseDope(doc as object);

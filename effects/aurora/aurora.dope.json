@@ -134,7 +134,7 @@
       "core": { "mode": "path", "package": "Dopamine", "product": "DopamineCore", "path": "swift" }
     },
     "web": {
-      "package": "@dopamine/effect-aurora",
+      "package": "@dopaminefx/effect-aurora",
       "sources": "web"
     },
     "android": {

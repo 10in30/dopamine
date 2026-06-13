@@ -20,7 +20,7 @@
 
 import type { InkRenderParams } from "./inkstroke-params.js";
 import { INK_FRAGMENT_SRC, INK_VERTEX_SRC } from "./inkstroke-shader.js";
-import { parseDope, registerDopeEffect, type EffectFactory } from "@dopamine/core";
+import { parseDope, registerDopeEffect, type EffectFactory } from "@dopaminefx/core";
 import doc from "./inkstroke.dope.json";
 
 export type { InkRenderParams } from "./inkstroke-params.js";

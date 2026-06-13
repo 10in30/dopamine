@@ -522,7 +522,7 @@
       }
     },
     "web": {
-      "package": "@dopamine/effect-lightning",
+      "package": "@dopaminefx/effect-lightning",
       "sources": "web"
     },
     "android": {

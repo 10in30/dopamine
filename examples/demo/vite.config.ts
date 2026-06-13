@@ -21,11 +21,11 @@ const movedEffectAliases = (() => {
   }));
 })();
 
-// Resolve @dopamine/core + every @dopamine/effect-* package + the @dopamine/effects
+// Resolve @dopaminefx/core + every @dopaminefx/effect-* package + the @dopaminefx/effects
 // umbrella straight to SOURCE so the demo needs no pre-build during `dev`,
 // `build`, or the Playwright recording. The demo imports the lean runtime from
-// `@dopamine/core` and pulls only the effects it needs from their own packages
-// (`@dopamine/effect-<name>`), which Vite then code-splits into per-effect chunks
+// `@dopaminefx/core` and pulls only the effects it needs from their own packages
+// (`@dopaminefx/effect-<name>`), which Vite then code-splits into per-effect chunks
 // (see the dynamic imports in src/main.ts).
 export default defineConfig({
   base: "./",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { easeOutCubic, resolveMood, type DopamineMood } from "@dopamine/core";
+import { easeOutCubic, resolveMood, type DopamineMood } from "@dopaminefx/core";
 // The droplet cap is owned by the shader that `#define`s it (single source of truth).
 import { MAX_DROPS } from "../src/inkstroke-shader.js";
 // Importing the effect registers it (self-registers on import).

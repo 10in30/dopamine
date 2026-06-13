@@ -22,7 +22,7 @@ import {
   GLSL_PALETTE_MIX,
   GLSL_SD_SEG,
   GLSL_TONEMAP_ACES,
-} from "@dopamine/core";
+} from "@dopaminefx/core";
 
 export const FAIL_VERTEX_SRC = /* glsl */ `#version 300 es
 void main() {

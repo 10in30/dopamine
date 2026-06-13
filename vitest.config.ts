@@ -23,7 +23,7 @@ const movedEffectAliases = (() => {
 })();
 
 export default defineConfig({
-  // Resolve every @dopamine/* package to its TS SOURCE so the suite runs against
+  // Resolve every @dopaminefx/* package to its TS SOURCE so the suite runs against
   // source (no pre-build needed) — mirrors the demo's Vite aliases.
   resolve: {
     alias: [

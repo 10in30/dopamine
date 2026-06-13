@@ -1,40 +1,40 @@
 /**
- * @dopamine/effects — the batteries-included UMBRELLA.
+ * @dopaminefx/effects — the batteries-included UMBRELLA.
  *
- * Importing this registers ALL ten built-in effects (each `@dopamine/effect-*`
- * package self-registers on import) and re-exports the whole `@dopamine/core`
+ * Importing this registers ALL ten built-in effects (each `@dopaminefx/effect-*`
+ * package self-registers on import) and re-exports the whole `@dopaminefx/core`
  * runtime/API surface, plus the `celebrate*` convenience wrappers and the
  * `<dopamine-success>` custom element.
  *
- * For code-splitting, depend on `@dopamine/core` for the runtime and import only
- * the `@dopamine/effect-<name>` packages you need (each self-registers on
+ * For code-splitting, depend on `@dopaminefx/core` for the runtime and import only
+ * the `@dopaminefx/effect-<name>` packages you need (each self-registers on
  * import), then fire them with the generic `play(name, …)` / `prepare(name, …)`.
  */
 
-import { play, prepare, type PreparedEffect } from "@dopamine/core";
-import type { DopamineSuccessOptions } from "@dopamine/core";
+import { play, prepare, type PreparedEffect } from "@dopaminefx/core";
+import type { DopamineSuccessOptions } from "@dopaminefx/core";
 
 // Re-export the whole runtime/API surface.
-export * from "@dopamine/core";
+export * from "@dopaminefx/core";
 
 // Register the built-in effects. Each module calls `registerEffect(...)` at
 // import time; we import the factory VALUES (not bare side-effect imports) and
 // reference them in `BUILTINS` so a bundler can't tree-shake the registration
 // away. Each package also re-exports its factory.
-import { solarbloom } from "@dopamine/effect-solarbloom";
-import { inkstroke } from "@dopamine/effect-inkstroke";
-import { comic } from "@dopamine/effect-comic";
-import { fail as failEffect } from "@dopamine/effect-fail";
-import { aurora } from "@dopamine/effect-aurora";
-import { ripple } from "@dopamine/effect-ripple";
-import { confetti } from "@dopamine/effect-confetti";
-import { heartburst } from "@dopamine/effect-heartburst";
-import { lightning } from "@dopamine/effect-lightning";
-import { halo } from "@dopamine/effect-halo";
+import { solarbloom } from "@dopaminefx/effect-solarbloom";
+import { inkstroke } from "@dopaminefx/effect-inkstroke";
+import { comic } from "@dopaminefx/effect-comic";
+import { fail as failEffect } from "@dopaminefx/effect-fail";
+import { aurora } from "@dopaminefx/effect-aurora";
+import { ripple } from "@dopaminefx/effect-ripple";
+import { confetti } from "@dopaminefx/effect-confetti";
+import { heartburst } from "@dopaminefx/effect-heartburst";
+import { lightning } from "@dopaminefx/effect-lightning";
+import { halo } from "@dopaminefx/effect-halo";
 
 // The bundled-face preloaders live with their effects; re-export for convenience.
-export { ensureComicFonts } from "@dopamine/effect-comic";
-export { ensureCheckFonts } from "@dopamine/effect-solarbloom";
+export { ensureComicFonts } from "@dopaminefx/effect-comic";
+export { ensureCheckFonts } from "@dopaminefx/effect-solarbloom";
 
 // The custom element (effect-coupled — it fires Solarbloom).
 export { registerElement, DopamineSuccessElement } from "./element.js";
@@ -50,7 +50,7 @@ export type EffectName =
   | "solarbloom" | "inkstroke" | "comic" | "fail"
   | "aurora" | "ripple" | "confetti" | "heartburst" | "lightning" | "halo";
 
-/** The names of every effect registered by `@dopamine/effects` on import. */
+/** The names of every effect registered by `@dopaminefx/effects` on import. */
 export const builtinEffectNames: readonly EffectName[] = BUILTINS.map(
   (e) => e.name as EffectName,
 );
