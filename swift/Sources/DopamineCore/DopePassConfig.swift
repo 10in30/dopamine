@@ -156,3 +156,90 @@ public struct DopePassConfig<U>: PassConfig {
     }
 }
 #endif
+
+// A DATA-DRIVEN config for a PASS hybrid that hosts BOTH a dynamic sprite panel
+// AND one or more baked-SDF aux textures — the general seam solarbloom needs
+// (its motes ride a sprite panel; its checkmark is a baked SDF). It is the PASS
+// analog of `DopePanelPassConfig`: it wraps a `DopePassConfig`, conforms to
+// `PanelDrawing` (so `MetalOverlayHost` draws + uploads the sprite panel every
+// tick) AND surfaces the data-declared `panelTextureUnit` + `sdfAux` to the
+// runner — so the panel binds at its ARBITRARY declared unit while each SDF keeps
+// its own. The panel UNIT and the SDF aux come from the `doc` (the data drives
+// them); only the per-frame Core Graphics panel draw is the code-shaped seam.
+//
+// Guarded like `DopePanelPassConfig` (it needs CGContext): macOS/iOS only.
+#if canImport(Metal) && canImport(QuartzCore)
+import CoreGraphics
+
+public struct DopeSpritePanelPassConfig<U>: PassConfig, PanelDrawing {
+    public typealias Uniforms = U
+    /// The hand-written per-effect panel draw (CGContext is top-left/y-down,
+    /// matching the web Canvas2D space the host pre-flips to).
+    public typealias DrawPanel = (CGContext, CGSize, [String: DopeValue], PanelFrame) -> Void
+
+    private let base: DopePassConfig<U>
+    private let draw: DrawPanel
+    /// The sprite panel's declared texture unit (`render.panel.texture`); default
+    /// 0 when the doc leaves it unset.
+    public let panelTextureUnit: Int
+    /// The baked-SDF aux textures (`binding.samplers[].outline`) the runner uploads.
+    private let sdfAux: [DopeSdfAuxSpec]
+
+    public init(
+        doc: DopeDoc,
+        vertexFunction: String,
+        fragmentFunction: String,
+        packUniforms: @escaping DopePassConfig<U>.Packer,
+        drawPanel: @escaping DrawPanel
+    ) throws {
+        self.base = try DopePassConfig(
+            doc: doc,
+            vertexFunction: vertexFunction,
+            fragmentFunction: fragmentFunction,
+            packUniforms: packUniforms
+        )
+        self.draw = drawPanel
+        self.panelTextureUnit = doc.panelTextureUnit ?? 0
+        self.sdfAux = doc.sdfAux
+    }
+
+    // PassConfig — forwarded to the data-driven base, plus the panel-unit + SDF-aux
+    // seams the runner reads.
+    public var vertexFunction: String { base.vertexFunction }
+    public var fragmentFunction: String { base.fragmentFunction }
+    public var usesOrigin: Bool { base.usesOrigin }
+    public var loopPeriodMs: Double? { base.loopPeriodMs }
+    public var snapsOnTwos: Bool { base.snapsOnTwos }
+    public func sdfAuxTextures() -> [DopeSdfAuxSpec] { sdfAux }
+    public func shadowHeightFrac(_ params: [String: DopeValue]) -> Double {
+        base.shadowHeightFrac(params)
+    }
+    public func frame(_ info: FrameInfo, _ params: [String: DopeValue]) -> (amp: Double, extras: [String: Double]) {
+        base.frame(info, params)
+    }
+    public func passExtras(
+        targetMinDimPx: Double, dpr: Double, params: [String: DopeValue]
+    ) -> [String: Double] {
+        base.passExtras(targetMinDimPx: targetMinDimPx, dpr: dpr, params: params)
+    }
+    public func packUniforms(
+        standard: StandardUniforms,
+        params: [String: DopeValue],
+        extras: [String: Double]
+    ) -> U {
+        base.packUniforms(standard: standard, params: params, extras: extras)
+    }
+    public func frameArrays(
+        _ info: FrameInfo, _ params: [String: DopeValue],
+        width: Float, height: Float, origin: SIMD2<Float>
+    ) -> [PassFrameArray] {
+        base.frameArrays(info, params, width: width, height: height, origin: origin)
+    }
+
+    // PanelDrawing — the code-shaped seam. `panelSizePx` keeps the protocol
+    // default (the full canvas — the mote panel covers the whole screen).
+    public func drawPanel(_ ctx: CGContext, sizePx: CGSize, params: [String: DopeValue], frame: PanelFrame) {
+        draw(ctx, sizePx, params, frame)
+    }
+}
+#endif

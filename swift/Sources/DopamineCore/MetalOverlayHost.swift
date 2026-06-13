@@ -48,8 +48,15 @@ public struct PanelFrame {
     /// The targeted element's SIZE in device px. The centrepiece is sized to this
     /// box. Defaults to the full canvas when no element is targeted.
     public var targetPx: CGSize
-    public init(life: Double, centerPx: CGPoint, targetPx: CGSize) {
+    /// The un-stepped wall-clock time for this frame, in MILLISECONDS (the web's
+    /// `info.animMs`). A panel draw that needs per-element animation timing (e.g.
+    /// solarbloom's per-mote twinkle, which takes `timeS = animMs / 1000`) reads
+    /// this; one-shot panels (heartburst/comic/confetti) drive off `life` and
+    /// ignore it.
+    public var elapsedMs: Double
+    public init(life: Double, centerPx: CGPoint, targetPx: CGSize, elapsedMs: Double = 0) {
         self.life = life; self.centerPx = centerPx; self.targetPx = targetPx
+        self.elapsedMs = elapsedMs
     }
 }
 
@@ -229,7 +236,7 @@ public final class MetalOverlayHost<Config: PassConfig> {
             // Initial pose: centred, full canvas (the live tick supplies the element box).
             redrawPanel(life: 0,
                         centerPx: CGPoint(x: panelSizePx.width * 0.5, y: panelSizePx.height * 0.5),
-                        targetPx: panelSizePx)
+                        targetPx: panelSizePx, elapsedMs: 0)
         } else {
             panelParams = [:]
             panelSizePx = .zero
@@ -249,11 +256,11 @@ public final class MetalOverlayHost<Config: PassConfig> {
     /// redraws its Canvas2D every frame, so the panel GEOMETRY (e.g. heartburst's
     /// burst hearts flying outward) animates AND lands on the page element; this
     /// mirrors that. No-op for pure-shader effects (empty `panelSizePx`).
-    private func redrawPanel(life: Double, centerPx: CGPoint, targetPx: CGSize) {
+    private func redrawPanel(life: Double, centerPx: CGPoint, targetPx: CGSize, elapsedMs: Double) {
         guard let pd = config as? PanelDrawing,
               panelSizePx.width >= 1, panelSizePx.height >= 1 else { return }
         let sz = panelSizePx
-        let frame = PanelFrame(life: life, centerPx: centerPx, targetPx: targetPx)
+        let frame = PanelFrame(life: life, centerPx: centerPx, targetPx: targetPx, elapsedMs: elapsedMs)
         setPanel(Self.makePanelImage(sz) { ctx in
             pd.drawPanel(ctx, sizePx: sz, params: panelParams, frame: frame)
         })
@@ -375,7 +382,7 @@ public final class MetalOverlayHost<Config: PassConfig> {
         // Canvas2D every frame, so the panel geometry animates) on the page element.
         let life = Swift.min(Swift.max(elapsedMs, 0) / Swift.max(runner.durationMs, 1), 1)
         let pf = panelFrameInputs(dpr: dpr, anchorPx: anchorPx, targetPx: targetPx)
-        redrawPanel(life: life, centerPx: pf.center, targetPx: pf.target)
+        redrawPanel(life: life, centerPx: pf.center, targetPx: pf.target, elapsedMs: elapsedMs)
 
         // The LIGHT pass is mandatory. If no drawable is available this frame,
         // skip the whole tick rather than crash on a nil encoder.
@@ -421,7 +428,7 @@ public final class MetalOverlayHost<Config: PassConfig> {
         // animates the panel geometry too (mirrors the live `tick` path).
         let life = Swift.min(Swift.max(elapsedMs, 0) / Swift.max(runner.durationMs, 1), 1)
         let pf = panelFrameInputs(dpr: dpr, anchorPx: anchorPx, targetPx: targetPx)
-        redrawPanel(life: life, centerPx: pf.center, targetPx: pf.target)
+        redrawPanel(life: life, centerPx: pf.center, targetPx: pf.target, elapsedMs: elapsedMs)
         let desc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: lightLayer.pixelFormat, width: width, height: height, mipmapped: false)
         desc.usage = [.renderTarget, .shaderRead]

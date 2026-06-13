@@ -222,6 +222,38 @@ public func parseDope(_ src: String) throws -> DopeDoc {
     let usesOrigin = renderObj["config"]?["usesOrigin"]?.asBool
     let stepping = renderObj["config"]?["stepping"]?.asString
 
+    // render.panel — the dynamic SPRITE-PANEL seam (a PASS effect's sprite layer
+    // the runner redraws + uploads + samples each frame). Its sampler binds at an
+    // ARBITRARY unit (texture(0) stays the default panel slot only when unset),
+    // so a PASS hybrid can host a sprite panel AND a baked-SDF aux together.
+    let panelSampler = renderObj["panel"]?["sampler"]?.asString
+    let panelTextureUnit = renderObj["panel"]?["texture"]?.asNumber.map { Int($0) }
+
+    // SDF aux textures — one per `binding.samplers[]` entry that declares an
+    // `outline` source. The native PASS runner decodes the inline blob, uploads
+    // an R8 texture at the sampler's `texture` unit, and flips the sampler's
+    // `on` extra to 1. The `on` canonical name is taken straight off the sampler
+    // (`binding.samplers[].on`); its WEB uniform name is resolved through the
+    // matching `binding.extras[]` entry. (This is the general SDF-aux seam — any
+    // effect with a baked outline gets it, driven entirely by the data.)
+    var sdfAux: [DopeSdfAuxSpec] = []
+    let bindingExtrasJSON = json["binding"]?["extras"]?.asArray ?? []
+    for s in samplers {
+        guard let outline = s.outline, let unit = s.texture,
+              let sdfData = json["geometry"]?["outlines"]?[outline]?["sdf"]?["data"]?.asString
+        else { continue }
+        let onCanonical = s.on
+        let onWeb = onCanonical.flatMap { name in
+            bindingExtrasJSON.first { $0["name"]?.asString == name }?["web"]?.asString
+        }
+        sdfAux.append(DopeSdfAuxSpec(
+            unit: unit,
+            dataURI: sdfData,
+            sampler: s.name ?? s.web,
+            onUniformWeb: onWeb,
+            onExtra: onCanonical))
+    }
+
     // binding — the uniform-binding contract (now SHIPS in the portable doc).
     var binding: DopeBinding?
     if let b = json["binding"] {
@@ -251,6 +283,8 @@ public func parseDope(_ src: String) throws -> DopeDoc {
         frame: frame, loop: loop, reducedMotion: reducedMotion,
         shadowHeightFrac: shadowHeightFrac, renderPass: renderPass, consts: consts,
         usesOrigin: usesOrigin, stepping: stepping, binding: binding,
+        panelSampler: panelSampler, panelTextureUnit: panelTextureUnit,
+        sdfAux: sdfAux,
         raw: json
     )
 }

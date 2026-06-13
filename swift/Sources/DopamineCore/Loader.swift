@@ -206,6 +206,36 @@ public struct DopeBindingSampler: Equatable {
     public var on: String?
 }
 
+/// A baked-SDF aux texture the native PASS runner uploads + binds, derived from
+/// a `binding.samplers[]` entry that declares an `outline` source. The cross-
+/// platform analog of the web pass-runner's `kind:"sdf"` aux texture: the runner
+/// `decodeDopeSdf(dataURI)`s the inline blob, uploads it as an R8 texture, binds
+/// it at `unit`, and flips the sampler's `on` extra to 1. This is the GENERAL
+/// SDF-aux seam (any effect with a baked outline gets it), driven by the data.
+public struct DopeSdfAuxSpec: Equatable {
+    /// The texture unit it binds at (the sampler's declared `texture`).
+    public let unit: Int
+    /// The raw inline SDF `data:` URI (decoded at runner build time).
+    public let dataURI: String
+    /// The canonical/MSL sampler argument name (e.g. `sdfTex`).
+    public let sampler: String
+    /// The sampler's `on`-flag uniform name on WEB (e.g. `uSdfOn`) — for the
+    /// toolchain factory generator's reference; the runner uses `onExtra`.
+    public let onUniformWeb: String?
+    /// The CANONICAL `binding.extras` name of the sampler's "on" flag (e.g.
+    /// `sdfOn`) — the key the runner sets to 1 in the extras map so the generated
+    /// packer flips the struct field on.
+    public let onExtra: String?
+    public init(unit: Int, dataURI: String, sampler: String,
+                onUniformWeb: String?, onExtra: String?) {
+        self.unit = unit
+        self.dataURI = dataURI
+        self.sampler = sampler
+        self.onUniformWeb = onUniformWeb
+        self.onExtra = onExtra
+    }
+}
+
 /// The cross-platform uniform-binding contract (mirror of the web
 /// `DopeBinding`). SHIPS in the portable doc: the runtime derives which
 /// resolved params bind to which shader uniforms from it (the Metal struct
@@ -289,6 +319,15 @@ public struct DopeDoc {
     public var stepping: String? = nil
     /// The uniform-binding contract (`binding`), when the doc ships one.
     public var binding: DopeBinding?
+    /// The sprite-panel sampler name (`render.panel.sampler`), when the doc
+    /// declares a dynamic sprite panel; nil for non-panel / pure-shader effects.
+    public var panelSampler: String? = nil
+    /// The texture unit the sprite panel binds at (`render.panel.texture`);
+    /// nil ⇒ the default panel slot (texture(0)).
+    public var panelTextureUnit: Int? = nil
+    /// The baked-SDF aux textures the native PASS runner uploads + binds (one per
+    /// `binding.samplers[]` entry with an `outline` source). Empty when none.
+    public var sdfAux: [DopeSdfAuxSpec] = []
     /// The raw ordered JSON (for `content` / `geometry` consumers).
     public var raw: JSONValue
 }
