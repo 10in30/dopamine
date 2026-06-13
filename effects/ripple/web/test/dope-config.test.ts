@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { dopePassConfig, parseDope } from "@dopamine/core";
+import { dopePassConfig, parseDope } from "@dopaminefx/core";
 import { RIPPLE_FRAGMENT_SRC, RIPPLE_VERTEX_SRC } from "../src/ripple-shader.js";
 import doc from "../src/ripple.dope.json";
 

@@ -219,7 +219,7 @@
 
     "binding": {
       "type": "object",
-      "description": "The cross-platform uniform-binding contract (§8.2). SHIPS in the portable doc: the runtime derives its uniform bindings from it; the @dopamine/build toolchain also consumes it for the Metal Uniforms struct codegen.",
+      "description": "The cross-platform uniform-binding contract (§8.2). SHIPS in the portable doc: the runtime derives its uniform bindings from it; the @dopaminefx/build toolchain also consumes it for the Metal Uniforms struct codegen.",
       "properties": {
         "note": { "type": "string" },
         "excludeParams": { "type": "array", "items": { "type": "string" } },

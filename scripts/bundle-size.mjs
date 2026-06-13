@@ -1,5 +1,5 @@
 /**
- * Measure per-entry bundle sizes for the code-split @dopamine/core.
+ * Measure per-entry bundle sizes for the code-split @dopaminefx/core.
  *
  * For each scenario (core-only, core + one effect, all effects) we write a tiny
  * entry that imports exactly that surface, bundle it with Vite (esbuild minify,
@@ -26,7 +26,7 @@ const SCENARIOS = {
   "core + inkstroke (Verdict)": entryWith("inkstroke"),
   "core + solarbloom": entryWith("solarbloom"),
   "core + comic": entryWith("comic"),
-  "all nine effects (umbrella @dopamine/effects)": `import * as all from ${JSON.stringify(umbrellaEntry)};\nconsole.log(all.celebrate, all.fail, all.celebrateInk, all.celebrateComic, all.builtinEffectNames);`,
+  "all nine effects (umbrella @dopaminefx/effects)": `import * as all from ${JSON.stringify(umbrellaEntry)};\nconsole.log(all.celebrate, all.fail, all.celebrateInk, all.celebrateComic, all.builtinEffectNames);`,
 };
 
 function entryWith(name) {

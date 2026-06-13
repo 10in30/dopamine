@@ -17,7 +17,7 @@
  */
 
 import { RIPPLE_FRAGMENT_SRC, RIPPLE_VERTEX_SRC } from "./ripple-shader.js";
-import { parseDope, registerDopeEffect, type EffectFactory, type PassParams } from "@dopamine/core";
+import { parseDope, registerDopeEffect, type EffectFactory, type PassParams } from "@dopaminefx/core";
 import doc from "./ripple.dope.json";
 
 const DOPE = parseDope(doc as object);

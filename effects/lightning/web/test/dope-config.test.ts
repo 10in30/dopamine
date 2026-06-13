@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { clamp01, dopePassConfig, envelope, parseDope } from "@dopamine/core";
+import { clamp01, dopePassConfig, envelope, parseDope } from "@dopaminefx/core";
 import { LIGHTNING_FRAGMENT_SRC, LIGHTNING_VERTEX_SRC } from "../src/lightning-shader.js";
 import { strikeProgress } from "../src/lightning-logic.js";
 import doc from "../src/lightning.dope.json";

@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { celebrate, type DopamineSuccessOptions } from "@dopamine/effects";
+import { celebrate, type DopamineSuccessOptions } from "@dopaminefx/effects";
 
 /**
  * Returns a stable `celebrate` function for imperative use:

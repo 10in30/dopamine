@@ -94,13 +94,13 @@ whimsy.
 ```
 .
 ├─ packages/                  # WEB monorepo (npm workspaces)
-│  ├─ core/                   # @dopamine/core — slim runtime (conductor, registries, .dope loader, pass/panel runners, engine)
-│  ├─ effects/                # @dopamine/effects — batteries-included umbrella + <dopamine-success> element
-│  └─ react/                  # @dopamine/react — <DopamineSuccess> + useDopamine()
+│  ├─ core/                   # @dopaminefx/core — slim runtime (conductor, registries, .dope loader, pass/panel runners, engine)
+│  ├─ effects/                # @dopaminefx/effects — batteries-included umbrella + <dopamine-success> element
+│  └─ react/                  # @dopaminefx/react — <DopamineSuccess> + useDopamine()
 ├─ effects/<name>/            # SINGLE-FOLDER effects: one unified .dope + the effect's
 │                             #   web/swift/android sources (+ fonts/ if any), compiled by the toolchain
 │                             #   into standalone dist/ packages per platform (npm + SwiftPM + Gradle)
-├─ tools/dopamine/            # @dopamine/build — `dopamine build` emits installable Swift/npm/Android packages from one folder
+├─ tools/dopamine/            # @dopaminefx/build — `dopamine build` emits installable Swift/npm/Android packages from one folder
 ├─ examples/demo/             # interactive Vite demo (mood/intensity/whimsy controls) — the live site above
 ├─ scripts/                   # build/render/reel/media tooling
 ├─ docs/                      # .dope format spec + schema + authoring guide + README media
@@ -133,15 +133,15 @@ npm run dev        # interactive demo at localhost
 Use it in your app — batteries-included (registers every effect):
 
 ```ts
-import { celebrate } from "@dopamine/effects";
+import { celebrate } from "@dopaminefx/effects";
 await celebrate({ mood: "celebratory", intensity: 0.8, whimsy: 0.6 });
 ```
 
 Or pay only for what you import (each effect self-registers):
 
 ```ts
-import "@dopamine/effect-solarbloom";
-import { play } from "@dopamine/core";
+import "@dopaminefx/effect-solarbloom";
+import { play } from "@dopaminefx/core";
 await play("solarbloom", { mood: "celebratory", intensity: 0.8 });
 ```
 
@@ -151,7 +151,7 @@ Declarative element, or React:
 <dopamine-success mood="electric" intensity="0.9"></dopamine-success>
 ```
 ```tsx
-import { DopamineSuccess } from "@dopamine/react";
+import { DopamineSuccess } from "@dopaminefx/react";
 <DopamineSuccess trigger={orderId} mood="celebratory" intensity={0.8} />;
 ```
 
@@ -248,7 +248,7 @@ Download artifacts from the **Actions** tab → the latest run → *Artifacts*.
 
 ## How it works (short version)
 
-`@dopamine/core` (web), `DopamineCore` (Swift), and `dopamine-core` (Android) are
+`@dopaminefx/core` (web), `DopamineCore` (Swift), and `dopamine-core` (Android) are
 thin **shared runtimes**; each effect plugs in from its own package with only
 what's genuinely per-effect — its **shader**, its **timing**, and its **uniform
 config**. Everything else (color, mood model, the `.dope` loader/grammar, the

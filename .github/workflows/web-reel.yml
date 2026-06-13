@@ -98,7 +98,7 @@ jobs:
           python3 -m pip install --quiet --break-system-packages fonttools brotli \
             || python3 -m pip install --quiet fonttools brotli
 
-      # The demo is a Vite app whose config resolves @dopamine/* to source, so this
+      # The demo is a Vite app whose config resolves @dopaminefx/* to source, so this
       # produces a self-contained static site in examples/demo/dist (base: "./", so
       # it works under the /<repo>/ project-pages path with no hardcoded base).
       - name: Build the web packages + demo

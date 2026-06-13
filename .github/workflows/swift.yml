@@ -143,7 +143,7 @@ jobs:
 
       # --- MUST-PASS: the toolchain-generated artifacts must be in sync with the
       # single-folder sources. Every effect now lives in effects/<name>/ and the
-      # @dopamine/build toolchain (not the retired scripts/gen-uniforms.mjs) emits
+      # @dopaminefx/build toolchain (not the retired scripts/gen-uniforms.mjs) emits
       # the Swift/MSL uniform structs into its dist package. `dopamine build`
       # already ran above; --check re-derives every artifact and fails if the build
       # isn't idempotent (i.e. a source edit didn't get rebuilt). ---

@@ -337,7 +337,7 @@
       }
     },
     "web": {
-      "package": "@dopamine/effect-ripple",
+      "package": "@dopaminefx/effect-ripple",
       "sources": "web"
     },
     "android": {

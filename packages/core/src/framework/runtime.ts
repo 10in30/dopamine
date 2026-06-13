@@ -1,7 +1,7 @@
 /**
  * Runtime-environment guards. Every access to a browser-only global
  * (`document`, `window`, `matchMedia`, `devicePixelRatio`) goes through here so
- * the whole library is SSR-safe: importing `@dopamine/core` on a server, or
+ * the whole library is SSR-safe: importing `@dopaminefx/core` on a server, or
  * calling `celebrate()` where there is no DOM, is a no-op rather than a crash.
  */
 

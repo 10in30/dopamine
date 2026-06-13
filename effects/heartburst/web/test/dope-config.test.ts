@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { dopePanelConfig, parseDope, type PassParams } from "@dopamine/core";
+import { dopePanelConfig, parseDope, type PassParams } from "@dopaminefx/core";
 import {
   HEARTBURST_FRAGMENT_SRC,
   HEARTBURST_VERTEX_SRC,

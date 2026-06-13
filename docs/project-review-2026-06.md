@@ -148,7 +148,7 @@ problem to fix first is ergonomic (authoring surface), not semantic (more ops).
 |---|---|
 | **No license** | There is no `LICENSE` file in the repo. Default copyright applies; no one may use, copy, or redistribute. Everything else in this section is moot until this is fixed. |
 | **Nothing is published** | Root `package.json` is `"private": true`, all packages at `0.1.0`; no npm package, no SwiftPM tag, no Maven artifact. `dist/` is gitignored, so even the SwiftPM/Gradle "packages" exist only on a builder's machine. |
-| **The npm name is taken** | `dopamine` on npm is squatted by an unrelated package. Scoped `@dopamine/*` availability is unverified; a rename or scope decision is needed before first publish. |
+| **The npm name is taken** | `dopamine` on npm is squatted by an unrelated package. Scoped `@dopaminefx/*` availability is unverified; a rename or scope decision is needed before first publish. |
 | **Bus factor ≈ 1** | 141 commits in 4 days: 110 authored by Claude, 31 by one human (`git shortlog -sn`). No CONTRIBUTING.md, no issue templates, no second maintainer. |
 | **CI requires a paid runner** | The macOS job needs `macos-15-xlarge` (M2) and a non-zero Actions spending limit (`.github/workflows/swift.yml`, documented in CLAUDE.md). A fork cannot run the full gate suite — contributors can't self-verify the Metal path. |
 
@@ -236,7 +236,7 @@ reduced-aware* reward moment with one JSON file" is aimed at exactly that gap.
 |---|---|---|---|---|
 | **Lottie / dotLottie** (LottieFiles) | Dominant portable-animation format; dotLottie v2 is MIT-spec'd ZIP packaging with theming, state machines, data-bound variables (https://dotlottie.io/spec/2.0/, https://lottiefiles.com/blog/working-with-lottie-animations/dotlottie-v2-4-0-state-machine-support); new web runtime is Rust+WASM (ThorVG) with WebGL2/WebGPU backends (https://github.com/lottiefiles/dotlottie-web); iOS player actively maintained (https://github.com/LottieFiles/dotlottie-ios); AI tooling marketed (https://lottiefiles.com/ai) | Massive ecosystem, designer tooling (After Effects + Lottie Creator), interactivity, vector content, hiring familiarity | Vector/raster only — no shader-grade light effects; no cross-platform numeric determinism guarantee; runtime fragmentation between legacy lottie-web/lottie-ios and the new dotLottie players is a real migration mess | Position `.dope` as *complementary*: dotLottie for icons/illustrations, `.dope` for full-screen GPU moments. A `.dope`-inside-`.lottie` asset experiment is technically plausible (both are "portable file + per-platform runtime" models) but politically unlikely; learn from their spec-versioning instead |
 | **Rive** | Proprietary editor + open runtimes; state machines + data binding as the designer/developer contract (https://rive.app/blog/data-binding-in-rive-a-shared-language-for-designers-and-developers, https://rive.app/blog/how-state-machines-work-in-rive) | Best-in-class interactive/runtime-input story; real authoring tool; strong commercial momentum | Closed format + editor lock-in; not shader-centric; no determinism pitch | Low. Rive is the strongest argument that *authoring tools win formats* — the lesson, not a partner |
-| **canvas-confetti** | The default web confetti; minimal, beloved, web-only (https://www.npmjs.com/package/canvas-confetti) | Zero-config, tiny, ubiquitous | One effect, one platform, CPU canvas | High: ship a `@dopamine/confetti` compat shim (same API surface, GPU + cross-platform underneath). Cheapest credible adoption wedge in the list |
+| **canvas-confetti** | The default web confetti; minimal, beloved, web-only (https://www.npmjs.com/package/canvas-confetti) | Zero-config, tiny, ubiquitous | One effect, one platform, CPU canvas | High: ship a `@dopaminefx/confetti` compat shim (same API surface, GPU + cross-platform underneath). Cheapest credible adoption wedge in the list |
 | **tsParticles** | Actively maintained particle framework + confetti/fireworks presets, many framework wrappers (updated May 2026, https://socket.dev/npm/package/@tsparticles/confetti, https://confetti.js.org/) | Breadth of particle systems, wrapper coverage | Web-only; config-object sprawl; no portable format, no parity story | Medium: their preset-config audience is exactly the "effects as JSON data" audience |
 | **party.js** | Dormant — last release activity is a 2021 v2 pre-release (https://github.com/yiliansource/party-js/releases) | — | Effectively unmaintained | Its users are unserved; target them in docs/SEO, not partnership |
 | **Motion (ex-Framer Motion)** | The de-facto React animation library, v12, ~30M downloads/mo, active 2026 releases, agent-facing Motion+ `/motion` skill (https://motion.dev/, https://motion.dev/changelog) | Enormous reach; springs/layout/gestures; AI distribution already built | DOM/values animation, not visual effects — different layer entirely | Complementary by construction: a recipe "trigger a Dopamine effect from a Motion gesture" costs a docs page and borrows their audience |
@@ -294,7 +294,7 @@ agent packaging) catches up to the engineering.
 
 1. **Add a LICENSE (MIT or Apache-2.0) and decide the npm name/scope.** Without
    these the project is not open source, whatever the README says. Resolve the
-   `dopamine` squat by committing to `@dopamine/*` (verify scope availability)
+   `dopamine` squat by committing to `@dopaminefx/*` (verify scope availability)
    or renaming once, now, before any links exist.
    *Done when:* `LICENSE` at repo root, license fields in every `package.json`
    /podspec-equivalent, name decision recorded in the README.
@@ -314,10 +314,10 @@ agent packaging) catches up to the engineering.
    skill exposing validate+render+the format docs, so "text-to-.dope" works in
    any agent harness — this is the AI-moment wedge (§3) and it's mostly
    plumbing over existing code.
-   *Done when:* `npx @dopamine/cli validate my-effect.dope.json` passes/fails
+   *Done when:* `npx @dopaminefx/cli validate my-effect.dope.json` passes/fails
    with actionable errors outside this repo, and an agent with the MCP server
    can go prompt → valid `.dope` → rendered frame without human glue.
-4. **Build the canvas-confetti compat shim** (`@dopamine/confetti` exposing the
+4. **Build the canvas-confetti compat shim** (`@dopaminefx/confetti` exposing the
    canvas-confetti API over the GPU implementation) and write the Motion/GSAP
    "trigger a reward moment" recipes. Cheap, high-leverage distribution that
    borrows three existing audiences instead of building one from scratch.

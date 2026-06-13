@@ -16,7 +16,7 @@ import { checkProgress } from "./solarbloom-tempo.js";
 import type { CheckGlyph, RenderParams } from "./solarbloom-params.js";
 import { drawCheckGlyph } from "./check-renderer.js";
 import { drawMotePanel } from "./solarbloom-renderer.js";
-import type { RGB } from "@dopamine/core";
+import type { RGB } from "@dopaminefx/core";
 import {
   envelope,
   registerEffect,
@@ -34,7 +34,7 @@ import {
   type PassConfig,
   type PassParams,
   type DecodedSdf,
-} from "@dopamine/core";
+} from "@dopaminefx/core";
 import doc from "./solarbloom.dope.json";
 
 export type { RenderParams, CheckGlyph } from "./solarbloom-params.js";

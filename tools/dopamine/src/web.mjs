@@ -5,7 +5,7 @@
  * `dist/web/effect-<slug>/`:
  *
  *   dist/web/effect-comic/
- *     package.json                 (generated; deps @dopamine/core)
+ *     package.json                 (generated; deps @dopaminefx/core)
  *     tsconfig.json                (generated; standalone)
  *     src/*.ts                     (the hand-written web sources, copied)
  *     src/<slug>.dope.json         (the PORTABLE embedded data spine; index imports "./<slug>.dope.json")
@@ -33,7 +33,7 @@ function emitWebPackageJson({ pkgName, slug, meta }) {
       files: ["dist", "src"],
       sideEffects: ["./src/index.ts", "./dist/index.js"],
       scripts: { build: "tsc -p tsconfig.json" },
-      dependencies: { "@dopamine/core": "^0.1.0" },
+      dependencies: { "@dopaminefx/core": "^0.1.0" },
     },
     null,
     2,
@@ -71,7 +71,7 @@ function emitWebTsconfig() {
 export async function generateNpmPackage({ eff }) {
   const { dir, doc, slug, dope } = eff;
   const web = doc["x-build"].web ?? {};
-  const pkgName = web.package ?? `@dopamine/effect-${slug}`;
+  const pkgName = web.package ?? `@dopaminefx/effect-${slug}`;
   const srcAbs = join(dir, web.sources ?? "web", "src");
 
   const pkgRel = join("web", `effect-${slug}`);
@@ -89,7 +89,7 @@ export async function generateNpmPackage({ eff }) {
   //     "./<slug>.dope.json"). Toolchain keys stripped → standalone-safe.
   out.push({ path: join(pkgRel, "src", `${slug}.dope.json`), content: dope });
 
-  // (3) generated package.json + tsconfig (standalone; external @dopamine/core dep).
+  // (3) generated package.json + tsconfig (standalone; external @dopaminefx/core dep).
   out.push({ path: join(pkgRel, "package.json"), content: emitWebPackageJson({ pkgName, slug, meta: doc.meta }) });
   out.push({ path: join(pkgRel, "tsconfig.json"), content: emitWebTsconfig() });
 

@@ -318,7 +318,7 @@
       "core": { "mode": "path", "package": "Dopamine", "product": "DopamineCore", "path": "swift" }
     },
     "web": {
-      "package": "@dopamine/effect-fail",
+      "package": "@dopaminefx/effect-fail",
       "sources": "web"
     },
     "android": {

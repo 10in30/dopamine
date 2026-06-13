@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDope, pickFromList, resolveMood, type DopamineMood } from "@dopamine/core";
+import { parseDope, pickFromList, resolveMood, type DopamineMood } from "@dopaminefx/core";
 import {
   isCheckmark,
   COMIC_WORDS,

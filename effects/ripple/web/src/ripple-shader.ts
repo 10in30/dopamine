@@ -47,7 +47,7 @@ import {
   GLSL_HASH,
   GLSL_PALETTE_MIX,
   GLSL_TONEMAP_ACES,
-} from "@dopamine/core";
+} from "@dopaminefx/core";
 
 /**
  * Max concurrent expanding rings. Single source of truth for the loop cap: it is

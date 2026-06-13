@@ -1,6 +1,6 @@
 // dopamine-effects — the umbrella that bundles + registers all ten effects.
 //
-// Mirrors the web `@dopamine/effects` package: depends on every effect module and
+// Mirrors the web `@dopaminefx/effects` package: depends on every effect module and
 // exposes a single `Dopamine.registerAll(context)` so an app lights up the whole
 // set in one call (each effect still ships as its own self-contained module).
 

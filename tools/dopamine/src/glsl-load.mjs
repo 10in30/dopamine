@@ -2,7 +2,7 @@
  * Load an effect's canonical WEB GLSL ES 3.00 shader for the toolchain — the SINGLE
  * SOURCE the generated MSL + Android `.kt` are derived from (no hand-port to drift).
  *
- * We esbuild-bundle the shader `.ts` (resolving its `@dopamine/core` look-chunk
+ * We esbuild-bundle the shader `.ts` (resolving its `@dopaminefx/core` look-chunk
  * imports + evaluating the template literal) and import the result, so the resolved
  * GLSL is exactly what the web ships — escapes, interpolation and all. (esbuild is a
  * declared toolchain dependency; CI installs it before `dopamine build`.)
@@ -28,7 +28,7 @@ export async function importWebShaderModule(root, dir, shaderCfg) {
       format: "esm",
       outfile,
       logLevel: "silent",
-      alias: { "@dopamine/core": join(root, ROOT_CORE) },
+      alias: { "@dopaminefx/core": join(root, ROOT_CORE) },
     });
     return await import(pathToFileURL(outfile).href);
   } finally {

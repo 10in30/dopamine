@@ -1,4 +1,4 @@
-// The umbrella registration — the Android analog of `@dopamine/effects`.
+// The umbrella registration — the Android analog of `@dopaminefx/effects`.
 //
 // Each effect module is self-contained and exposes `<Name>.register(context)`
 // (it needs a Context to read its byte-identical `.dope` from the merged assets).

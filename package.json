@@ -10,11 +10,11 @@
     "effects/*/web"
   ],
   "scripts": {
-    "build": "node tools/dopamine/src/cli.mjs build && npm run build -w @dopamine/core && npm run build -w @dopamine/effect-solarbloom -w @dopamine/effect-inkstroke -w @dopamine/effect-comic -w @dopamine/effect-fail -w @dopamine/effect-aurora -w @dopamine/effect-ripple -w @dopamine/effect-confetti -w @dopamine/effect-heartburst -w @dopamine/effect-lightning -w @dopamine/effect-halo && npm run build -w @dopamine/effects && npm run build -w @dopamine/react && npm run build -w @dopamine/demo",
+    "build": "node tools/dopamine/src/cli.mjs build && npm run build -w @dopaminefx/core && npm run build -w @dopaminefx/effect-solarbloom -w @dopaminefx/effect-inkstroke -w @dopaminefx/effect-comic -w @dopaminefx/effect-fail -w @dopaminefx/effect-aurora -w @dopaminefx/effect-ripple -w @dopaminefx/effect-confetti -w @dopaminefx/effect-heartburst -w @dopaminefx/effect-lightning -w @dopaminefx/effect-halo && npm run build -w @dopaminefx/effects && npm run build -w @dopaminefx/react && npm run build -w @dopaminefx/demo",
     "pretest": "node tools/dopamine/src/cli.mjs build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dev": "npm run dev -w @dopamine/demo",
+    "dev": "npm run dev -w @dopaminefx/demo",
     "record": "node scripts/record.mjs",
     "render": "node scripts/render-offline.mjs",
     "clips": "node scripts/render-clips.mjs",

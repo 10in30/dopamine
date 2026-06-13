@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { dopePassConfig, parseDope, resolveDopeParams } from "@dopamine/core";
+import { dopePassConfig, parseDope, resolveDopeParams } from "@dopaminefx/core";
 import { HALO_FRAGMENT_SRC, HALO_VERTEX_SRC } from "../src/halo-shader.js";
 import doc from "../src/halo.dope.json";
 

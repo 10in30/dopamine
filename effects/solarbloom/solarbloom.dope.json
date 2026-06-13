@@ -402,7 +402,7 @@
       "core": { "mode": "path", "package": "Dopamine", "product": "DopamineCore", "path": "swift" }
     },
     "web": {
-      "package": "@dopamine/effect-solarbloom",
+      "package": "@dopaminefx/effect-solarbloom",
       "sources": "web"
     },
     "android": {

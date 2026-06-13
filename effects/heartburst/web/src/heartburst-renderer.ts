@@ -16,7 +16,7 @@
  *   R = hero heart FILL   ·  G = INK (outline) + gloss seed  ·  B = burst hearts FILL
  */
 
-import { easeOutCubic, clamp01, mulberry32, type PanelDraw } from "@dopamine/core";
+import { easeOutCubic, clamp01, mulberry32, type PanelDraw } from "@dopaminefx/core";
 
 // ---------------------------------------------------------------------------
 // DRAW-side tempo. The per-frame UNIFORM logic (amp/presence/beat/burst/flash)

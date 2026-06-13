@@ -6,7 +6,7 @@
  * GENERIC primitives only: each effect's BESPOKE envelope (the comic slam, the
  * fail stamp/shake, the heartburst lub-dub, the lightning strike/strobe, the
  * solarbloom check draw, the inkstroke stroke draw, …) lives in that effect's
- * own `<name>-tempo.ts` inside `@dopamine/effect-<name>`, built on top of these.
+ * own `<name>-tempo.ts` inside `@dopaminefx/effect-<name>`, built on top of these.
  */
 
 /**

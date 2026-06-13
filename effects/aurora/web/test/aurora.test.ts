@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { aurora } from "../src/index.js";
 import { MAX_CURTAINS } from "../src/aurora-shader.js";
-import { resolveMood } from "@dopamine/core";
+import { resolveMood } from "@dopaminefx/core";
 
 type Feeling = { mood: string; intensity: number; whimsy: number; seed: number };
 

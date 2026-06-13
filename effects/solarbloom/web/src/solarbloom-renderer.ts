@@ -17,7 +17,7 @@
  * accumulated additively (the shader multiplies by the bloom gain).
  */
 
-import { mulberry32, type RGB } from "@dopamine/core";
+import { mulberry32, type RGB } from "@dopaminefx/core";
 
 const TAU = Math.PI * 2;
 const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);

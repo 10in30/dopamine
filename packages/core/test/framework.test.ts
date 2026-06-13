@@ -31,7 +31,7 @@ const fakeFactory = (name: string): EffectFactory<{ x: number }> => ({
 });
 
 describe("effect registry", () => {
-  it("starts empty of built-ins (effects ship in @dopamine/effect-* packages)", () => {
+  it("starts empty of built-ins (effects ship in @dopaminefx/effect-* packages)", () => {
     expect(hasEffect("solarbloom")).toBe(false);
   });
 

@@ -31,7 +31,7 @@ import {
   GLSL_HASH,
   GLSL_SD_SEG,
   GLSL_TONEMAP_ACES,
-} from "@dopamine/core";
+} from "@dopaminefx/core";
 // The bolt-geometry constants live with the CPU precompute (the single
 // transpiled source, lightning-logic.ts); re-exported here for consumers.
 import { MAX_FORKS, BOLT_SEGS, MAX_BOLTS, VERTS_PER_BOLT } from "./lightning-logic.js";

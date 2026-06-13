@@ -6,7 +6,7 @@ the same bytes drive all three platforms. This directory mirrors `swift/`.
 
 > Each effect lives in the single-folder model at `effects/<name>/` (repo
 > root, with any Android sources under `effects/<name>/android/`) and is
-> compiled by the `@dopamine/build` toolchain into a standalone
+> compiled by the `@dopaminefx/build` toolchain into a standalone
 > `dist/android/dopamine-effect-<name>` Gradle module; `settings.gradle.kts`
 > auto-includes those dist modules. See
 > [Adding an effect](#adding-an-effects-android-side) for the per-effect
@@ -28,7 +28,7 @@ WebGL2.** Two consequences shape the whole stack:
 2. **No uniform codegen.** GL ES sets uniforms one-by-one **by name**
    (`glUniform*`), exactly like WebGL — the `name → u<Name>` auto-bind applies
    directly, and Android needs **none** of the Metal struct-packing codegen
-   the `@dopamine/build` toolchain emits for Swift (that exists only because a
+   the `@dopaminefx/build` toolchain emits for Swift (that exists only because a
    `.metal` reads one packed `Uniforms` struct).
 
 The single deliberate Android divergence in the shared shader source is the

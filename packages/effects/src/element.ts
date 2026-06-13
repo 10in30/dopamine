@@ -6,7 +6,7 @@
  */
 
 import { celebrate } from "./index.js";
-import type { DopamineMood } from "@dopamine/core";
+import type { DopamineMood } from "@dopaminefx/core";
 
 const clampNum = (v: string | null, fallback: number): number => {
   const n = v === null ? NaN : Number(v);

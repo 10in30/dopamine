@@ -30,7 +30,7 @@ import {
   type FeelingInput,
   type PanelConfig,
   type PassParams,
-} from "@dopamine/core";
+} from "@dopaminefx/core";
 import doc from "./confetti.dope.json";
 
 const DOPE = parseDope(doc as object);

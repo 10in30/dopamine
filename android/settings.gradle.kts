@@ -13,7 +13,7 @@
 //   • dopamine-effect-<name>   — one Android library per effect (shader + tempo +
 //                                `.dope` + panel draw + config), self-registering.
 //   • dopamine-effects         — umbrella that registers all nine (mirrors
-//                                @dopamine/effects). Activated once all nine
+//                                @dopaminefx/effects). Activated once all nine
 //                                effect modules are present (it references them).
 //   • demo                     — the Android app that plays the effects.
 //
@@ -80,7 +80,7 @@ if (androidSdkAvailable) {
     for (name in effectModules) include(":$name")
 
     // Effects migrated to the single-folder model (effects/<id>/) are built into
-    // standalone Gradle modules under dist/android/ by the @dopamine/build toolchain
+    // standalone Gradle modules under dist/android/ by the @dopaminefx/build toolchain
     // (run `node tools/dopamine/src/cli.mjs build <effect>` first). Include any that
     // are present there, pointing the project at its dist location — the demo +
     // umbrella consume them exactly like the in-tree modules. (comic is the first.)

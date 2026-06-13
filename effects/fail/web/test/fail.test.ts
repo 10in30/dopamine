@@ -12,7 +12,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { clamp01, easeOutCubic, parseDope, resolveDopeParams, getOutline, decodeSdf, hasMood, loadEffectSync } from "@dopamine/core";
+import { clamp01, easeOutCubic, parseDope, resolveDopeParams, getOutline, decodeSdf, hasMood, loadEffectSync } from "@dopaminefx/core";
 // Importing the effect registers its moods + program.
 import "../src/index.js";
 import failDoc from "../src/fail.dope.json";

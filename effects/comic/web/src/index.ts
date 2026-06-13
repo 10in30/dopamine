@@ -35,7 +35,7 @@ import {
   type FeelingInput,
   type PanelConfig,
   type PassParams,
-} from "@dopamine/core";
+} from "@dopaminefx/core";
 import doc from "./comic.dope.json";
 
 export type { ComicRenderParams, ComicWord } from "./comic-params.js";

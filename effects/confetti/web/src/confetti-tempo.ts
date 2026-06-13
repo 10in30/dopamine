@@ -9,7 +9,7 @@
  * settle. Built on the generic `easeOutBack`/`easeOutCubic` primitives.
  */
 
-import { easeOutBack, easeOutCubic } from "@dopamine/core";
+import { easeOutBack, easeOutCubic } from "@dopaminefx/core";
 
 /** Confetti launch-then-fall amplitude over normalized life. Peak > 1 at launch. */
 export function confettiAmp(life: number, overshoot: number): number {

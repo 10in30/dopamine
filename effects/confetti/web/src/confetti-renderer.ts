@@ -22,7 +22,7 @@
  *         The shader applies the global gain (amp × exposure), tonemap + finish.
  */
 
-import { mulberry32, type RGB } from "@dopamine/core";
+import { mulberry32, type RGB } from "@dopaminefx/core";
 import { MAX_PIECES } from "./confetti-shader.js";
 
 /** Resolved render params the confetti panel consumes. */

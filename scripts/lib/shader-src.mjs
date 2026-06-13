@@ -1,7 +1,7 @@
 /**
  * Load effects' canonical WEB shader sources (the GLSL ES 3.00 vertex + fragment
  * strings) from Node, by esbuild-bundling the `<name>-shader.ts` (resolving its
- * `@dopamine/core` look-chunk imports) and importing the result. This is the same
+ * `@dopaminefx/core` look-chunk imports) and importing the result. This is the same
  * GLSL the Android shader is generated from, so rendering it in a WebGL2 context
  * (SwiftShader speaks GLSL ES 3.00) exercises the shared body for BOTH platforms.
  */
@@ -41,7 +41,7 @@ export async function loadShaderSources(slugs) {
       format: "esm",
       outfile,
       logLevel: "silent",
-      alias: { "@dopamine/core": join(ROOT, "packages/core/src/index.ts") },
+      alias: { "@dopaminefx/core": join(ROOT, "packages/core/src/index.ts") },
     });
     const mod = await import(pathToFileURL(outfile).href);
     out[slug] = { vertex: mod[spec.vertex], fragment: mod[spec.fragment] };

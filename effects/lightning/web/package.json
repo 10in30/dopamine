@@ -1,5 +1,5 @@
 {
-  "name": "@dopamine/effect-lightning",
+  "name": "@dopaminefx/effect-lightning",
   "version": "0.1.0",
   "description": "Lightning — a high-energy lightning-strike power-up effect for Dopamine.",
   "keywords": ["dopamine-effect"],
@@ -19,6 +19,6 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@dopamine/core": "0.1.0"
+    "@dopaminefx/core": "0.1.0"
   }
 }

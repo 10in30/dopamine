@@ -12,7 +12,7 @@ import { test, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { assertFactoryGeneratable } from "../src/factory.mjs";
-import { dopePassConfig, parseDope, resolveDopeParams } from "@dopamine/core";
+import { dopePassConfig, parseDope, resolveDopeParams } from "@dopaminefx/core";
 
 const QUICKSTART = fileURLToPath(new URL("../../../docs/authoring-quickstart.md", import.meta.url));
 

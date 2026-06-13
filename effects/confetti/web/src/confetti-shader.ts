@@ -26,7 +26,7 @@ import {
   GLSL_DITHER,
   GLSL_HASH,
   GLSL_TONEMAP_ACES,
-} from "@dopamine/core";
+} from "@dopaminefx/core";
 
 /**
  * Max confetti pieces. Single source of truth: BOTH the panel renderer's loop

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDope, resolveDopeParams } from "@dopamine/core";
+import { parseDope, resolveDopeParams } from "@dopaminefx/core";
 import { MAX_RINGS } from "../src/ripple-shader.js";
 import doc from "../src/ripple.dope.json";
 

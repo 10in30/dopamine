@@ -38,8 +38,8 @@ import {
   GLSL_PALETTE_MIX,
   GLSL_SD_SEG,
   GLSL_TONEMAP_ACES,
-} from "@dopamine/core";
-import { GLSL_PARTICLES } from "@dopamine/core";
+} from "@dopaminefx/core";
+import { GLSL_PARTICLES } from "@dopaminefx/core";
 
 /**
  * Max flung droplets. Single source of truth for the cap: BOTH the GLSL
