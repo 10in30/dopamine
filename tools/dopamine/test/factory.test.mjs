@@ -94,6 +94,7 @@ const GENERATED = [
   { slug: "ripple" },
   { slug: "inkstroke" },
   { slug: "halo" },
+  { slug: "dots" },
   { slug: "fail" },
   {
     slug: "lightning",
