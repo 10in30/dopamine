@@ -86,33 +86,51 @@ named follow-ons all landed:
   `ConfettiPanel.kt`, faithful CoreGraphics / android.graphics ports of the web
   Canvas2D draw). Snapshot-gated in the shader-msl + factory suites; the iOS
   demo wires the generated `Confetti.passConfig()`.
-- **solarbloom** — **TEMPO + AUX-TEXTURE HOOKS DATAFIED** (the two explicit
-  asks). `tempo.frame` (amp = the held-breath envelope; `check` = the ~240 ms
-  draw-in on the real clock) retires `SolarbloomTempo.{swift,kt}`; the baked
-  checkmark SDF binds declaratively via `binding.samplers[].outline`/`on` (the
-  fail precedent) with the box/stroke/range in `render.pass`, retiring the hand
-  `auxTextures`/`passUniforms` code. The web factory is `registerDopeEffect`
-  with the mote SPRITE PANEL as its one `panelDraw` hook; the native hand
-  factories now wrap the generic `DopePassConfig` / `dopePassConfig` to read the
-  data. solarbloom does **not** collapse to the one-panel-draw-per-platform
-  prover shape: the shared native runtime hosts only ONE panel (at texture 0)
-  and no aux textures, while solarbloom needs BOTH a sprite panel AND the
-  baked-SDF aux. So the mote sprite-panel draw (web hook + the native procedural
-  mote shader) and the optional glyph-fallback canvas **stay documented hooks**;
-  fully converging them would require a native-runtime generalization (a
-  sprite-panel-at-arbitrary-unit + aux-texture seam for a PASS effect), tracked
-  below.
+- **solarbloom** — **FULLY CONVERGED** (the PASS-with-sprite-panel prover). The
+  two explicit asks landed first — `tempo.frame` (amp = the held-breath
+  envelope; `check` = the ~240 ms draw-in on the real clock) retired
+  `SolarbloomTempo.{swift,kt}`, and the baked checkmark SDF binds declaratively
+  via `binding.samplers[].outline`/`on` (the fail precedent) with the
+  box/stroke/range in `render.pass`. The remaining native-runtime
+  generalization (below) then landed too, so solarbloom now ships its shader as
+  the single canonical web GLSL (generated MSL `Solarbloom.metal` +
+  `SolarbloomShader.kt`, sampling the mote panel + the baked-✓ SDF on EVERY
+  platform), a GENERATED factory + bundle, and exactly ONE hand file per native
+  platform — the mote sprite-panel draw (`SolarbloomPanel.swift` /
+  `SolarbloomPanel.kt`, faithful CoreGraphics / android.graphics ports of the
+  web `solarbloom-renderer.ts`). The web keeps an OPTIONAL glyph-fallback
+  canvas hook the canonical effect never needs (it always ships the baked SDF).
+  Snapshot-gated (`golden-msl/solarbloom.metal`,
+  `golden-android/SolarbloomShader.kt`, `golden-factory/Solarbloom.{swift,kt}`)
+  + the factory suite; the iOS demo wires the generated `Solarbloom.passConfig()`.
 
-### Follow-on: a native sprite-panel + aux-texture seam (for solarbloom)
+### Follow-on: a native sprite-panel + aux-texture seam — LANDED
 
-To collapse solarbloom to the prover shape, the shared **native** runtimes
-(Metal `MetalPassRunner` / GL `GlPassRunner`) would need, for a PASS effect (not
-just a panel-kind one): a dynamic sprite panel bindable at an ARBITRARY texture
-unit (not only texture 0), AND aux-texture upload (the baked SDF — today only
-the web binds aux textures; the natives fall back to the analytic icon). That is
-a core generalization, not a per-effect change; until then solarbloom's web
-stays the reference panel hybrid and the natives render the motes procedurally +
-the checkmark analytically (a fully supported per-platform path).
+solarbloom drove the generalization the shared **native** runtimes needed for a
+PASS effect (not just a panel-kind one): a dynamic sprite panel bindable at an
+ARBITRARY texture unit (not only texture 0) AND baked-SDF aux-texture upload,
+together in the SAME pass. It is a GENERAL seam (any future effect can use it),
+driven entirely by the `.dope` `render.panel` / `binding.samplers` contract:
+
+- **Web** was already general (`pass-runner.ts` binds the panel at
+  `render.panel.texture` and composes the `binding.samplers[].outline`/`on` SDF
+  aux at its declared unit) — no change.
+- **Swift** (`MetalPassRunner` + `MetalOverlayHost` + `DopeSpritePanelPassConfig`):
+  the panel binds at `config.panelTextureUnit`; each baked SDF is decoded
+  (`decodeDopeSdf`, the Swift port of `engine/sdf.ts`), uploaded as an `r8Unorm`
+  texture, bound at its declared unit, and its `on` extra flipped to 1 — in BOTH
+  the light and shadow encoders (the shadow silhouette samples the panel + ✓ too).
+- **Android** (`GlPassRunner` + `dopePassConfig(draw=)`): the pass runner gained
+  an optional sprite panel (an `android.graphics.Canvas` draw + Bitmap upload at
+  `panel.unit`) AND baked-SDF aux (`decodeDopeSdf` in pure-JVM `dopamine-core`,
+  uploaded as an R8 GL texture); `derivePassUniforms` now flips a sampler's `on`
+  flag to 1 when its SDF actually binds (it pinned them to 0 before).
+- The toolchain factory generator (`tools/dopamine/src/factory.mjs`,
+  swift.mjs/android.mjs) grew a third panel MODE — `"sprite"` (distinct from the
+  panel-kind `"panel"` and the pure `"none"`), keyed off the top-level `kind`:
+  it emits `DopeSpritePanelPassConfig` / `dopePassConfig(draw=)` wiring the
+  hand-written `draw<Name>Panel`, and relaxes the "panel must be at texture(0)"
+  guard (that constraint stays for panel-kind effects only).
 
 ## Shared capability modules
 
