@@ -55,28 +55,64 @@ ships NO `swift/` or `android/` folder, like aurora/ripple/inkstroke/halo/fail):
   is a thin `registerDopeEffect` shim with the one code-shaped
   `hooks.frameArrays` call.
 
-## Extend the declarative path to panel/hybrid effects — PROVER LANDED; remaining work
+## Extend the declarative path to panel/hybrid effects — LANDED
 
-The panel pipeline is now declarative everywhere except the draw itself: the
+The panel pipeline is declarative everywhere except the draw itself: the
 `.dope` carries `render.panel` (sampler + texture-unit wiring) and
 `render.config.stepping: "none"` (the panel-clock semantics), the GLSL→MSL
 path handles the panel sampler, and the generated factory shells wire a
 hand-written PANEL-DRAW file — the one genuinely code-shaped piece — into the
-shared runners (`DopePanelPassConfig` on Swift; the panel-aware `dopePassConfig`
+shared runners (`DopePanelPassConfig` on Swift; the panel-aware `dopePanelConfig`
 on web/Android). **heartburst is the prover**: its platform folders contain
 exactly one file each (`HeartburstPanel.swift` / `HeartburstPanel.kt`);
-factory, tempo, shader and bundle accessor are all generated or data. Still
-open:
+factory, tempo, shader and bundle accessor are all generated or data. The three
+named follow-ons all landed:
 
-- **solarbloom** — datafy its code tempo + aux-texture hooks (the fail
-  precedent covers the baked-SDF half; the canvas-rasterized glyph texture
-  needs a panel-style seam or stays a hook).
-- **confetti** — the web (Canvas2D panel) and Swift (full-screen GPU pass)
-  render paths differ ARCHITECTURALLY; converging them on the panel path is a
-  redesign decision, not a mechanical migration.
-- **comic** — the typography/lettering pipeline is the heaviest code-shaped
-  piece; datafy its tempo/config alongside, but don't force the lettering into
-  data.
+- **comic** — **DONE.** A fully generated panel hybrid: `tempo.frame` +
+  `render.panel` + `render.config.stepping: "none"`, single-source GLSL
+  (generated MSL/Kotlin), generated factory/bundle/uniforms; it ships exactly
+  one hand file per platform (`ComicPanel.swift` / `ComicPanel.kt`). The
+  typography/lettering pipeline stays in that panel draw — code by design, not
+  forced into data (per the explicit guidance).
+- **confetti** — **CONVERGED.** The web was already a Canvas2D panel hybrid;
+  the native Swift/Android sides were a full-screen PROCEDURAL GPU pass
+  (hand-written Metal/GLSL re-deriving every piece pose per pixel). The piece
+  motion was identical across all three, so the divergence was incidental, not
+  essential. Converged onto the heartburst path: single-source GLSL (the
+  panel-sampling finish shader, generated MSL/Kotlin), datafied
+  `tempo.frame.amp` (the launch-then-fall envelope), `render.panel`, the
+  MAX_PIECES clamp in `render.consts`, a generated factory/bundle/uniforms, and
+  exactly one hand-written panel draw per platform (`ConfettiPanel.swift` /
+  `ConfettiPanel.kt`, faithful CoreGraphics / android.graphics ports of the web
+  Canvas2D draw). Snapshot-gated in the shader-msl + factory suites; the iOS
+  demo wires the generated `Confetti.passConfig()`.
+- **solarbloom** — **TEMPO + AUX-TEXTURE HOOKS DATAFIED** (the two explicit
+  asks). `tempo.frame` (amp = the held-breath envelope; `check` = the ~240 ms
+  draw-in on the real clock) retires `SolarbloomTempo.{swift,kt}`; the baked
+  checkmark SDF binds declaratively via `binding.samplers[].outline`/`on` (the
+  fail precedent) with the box/stroke/range in `render.pass`, retiring the hand
+  `auxTextures`/`passUniforms` code. The web factory is `registerDopeEffect`
+  with the mote SPRITE PANEL as its one `panelDraw` hook; the native hand
+  factories now wrap the generic `DopePassConfig` / `dopePassConfig` to read the
+  data. solarbloom does **not** collapse to the one-panel-draw-per-platform
+  prover shape: the shared native runtime hosts only ONE panel (at texture 0)
+  and no aux textures, while solarbloom needs BOTH a sprite panel AND the
+  baked-SDF aux. So the mote sprite-panel draw (web hook + the native procedural
+  mote shader) and the optional glyph-fallback canvas **stay documented hooks**;
+  fully converging them would require a native-runtime generalization (a
+  sprite-panel-at-arbitrary-unit + aux-texture seam for a PASS effect), tracked
+  below.
+
+### Follow-on: a native sprite-panel + aux-texture seam (for solarbloom)
+
+To collapse solarbloom to the prover shape, the shared **native** runtimes
+(Metal `MetalPassRunner` / GL `GlPassRunner`) would need, for a PASS effect (not
+just a panel-kind one): a dynamic sprite panel bindable at an ARBITRARY texture
+unit (not only texture 0), AND aux-texture upload (the baked SDF — today only
+the web binds aux textures; the natives fall back to the analytic icon). That is
+a core generalization, not a per-effect change; until then solarbloom's web
+stays the reference panel hybrid and the natives render the motes procedurally +
+the checkmark analytically (a fully supported per-platform path).
 
 ## Shared capability modules
 

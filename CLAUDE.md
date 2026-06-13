@@ -94,12 +94,14 @@ effect ships NO `effects/<name>/swift` or `effects/<name>/android` folder — th
 toolchain emits the Swift factory shell + resource-bundle accessor and the
 Kotlin registration shim from the `.dope` (`tools/dopamine/src/factory.mjs`,
 gated byte-for-byte by `tools/dopamine/test/factory.test.mjs`; inkstroke is the
-reference). A PANEL hybrid (heartburst is the reference) ships exactly ONE
-hand-written file per platform — the panel draw
+reference). A PANEL hybrid (heartburst is the reference; comic and confetti
+follow it) ships exactly ONE hand-written file per platform — the panel draw
 (`effects/<name>/swift/<Name>Panel.swift`, `android/<Name>Panel.kt`) — and the
 generated factory shells wire it in. Fuller hand-written platform sources
-remain a supported path for effects with code-shaped hooks (solarbloom,
-confetti, comic).
+remain a supported path for effects with code-shaped hooks (solarbloom — a PASS
+hybrid that needs BOTH a sprite panel AND a baked-SDF aux, which the shared
+native runtime can't yet host together, so its native shader + factory stay
+hand-written even though its tempo + aux-SDF binding are datafied).
 
 If you find yourself editing the core runtimes to add an effect, stop — that
 almost always means something that should be generalized is being special-cased.
@@ -220,11 +222,13 @@ copies to drift:
 
 > **Which effects use which path:** effects whose `.dope` declares
 > `x-build.shader` get generated MSL/Kotlin shaders — including the PANEL
-> hybrid heartburst, whose `.dope` `render.panel` block wires the panel
-> sampler (texture(0)) into the generated shaders and factories; only its
-> panel DRAW stays per-platform code. Remaining panel/hybrid effects (comic,
-> confetti, solarbloom) still author their shaders per platform — a supported
-> path. Effects with CPU-precomputed per-frame geometry
+> hybrids heartburst, comic and confetti, whose `.dope` `render.panel` block
+> wires the panel sampler (texture(0)) into the generated shaders and factories;
+> only their panel DRAW stays per-platform code (one file per platform). The
+> remaining hybrid solarbloom still authors its shader per platform (its motes
+> render procedurally on native, vs the web's sprite panel; its checkmark is the
+> baked SDF on web, analytic on native) — a supported path. Effects with
+> CPU-precomputed per-frame geometry
 > (e.g. lightning) are fully single-source too: the geometry LOGIC rides
 > `x-build.logic` — a restricted-TS module (`lightning-logic.ts`) that
 > `tools/dopamine/src/logic.mjs` transpiles to the `<Name>Renderer.swift` /
