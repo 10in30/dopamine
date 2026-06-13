@@ -72,28 +72,82 @@ ships NO `swift/` or `android/` folder, like aurora/ripple/inkstroke/halo/fail):
   is a thin `registerDopeEffect` shim with the one code-shaped
   `hooks.frameArrays` call.
 
-## Extend the declarative path to panel/hybrid effects — PROVER LANDED; remaining work
+## Extend the declarative path to panel/hybrid effects — LANDED
 
-The panel pipeline is now declarative everywhere except the draw itself: the
+The panel pipeline is declarative everywhere except the draw itself: the
 `.dope` carries `render.panel` (sampler + texture-unit wiring) and
 `render.config.stepping: "none"` (the panel-clock semantics), the GLSL→MSL
 path handles the panel sampler, and the generated factory shells wire a
 hand-written PANEL-DRAW file — the one genuinely code-shaped piece — into the
-shared runners (`DopePanelPassConfig` on Swift; the panel-aware `dopePassConfig`
+shared runners (`DopePanelPassConfig` on Swift; the panel-aware `dopePanelConfig`
 on web/Android). **heartburst is the prover**: its platform folders contain
 exactly one file each (`HeartburstPanel.swift` / `HeartburstPanel.kt`);
-factory, tempo, shader and bundle accessor are all generated or data. Still
-open:
+factory, tempo, shader and bundle accessor are all generated or data. The three
+named follow-ons all landed:
 
-- **solarbloom** — datafy its code tempo + aux-texture hooks (the fail
-  precedent covers the baked-SDF half; the canvas-rasterized glyph texture
-  needs a panel-style seam or stays a hook).
-- **confetti** — the web (Canvas2D panel) and Swift (full-screen GPU pass)
-  render paths differ ARCHITECTURALLY; converging them on the panel path is a
-  redesign decision, not a mechanical migration.
-- **comic** — the typography/lettering pipeline is the heaviest code-shaped
-  piece; datafy its tempo/config alongside, but don't force the lettering into
-  data.
+- **comic** — **DONE.** A fully generated panel hybrid: `tempo.frame` +
+  `render.panel` + `render.config.stepping: "none"`, single-source GLSL
+  (generated MSL/Kotlin), generated factory/bundle/uniforms; it ships exactly
+  one hand file per platform (`ComicPanel.swift` / `ComicPanel.kt`). The
+  typography/lettering pipeline stays in that panel draw — code by design, not
+  forced into data (per the explicit guidance).
+- **confetti** — **CONVERGED.** The web was already a Canvas2D panel hybrid;
+  the native Swift/Android sides were a full-screen PROCEDURAL GPU pass
+  (hand-written Metal/GLSL re-deriving every piece pose per pixel). The piece
+  motion was identical across all three, so the divergence was incidental, not
+  essential. Converged onto the heartburst path: single-source GLSL (the
+  panel-sampling finish shader, generated MSL/Kotlin), datafied
+  `tempo.frame.amp` (the launch-then-fall envelope), `render.panel`, the
+  MAX_PIECES clamp in `render.consts`, a generated factory/bundle/uniforms, and
+  exactly one hand-written panel draw per platform (`ConfettiPanel.swift` /
+  `ConfettiPanel.kt`, faithful CoreGraphics / android.graphics ports of the web
+  Canvas2D draw). Snapshot-gated in the shader-msl + factory suites; the iOS
+  demo wires the generated `Confetti.passConfig()`.
+- **solarbloom** — **FULLY CONVERGED** (the PASS-with-sprite-panel prover). The
+  two explicit asks landed first — `tempo.frame` (amp = the held-breath
+  envelope; `check` = the ~240 ms draw-in on the real clock) retired
+  `SolarbloomTempo.{swift,kt}`, and the baked checkmark SDF binds declaratively
+  via `binding.samplers[].outline`/`on` (the fail precedent) with the
+  box/stroke/range in `render.pass`. The remaining native-runtime
+  generalization (below) then landed too, so solarbloom now ships its shader as
+  the single canonical web GLSL (generated MSL `Solarbloom.metal` +
+  `SolarbloomShader.kt`, sampling the mote panel + the baked-✓ SDF on EVERY
+  platform), a GENERATED factory + bundle, and exactly ONE hand file per native
+  platform — the mote sprite-panel draw (`SolarbloomPanel.swift` /
+  `SolarbloomPanel.kt`, faithful CoreGraphics / android.graphics ports of the
+  web `solarbloom-renderer.ts`). The web keeps an OPTIONAL glyph-fallback
+  canvas hook the canonical effect never needs (it always ships the baked SDF).
+  Snapshot-gated (`golden-msl/solarbloom.metal`,
+  `golden-android/SolarbloomShader.kt`, `golden-factory/Solarbloom.{swift,kt}`)
+  + the factory suite; the iOS demo wires the generated `Solarbloom.passConfig()`.
+
+### Follow-on: a native sprite-panel + aux-texture seam — LANDED
+
+solarbloom drove the generalization the shared **native** runtimes needed for a
+PASS effect (not just a panel-kind one): a dynamic sprite panel bindable at an
+ARBITRARY texture unit (not only texture 0) AND baked-SDF aux-texture upload,
+together in the SAME pass. It is a GENERAL seam (any future effect can use it),
+driven entirely by the `.dope` `render.panel` / `binding.samplers` contract:
+
+- **Web** was already general (`pass-runner.ts` binds the panel at
+  `render.panel.texture` and composes the `binding.samplers[].outline`/`on` SDF
+  aux at its declared unit) — no change.
+- **Swift** (`MetalPassRunner` + `MetalOverlayHost` + `DopeSpritePanelPassConfig`):
+  the panel binds at `config.panelTextureUnit`; each baked SDF is decoded
+  (`decodeDopeSdf`, the Swift port of `engine/sdf.ts`), uploaded as an `r8Unorm`
+  texture, bound at its declared unit, and its `on` extra flipped to 1 — in BOTH
+  the light and shadow encoders (the shadow silhouette samples the panel + ✓ too).
+- **Android** (`GlPassRunner` + `dopePassConfig(draw=)`): the pass runner gained
+  an optional sprite panel (an `android.graphics.Canvas` draw + Bitmap upload at
+  `panel.unit`) AND baked-SDF aux (`decodeDopeSdf` in pure-JVM `dopamine-core`,
+  uploaded as an R8 GL texture); `derivePassUniforms` now flips a sampler's `on`
+  flag to 1 when its SDF actually binds (it pinned them to 0 before).
+- The toolchain factory generator (`tools/dopamine/src/factory.mjs`,
+  swift.mjs/android.mjs) grew a third panel MODE — `"sprite"` (distinct from the
+  panel-kind `"panel"` and the pure `"none"`), keyed off the top-level `kind`:
+  it emits `DopeSpritePanelPassConfig` / `dopePassConfig(draw=)` wiring the
+  hand-written `draw<Name>Panel`, and relaxes the "panel must be at texture(0)"
+  guard (that constraint stays for panel-kind effects only).
 
 ## Shared capability modules
 

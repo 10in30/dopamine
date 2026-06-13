@@ -30,6 +30,8 @@ import { DOTS_FRAGMENT_SRC } from "../../../effects/dots/web/src/dots-shader.ts"
 import { FAIL_FRAGMENT_SRC } from "../../../effects/fail/web/src/fail-shader.ts";
 import { HEARTBURST_FRAGMENT_SRC } from "../../../effects/heartburst/web/src/heartburst-shader.ts";
 import { COMIC_FRAGMENT_SRC } from "../../../effects/comic/web/src/comic-shader.ts";
+import { CONFETTI_FRAGMENT_SRC } from "../../../effects/confetti/web/src/confetti-shader.ts";
+import { FRAGMENT_SRC as SOLARBLOOM_FRAGMENT_SRC } from "../../../effects/solarbloom/web/src/solarbloom-shader.ts";
 
 const root = new URL("../../../", import.meta.url);
 const readDope = (slug) =>
@@ -56,6 +58,14 @@ const SNAPSHOT = [
   // comic is the heaviest panel hybrid: the panel sampler at texture(0), the
   // 2-arg atan→atan2, radians() inlining, and the scatter `uSeed`→u.comicSeed map.
   { slug: "comic", fragment: COMIC_FRAGMENT_SRC },
+  // confetti is a panel hybrid: the panel sampler at texture(0) sampled in a
+  // ring-blur loop (the cast shadow) + the panel-sampling light/finish pass.
+  { slug: "confetti", fragment: CONFETTI_FRAGMENT_SRC },
+  // solarbloom is the PASS-HYBRID prover: THREE samplers at NON-CONTIGUOUS units
+  // — the glyph fallback at texture(0), the baked-✓ SDF at texture(1), the mote
+  // SPRITE PANEL at texture(3) — all threaded through the call graph (the
+  // shadowColor ring-blur samples the panel; checkOcc/sdfCoverage sample the SDF).
+  { slug: "solarbloom", fragment: SOLARBLOOM_FRAGMENT_SRC },
 ];
 
 const transpile = (slug, fragment) => {

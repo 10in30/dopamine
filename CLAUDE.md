@@ -94,12 +94,30 @@ effect ships NO `effects/<name>/swift` or `effects/<name>/android` folder — th
 toolchain emits the Swift factory shell + resource-bundle accessor and the
 Kotlin registration shim from the `.dope` (`tools/dopamine/src/factory.mjs`,
 gated byte-for-byte by `tools/dopamine/test/factory.test.mjs`; inkstroke is the
-reference). A PANEL hybrid (heartburst is the reference) ships exactly ONE
+reference). A hybrid that needs a per-frame Canvas panel ships exactly ONE
 hand-written file per platform — the panel draw
 (`effects/<name>/swift/<Name>Panel.swift`, `android/<Name>Panel.kt`) — and the
-generated factory shells wire it in. Fuller hand-written platform sources
-remain a supported path for effects with code-shaped hooks (solarbloom,
-confetti, comic).
+generated factory shells wire it in. Two panel modes (keyed off the `.dope`,
+the discriminator is the top-level `kind`):
+- a **PANEL-kind** hybrid (`kind: "panel"` — heartburst is the reference; comic
+  and confetti follow it): the panel IS the whole content, bound at texture(0),
+  via the Canvas panel runner (`DopePanelPassConfig` / `dopePanelConfig`);
+- a **PASS hybrid with a SPRITE panel** (`kind: "overlay"` + a `render.panel`
+  block — solarbloom is the reference): the shader is mostly procedural but
+  also samples a dynamic sprite layer at an ARBITRARY unit ALONGSIDE baked-SDF
+  aux textures, via the generalized pass runner
+  (`DopeSpritePanelPassConfig` / `dopePassConfig(draw=)`). solarbloom's motes
+  panel binds at texture(3) while its baked-✓ SDF binds at texture(1) — the
+  heartburst sprite-panel + fail SDF-aux seams, composed. The shared native
+  runtimes host both together (Metal `MetalPassRunner`/`MetalOverlayHost`,
+  Android `GlPassRunner`): a panel at any unit + decoded-R8 baked-SDF aux at any
+  unit, all driven by `render.panel` / `binding.samplers`. So solarbloom is
+  fully declarative too — its shader is single-source (generated MSL/Kotlin),
+  its factory + bundle are generated, and it ships exactly ONE hand file per
+  platform (the mote `SolarbloomPanel` draw; web keeps an OPTIONAL glyph-fallback
+  hook the canonical effect never needs, since it always ships the baked SDF).
+Fuller hand-written platform sources remain a supported path for effects with
+genuinely code-shaped hooks not covered by these seams.
 
 If you find yourself editing the core runtimes to add an effect, stop — that
 almost always means something that should be generalized is being special-cased.
@@ -219,12 +237,16 @@ copies to drift:
   golden images).
 
 > **Which effects use which path:** effects whose `.dope` declares
-> `x-build.shader` get generated MSL/Kotlin shaders — including the PANEL
-> hybrid heartburst, whose `.dope` `render.panel` block wires the panel
-> sampler (texture(0)) into the generated shaders and factories; only its
-> panel DRAW stays per-platform code. Remaining panel/hybrid effects (comic,
-> confetti, solarbloom) still author their shaders per platform — a supported
-> path. Effects with CPU-precomputed per-frame geometry
+> `x-build.shader` get generated MSL/Kotlin shaders — including the PANEL-kind
+> hybrids heartburst, comic and confetti (panel sampler at texture(0)) AND the
+> PASS-with-sprite-panel hybrid solarbloom (the mote panel at texture(3) +
+> the baked-✓ SDF aux at texture(1), all sampled by the single-source GLSL the
+> MSL/Kotlin are generated from). Each ships only its panel DRAW per platform
+> (one file). The generated MSL/Android shaders for a texture-sampling effect
+> are gated by the `golden-msl/`+`golden-android/` byte snapshots + the macOS
+> Metal compile + the emulator's real GL driver (the Δ0 SwiftShader gate skips
+> them — the harness can't bind their textures standalone). Effects with
+> CPU-precomputed per-frame geometry
 > (e.g. lightning) are fully single-source too: the geometry LOGIC rides
 > `x-build.logic` — a restricted-TS module (`lightning-logic.ts`) that
 > `tools/dopamine/src/logic.mjs` transpiles to the `<Name>Renderer.swift` /

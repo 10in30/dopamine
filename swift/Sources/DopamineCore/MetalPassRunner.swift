@@ -88,6 +88,16 @@ public protocol PassConfig {
     /// false — the web panel runner never snaps (hand-drawn panel geometry
     /// would stutter), so the port converges on that.
     var snapsOnTwos: Bool { get }
+    /// The fragment texture unit a supplied sprite PANEL binds at. Default 0 (the
+    /// cross-platform panel slot); a PASS hybrid that ALSO carries a baked-SDF aux
+    /// returns the sprite panel's declared `render.panel.texture` (e.g. 3) so the
+    /// SDF keeps its own slot — the general sprite-panel-at-arbitrary-unit seam.
+    var panelTextureUnit: Int { get }
+    /// The baked-SDF aux textures the runner uploads (R8) + binds at their
+    /// declared units, flipping each one's `on` extra to 1 (mirror of the web
+    /// pass-runner's `kind:"sdf"` aux). Default: none (pure-shader effects bind
+    /// nothing). Composes WITH `panelTextureUnit` so a PASS hybrid hosts both.
+    func sdfAuxTextures() -> [DopeSdfAuxSpec]
     /// The shadow occluder "height" as a fraction of min canvas dim.
     func shadowHeightFrac(_ params: [String: DopeValue]) -> Double
     /// Compute the effect-specific time-varying values; MUST return `amp` (fed to
@@ -152,6 +162,10 @@ public extension PassConfig {
     func passExtras(
         targetMinDimPx: Double, dpr: Double, params: [String: DopeValue]
     ) -> [String: Double] { [:] }
+    /// Default: the sprite panel (if any) binds at the cross-platform slot 0.
+    var panelTextureUnit: Int { 0 }
+    /// Default: no baked-SDF aux textures.
+    func sdfAuxTextures() -> [DopeSdfAuxSpec] { [] }
 }
 
 /// Errors the runner can raise during pipeline build.
@@ -182,6 +196,14 @@ public final class MetalPassRunner<Config: PassConfig> {
     // and a single linear/clamp sampler is bound for both slots.
     private let sampler: MTLSamplerState
     private let placeholderTex: MTLTexture
+    // Baked-SDF aux textures (the `binding.samplers[].outline` sources), decoded
+    // + uploaded once at build and bound at their declared units every pass. The
+    // sprite panel binds at `config.panelTextureUnit`, so a PASS hybrid hosts the
+    // panel AND these SDFs together. Pure-shader effects leave this empty.
+    private let sdfAuxTextures: [(spec: DopeSdfAuxSpec, tex: MTLTexture)]
+    /// The canonical `on`-extra names of every bound SDF aux (set to 1 in the
+    /// extras map each frame so the generated packer flips the struct flag).
+    private let sdfOnExtras: [String]
 
     /// Build pipelines from a metallib `library`. `pixelFormat` is the layer's.
     public init(
@@ -263,6 +285,33 @@ public final class MetalPassRunner<Config: PassConfig> {
         var clear: [UInt8] = [0, 0, 0, 0]
         ph.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: &clear, bytesPerRow: 4)
         placeholderTex = ph
+
+        // Baked-SDF aux textures (the `binding.samplers[].outline` sources): decode
+        // the inline blob ONCE and upload it as an R8 single-channel texture, sized
+        // size×size. Mirror of the web pass-runner's `kind:"sdf"` aux (uploaded
+        // R8, edge-clamp linear via the shared sampler). A spec whose blob fails to
+        // decode is skipped (the shader keeps its analytic fallback) rather than
+        // aborting the whole runner build. The matching `on`-extra canonical names
+        // are collected so `render` can flip each flag to 1 every frame.
+        var decoded: [(spec: DopeSdfAuxSpec, tex: MTLTexture)] = []
+        var onExtras: [String] = []
+        for spec in config.sdfAuxTextures() {
+            guard let sdf = decodeDopeSdf(spec.dataURI), sdf.size > 0 else { continue }
+            let sd = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .r8Unorm, width: sdf.size, height: sdf.size, mipmapped: false)
+            sd.usage = [.shaderRead]
+            sd.storageMode = .shared
+            guard let tex = device.makeTexture(descriptor: sd) else { continue }
+            // 8 bits per pixel ⇒ bytesPerRow == size, no row padding needed.
+            sdf.bytes.withUnsafeBytes { raw in
+                tex.replace(region: MTLRegionMake2D(0, 0, sdf.size, sdf.size),
+                            mipmapLevel: 0, withBytes: raw.baseAddress!, bytesPerRow: sdf.size)
+            }
+            decoded.append((spec, tex))
+            if let on = spec.onExtra { onExtras.append(on) }
+        }
+        sdfAuxTextures = decoded
+        sdfOnExtras = onExtras
     }
 
     /// Swap in fresh per-fire params (and re-derive duration) WITHOUT rebuilding
@@ -331,13 +380,30 @@ public final class MetalPassRunner<Config: PassConfig> {
                 encoder.setFragmentBytes(raw.baseAddress!, length: raw.count, index: a.bufferIndex)
             }
         }
-        // Panel at texture(0); placeholder at the other slot a shader might declare
-        // (e.g. an SDF at texture(1)). Over-binding is harmless for shaders that
-        // declare fewer textures.
-        encoder.setFragmentTexture(panel ?? placeholderTex, index: 0)
+        // Bind the placeholder at the two cross-platform slots a shader might
+        // declare (texture(0) the panel slot, texture(1) an SDF aux) so every
+        // declared `texture2d` arg is defined; over-binding is harmless for shaders
+        // that declare fewer. The real bindings below then overwrite the slots that
+        // actually carry data this frame.
+        encoder.setFragmentTexture(placeholderTex, index: 0)
         encoder.setFragmentTexture(placeholderTex, index: 1)
         encoder.setFragmentSamplerState(sampler, index: 0)
         encoder.setFragmentSamplerState(sampler, index: 1)
+        // Sprite panel at its DECLARED unit (`config.panelTextureUnit`, default 0):
+        // a PASS hybrid that also carries a baked-SDF aux moves the panel off slot 0
+        // so the SDF keeps its own unit — the general sprite-panel-at-arbitrary-unit
+        // seam. When no panel is supplied the placeholder above stays at that slot.
+        if let panel {
+            encoder.setFragmentTexture(panel, index: config.panelTextureUnit)
+            encoder.setFragmentSamplerState(sampler, index: config.panelTextureUnit)
+        }
+        // Baked-SDF aux textures at their declared units (the shared linear/clamp
+        // sampler, matching the web's LINEAR/edge-clamp). Composes WITH the panel
+        // above so a PASS hybrid hosts both in the SAME pass.
+        for (spec, tex) in sdfAuxTextures {
+            encoder.setFragmentTexture(tex, index: spec.unit)
+            encoder.setFragmentSamplerState(sampler, index: spec.unit)
+        }
         // Single full-screen triangle from vertex_id — no vertex buffers needed.
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
     }
@@ -369,6 +435,12 @@ public final class MetalPassRunner<Config: PassConfig> {
         let info = FrameInfo(animMs: animMs, life: life, elapsedMs: elapsedMs)
         let (amp, frameExtras) = config.frame(info, params)
         var extras = frameExtras
+
+        // Flip every bound SDF aux's `on` flag to 1 (keyed by its CANONICAL extra
+        // name — the same key the generated packer reads). A decoded+bound SDF means
+        // the shader should sample the texture instead of taking its analytic
+        // fallback; the web sets the same `on` uniform to 1 on bind.
+        for on in sdfOnExtras { extras[on] = 1 }
 
         // PER-PASS extras (`render.pass` / the web `passUniforms` seam): computed
         // once from the live pass geometry and merged in BEFORE packUniforms (a

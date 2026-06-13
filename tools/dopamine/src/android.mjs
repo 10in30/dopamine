@@ -101,8 +101,15 @@ export async function generateAndroidLibrary({ root, eff, fonts = [], logic = nu
   // the generated factory wires (`draw<Name>Panel`).
   if (!hand.includes(`${Name}.kt`)) {
     assertFactoryGeneratable(doc, slug, "android");
-    const panel = !!doc.render?.panel;
-    if (panel && !hand.includes(`${Name}Panel.kt`)) {
+    // The panel MODE drives which generic config the registration shim wires:
+    //   - "panel"  — a panel-KIND effect (kind:"panel"): the Canvas panel
+    //     runner (dopePanelConfig/createPanelInstance), panel at texture(0).
+    //   - "sprite" — a PASS hybrid with a dynamic sprite panel at an arbitrary
+    //     unit ALONGSIDE the baked-SDF aux (the pass runner's panel seam:
+    //     dopePassConfig(..., draw=)/createPassInstance — solarbloom's motes).
+    //   - "none"   — a pure pass effect (dopePassConfig).
+    const panelMode = !doc.render?.panel ? "none" : doc.kind === "panel" ? "panel" : "sprite";
+    if (panelMode !== "none" && !hand.includes(`${Name}Panel.kt`)) {
       throw new Error(
         `dopamine: effects/${slug} declares render.panel but has no android/${Name}Panel.kt — ` +
           `the generated factory wires the hand-written draw${Name}Panel (the panel-draw seam).`,
@@ -110,7 +117,7 @@ export async function generateAndroidLibrary({ root, eff, fonts = [], logic = nu
     }
     out.push({
       path: join(modRel, "src/main/kotlin", pkgPath, `${Name}.kt`),
-      content: emitKotlinFactory(slug, namespace, buildFrameArraysSpec(doc, slug, logic), panel),
+      content: emitKotlinFactory(slug, namespace, buildFrameArraysSpec(doc, slug, logic), panelMode),
     });
   }
   if (shaderCfg) {

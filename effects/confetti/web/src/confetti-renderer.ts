@@ -1,20 +1,23 @@
 /**
- * Confetti Canvas2D PANEL drawing (web).
+ * Confetti Canvas2D PANEL drawing — the PANEL-DRAW SEAM.
  *
- * PERFORMANCE: the original web confetti was a single full-screen fragment pass
- * that re-derived all MAX_PIECES poses (hash + ballistic + sway + spin) at EVERY
- * pixel — O(pixels × pieces) ≈ 95M piece-evaluations/frame at 1100×720, which is
- * fine on a GPU but crawls under software/ANGLE WebGL. The pieces actually cover
- * a tiny fraction of the screen, so the work belongs where it scales with COVERED
- * AREA, not pixel count: we rasterize the pieces into an offscreen Canvas2D panel
- * (each pose computed ONCE per frame, in JS) and the fragment shader just samples
- * that texture and applies the screen-space finish (ACES tonemap, cel posterize,
- * dither). This is the same hybrid-panel architecture the fast effects (comic,
- * heartburst) already use.
+ * Confetti is a PANEL HYBRID (like comic/heartburst): the paper pieces are
+ * rasterized into an offscreen Canvas2D panel each frame (each pose computed
+ * ONCE per frame, in JS) and the fragment shader (confetti-shader.ts) samples
+ * that texture and applies the screen-space finish (the global gain, ACES
+ * tonemap, cel posterize, ordered dither, soft cast shadow). This is now
+ * CONVERGED across all three platforms: the native ConfettiPanel files
+ * (CoreGraphics / android.graphics) are faithful ports of this draw, the shader
+ * is single-source GLSL, and the factory / tempo / uniforms are GENERATED from
+ * confetti.dope.json. The pieces' MOTION (the ballistic launch-then-fall poses)
+ * is panel GEOMETRY — code by design — so this draw is the ONE hand-written web
+ * source beyond the shader (the per-platform panel-draw seam).
  *
- * The Swift/Metal renderer is untouched (its GPU full-screen pass is plenty fast),
- * and confetti.dope.json is byte-identical across platforms — only the web render
- * path changed.
+ * PERFORMANCE: the original single-pass design re-derived all MAX_PIECES poses
+ * (hash + ballistic + sway + spin) at EVERY pixel — O(pixels × pieces), fine on
+ * a GPU but crawling under software/ANGLE WebGL. The pieces cover a tiny
+ * fraction of the screen, so the work belongs where it scales with COVERED
+ * AREA, not pixel count.
  *
  * Panel channel encoding consumed by confetti-shader.ts:
  *   RGB = the per-piece LIT colour (palette × paper/cel shading), pre-multiplied
@@ -22,7 +25,7 @@
  *         The shader applies the global gain (amp × exposure), tonemap + finish.
  */
 
-import { mulberry32, type RGB } from "@dopaminefx/core";
+import { mulberry32, type PanelDraw, type RGB } from "@dopaminefx/core";
 import { MAX_PIECES } from "./confetti-shader.js";
 
 /** Resolved render params the confetti panel consumes. */
@@ -72,6 +75,18 @@ function paletteMix(pal: RGB[], t: number): RGB {
  * per-piece lit colour (paper shading ↔ flat cel by whimsy), computed once per
  * piece in JS instead of once per pixel in GLSL.
  */
+/**
+ * The per-frame panel draw in the generic `PanelDraw` shape — the ONE
+ * code-shaped hook the data-driven panel factory wires
+ * (`registerDopePanelEffect`). The whole-effect amplitude envelope is DATA
+ * (`tempo.frame.amp` in confetti.dope.json); this draw owns only the pieces'
+ * panel GEOMETRY (the ballistic launch-then-fall poses), which is code by
+ * design. Hands off to {@link drawConfettiPanel}.
+ */
+export const drawConfettiFrame: PanelDraw = (pctx, w, h, params, info) => {
+  drawConfettiPanel(pctx, w, h, params as unknown as ConfettiRenderParams, info.life, info.centerPx);
+};
+
 export function drawConfettiPanel(
   ctx: CanvasRenderingContext2D,
   w: number,

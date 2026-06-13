@@ -27,6 +27,20 @@ package ai.dopamine.core
 fun cap(s: String): String = "u" + s.replaceFirstChar { it.uppercase() }
 
 /**
+ * A declarative baked-SDF aux texture for a pass: the raw `data:` SDF blob, the
+ * texture `unit` to bind it on, the `sampler` web uniform name, and the optional
+ * `on`-flag web uniform name (set to 1 when the SDF is actually bound). Derived
+ * from `binding.samplers[].outline` → `geometry.outlines[outline].sdf.data`.
+ * The DECODE/upload lives in `dopamine-gl` (this stays pure-JVM data).
+ */
+class DopeSdfAux(
+    val unit: Int,
+    val dataURI: String,
+    val sampler: String,
+    val onUniformWeb: String?,
+)
+
+/**
  * The datafied pass description derived from a `.dope`. The derived contract
  * is pinned by the per-effect dope-config JVM tests:
  *
@@ -86,6 +100,13 @@ class DopePassPlan internal constructor(
     val panelSampler: String? = null,
     /** `render.panel.texture` — the panel's texture unit (default 0, the panel slot). */
     val panelTexture: Int = 0,
+    /**
+     * Declarative baked-SDF aux textures (one per `binding.samplers[]` that has
+     * an `outline`): the raw SDF `data:` blob + its unit + sampler/on web names.
+     * The GL config decodes + uploads + binds these, and flips the matching `on`
+     * flag to 1 when bound (web parity). Empty when the doc binds no SDF aux.
+     */
+    val sdfAux: List<DopeSdfAux> = emptyList(),
 ) {
     /** Shadow occluder height (fraction of min canvas dim) — params-only. */
     fun shadowHeightFrac(params: Map<String, DopeValue>): Double = evalParamExpr(shadowSpec, params)
@@ -162,10 +183,15 @@ fun dopePassPlan(doc: DopeDoc, extraUniforms: List<String> = emptyList()): DopeP
     // samplers: plain strings (web name only) or the object form, possibly with
     // a declarative SDF source (`outline` + `on` — the canonical extra name of
     // the "on" flag).
-    data class Sampler(val web: String, val outline: String?, val on: String?)
+    data class Sampler(val web: String, val outline: String?, val on: String?, val texture: Int?)
     val samplers: List<Sampler> = binding?.get("samplers")?.asArray?.mapNotNull { s ->
         val web = s.asString ?: s["web"]?.asString ?: return@mapNotNull null
-        Sampler(web = web, outline = s["outline"]?.asString, on = s["on"]?.asString)
+        Sampler(
+            web = web,
+            outline = s["outline"]?.asString,
+            on = s["on"]?.asString,
+            texture = s["texture"]?.asNumber?.toInt(),
+        )
     } ?: emptyList()
     // arrays: the per-frame ARRAY uniforms (CPU-precomputed frame geometry —
     // lightning's uVerts/uBoltMeta). GL binds them by NAME (the `frameArrays`
@@ -238,6 +264,21 @@ fun dopePassPlan(doc: DopeDoc, extraUniforms: List<String> = emptyList()): DopeP
         s.on?.let { on -> extraDefs.firstOrNull { it.first == on }?.second }
     }
 
+    // Declarative baked-SDF aux textures: each sampler with an `outline` whose
+    // `geometry.outlines[outline].sdf.data` blob exists. The texture unit comes
+    // from the sampler's `texture` field (no default — an SDF aux must declare
+    // it, since unit 0 is the panel slot). The `on`-flag web name resolves
+    // through `binding.extras[].web` (the same mapping `samplerOnUniforms` uses);
+    // the GL config flips it to 1 when the SDF actually binds.
+    val sdfAux = samplers.mapNotNull { s ->
+        val outline = s.outline ?: return@mapNotNull null
+        val data = raw["geometry"]?.get("outlines")?.get(outline)?.get("sdf")?.get("data")?.asString
+            ?: return@mapNotNull null
+        val unit = s.texture ?: return@mapNotNull null
+        val onWeb = s.on?.let { on -> extraDefs.firstOrNull { it.first == on }?.second }
+        DopeSdfAux(unit = unit, dataURI = data, sampler = s.web, onUniformWeb = onWeb)
+    }
+
     // --- the resolve-call data + reduced motion the factories hardcoded -------
     val consts = LinkedHashMap<String, Double>()
     raw["render"]?.get("consts")?.asObject?.forEach { (k, v) -> v.asNumber?.let { consts[k] = it } }
@@ -266,5 +307,6 @@ fun dopePassPlan(doc: DopeDoc, extraUniforms: List<String> = emptyList()): DopeP
         samplerOnUniforms = samplerOnUniforms,
         panelSampler = panelSampler,
         panelTexture = panelTexture,
+        sdfAux = sdfAux,
     )
 }

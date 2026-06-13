@@ -42,10 +42,43 @@ test("heartburst: the generated factory shells wire the panel-draw seam (snapsho
   // `drawHeartburstPanel` to `DopePanelPassConfig`, the Kotlin shell to
   // `dopePanelConfig`/`createPanelInstance` (the hand-written panel draw is
   // the ONLY per-effect platform source).
-  expect(emitSwiftFactory("heartburst", null, true)).toBe(golden("Heartburst.swift"));
-  expect(emitKotlinFactory("heartburst", "ai.dopamine.effect.heartburst", null, true)).toBe(
+  expect(emitSwiftFactory("heartburst", null, "panel")).toBe(golden("Heartburst.swift"));
+  expect(emitKotlinFactory("heartburst", "ai.dopamine.effect.heartburst", null, "panel")).toBe(
     golden("Heartburst.kt"),
   );
+});
+
+test("solarbloom: the generated factory shells wire the SPRITE-PANEL seam (snapshot)", () => {
+  // solarbloom is the PASS-HYBRID prover: a sprite panel at an ARBITRARY unit
+  // (texture(3)) ALONGSIDE the baked-SDF ✓ aux (texture(1)). The Swift shell
+  // hands `drawSolarbloomPanel` to `DopeSpritePanelPassConfig` (the PASS runner
+  // with the sprite-panel + aux seam), the Kotlin shell to
+  // `dopePassConfig(draw=)`/`createPassInstance` — distinct from the panel-KIND
+  // path (DopePanelPassConfig/dopePanelConfig) heartburst/comic/confetti use.
+  expect(emitSwiftFactory("solarbloom", null, "sprite")).toBe(golden("Solarbloom.swift"));
+  expect(emitKotlinFactory("solarbloom", "ai.dopamine.effect.solarbloom", null, "sprite")).toBe(
+    golden("Solarbloom.kt"),
+  );
+});
+
+test("solarbloom: the dist packages carry ONLY the sprite-panel draw beyond the generated sources", async () => {
+  // The PASS-hybrid prover: like heartburst, exactly one hand-written file per
+  // platform (the sprite-panel mote draw); factory, bundle, shader + uniforms
+  // are all generated.
+  const eff = await loadEffect(root, "effects/solarbloom");
+  const swift = await generateSwiftPackage({ root, eff, outDir: "/tmp/out" });
+  const swiftSources = swift.filter((f) => f.path.endsWith(".swift") && !f.path.endsWith("Package.swift"));
+  expect(swiftSources.map((f) => f.path.split("/").pop()).sort()).toEqual(
+    ["Solarbloom.swift", "SolarbloomBundle.swift", "SolarbloomPanel.swift", "SolarbloomUniforms.swift"].sort(),
+  );
+  expect(swift.find((f) => f.path.endsWith("/Solarbloom.swift")).content).toContain("DopeSpritePanelPassConfig");
+  expect(swift.find((f) => f.path.endsWith("/Solarbloom.swift")).content).toContain("drawSolarbloomPanel");
+  const android = await generateAndroidLibrary({ root, eff });
+  const ktSources = android.filter((f) => f.path.endsWith(".kt"));
+  expect(ktSources.map((f) => f.path.split("/").pop()).sort()).toEqual(
+    ["Solarbloom.kt", "SolarbloomPanel.kt", "SolarbloomShader.kt"].sort(),
+  );
+  expect(android.find((f) => f.path.endsWith("/Solarbloom.kt")).content).toContain("draw = ::drawSolarbloomPanel");
 });
 
 test("heartburst: the dist packages carry ONLY the panel draw beyond the generated sources", async () => {
@@ -60,6 +93,27 @@ test("heartburst: the dist packages carry ONLY the panel draw beyond the generat
   expect(ktSources.map((f) => f.path.split("/").pop()).sort()).toEqual(
     ["Heartburst.kt", "HeartburstPanel.kt", "HeartburstShader.kt"].sort(),
   );
+});
+
+test("confetti: the dist packages carry ONLY the panel draw beyond the generated sources", async () => {
+  // confetti CONVERGED onto the heartburst panel-hybrid path: the web Canvas2D
+  // panel is now mirrored by per-platform panel draws, the procedural Metal/GLSL
+  // shaders retired for the single-source GLSL, and the factory/tempo/uniforms
+  // are generated — so each platform ships exactly one hand-written file (the
+  // panel draw).
+  const eff = await loadEffect(root, "effects/confetti");
+  const swift = await generateSwiftPackage({ root, eff, outDir: "/tmp/out" });
+  const swiftSources = swift.filter((f) => f.path.endsWith(".swift") && !f.path.endsWith("Package.swift"));
+  expect(swiftSources.map((f) => f.path.split("/").pop()).sort()).toEqual(
+    ["Confetti.swift", "ConfettiBundle.swift", "ConfettiPanel.swift", "ConfettiUniforms.swift"].sort(),
+  );
+  expect(swift.find((f) => f.path.endsWith("/Confetti.swift")).content).toContain("drawConfettiPanel");
+  const android = await generateAndroidLibrary({ root, eff });
+  const ktSources = android.filter((f) => f.path.endsWith(".kt"));
+  expect(ktSources.map((f) => f.path.split("/").pop()).sort()).toEqual(
+    ["Confetti.kt", "ConfettiPanel.kt", "ConfettiShader.kt"].sort(),
+  );
+  expect(android.find((f) => f.path.endsWith("/Confetti.kt")).content).toContain("drawConfettiPanel");
 });
 
 test("a render.panel effect without its panel-draw file is rejected with a pointer", async () => {

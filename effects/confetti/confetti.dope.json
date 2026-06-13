@@ -3,7 +3,7 @@
   "v": "1.0.0",
   "id": "dopamine.celebrate.confetti",
   "slug": "confetti",
-  "kind": "overlay",
+  "kind": "panel",
   "meta": {
     "name": "Confetti",
     "description": "A burst of paper confetti launches upward from the action then tumbles down under gravity with air-drag flutter — spinning rectangles and petals in many OKLCH hues that sway, settle, and fade. The signature is the downward, physical, fluttering fall (deliberately distinct from Solarbloom's upward drifting motes).",
@@ -174,6 +174,68 @@
           ]
         }
       }
+    },
+    "frame": {
+      "amp": {
+        "lt": [
+          0,
+          { "input": "life" },
+          {
+            "lt": [
+              { "input": "life" },
+              1,
+              {
+                "lt": [
+                  { "input": "life" },
+                  0.12,
+                  { "easeOutBack": [{ "div": [{ "input": "life" }, 0.12] }, { "param": "overshoot" }] },
+                  {
+                    "lt": [
+                      { "input": "life" },
+                      0.7,
+                      1,
+                      {
+                        "sub": [
+                          1,
+                          {
+                            "mul": [
+                              { "easeOutCubic": { "div": [{ "sub": [{ "input": "life" }, 0.7] }, 0.3] } },
+                              0.85
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              0
+            ]
+          },
+          0
+        ]
+      },
+      "extras": {}
+    },
+    "reducedMotion": {
+      "peakMs": 320,
+      "holdMs": 420
+    },
+    "note": "Datafied per-frame logic (the web/Swift/Kotlin confettiAmp envelope, delta-0). amp = the launch-then-fall brightness: a sharp easeOutBack POP over the first 12% of life (overshoot at launch), a luminous full sustain to 70%, then a soft easeOutCubic fade over the last 30% as the last pieces settle (per-piece dimming rides the panel draw). The pieces' poses (ballistic arc + flutter sway + spin) are panel GEOMETRY — code by design (the per-platform ConfettiPanel draw)."
+  },
+  "geometry": {
+    "kind": "radial",
+    "viewBox": [
+      0,
+      0,
+      100,
+      100
+    ],
+    "outlines": {
+      "piece": {
+        "role": "confetti-piece",
+        "note": "Procedural paper pieces (rounded rectangles + a few petals) traced in the panel from pieceCount + pieceSeed; rotated by the per-piece spin."
+      }
     }
   },
   "render": {
@@ -305,13 +367,27 @@
         }
       }
     },
+    "shadowHeightFrac": 0.5,
+    "panel": {
+      "sampler": "uPanel",
+      "texture": 0,
+      "note": "The Canvas2D/CoreGraphics/android.graphics panel (the spinning paper pieces rasterized once per piece per frame, RGB = Σ per-piece lit colour × fade) the host redraws every frame; the draw itself — the ballistic launch-then-fall poses + per-piece paper/cel shading — is the per-platform panel-draw seam (web panelDraw hook / ConfettiPanel files). The shader samples it and applies the global gain (amp · exposure), ACES tonemap, the cel posterize toward the whimsy end, an ordered dither, and the soft cast shadow."
+    },
+    "consts": {
+      "MAX_PIECES": 120
+    },
+    "config": {
+      "usesOrigin": true,
+      "stepping": "none"
+    },
     "backends": {
       "webgl2": {
         "stage": "fullscreen-triangle",
         "blend": "screen",
         "shader": {
           "program": "confetti"
-        }
+        },
+        "note": "Hybrid: a Canvas2D panel (the paper pieces) is uploaded as a texture; the shader adds the global gain, filmic tonemap, cel posterize, dither and the cast shadow."
       }
     },
     "fallbackOrder": [
@@ -323,14 +399,35 @@
     "excludeParams": [
       "style",
       "overshoot",
-      "durationMs"
+      "durationMs",
+      "pieceCount",
+      "spread",
+      "launchSpeed",
+      "gravity",
+      "flutter",
+      "pieceSize",
+      "spin"
     ],
     "scatterKey": "pieceSeed",
     "extras": [],
-    "samplers": []
+    "samplers": [
+      {
+        "web": "uPanel",
+        "name": "panelTex",
+        "texture": 0,
+        "note": "the per-frame panel texture (render.panel)"
+      }
+    ]
   },
   "x-build": {
     "note": "TOOLCHAIN build config (vendor-namespaced `x-` so runtime parsers ignore it; stripped from the embedded .dope). One block per platform: how `dopamine build` assembles the standalone, installable package into dist/<platform>/.",
+    "shader": {
+      "note": "Single-source shader: the canonical web GLSL is the ONLY hand-written shader; the MSL and the Kotlin are generated from it. The panel samples at texture(0).",
+      "web": "web/src/confetti-shader.ts",
+      "vertexExport": "CONFETTI_VERTEX_SRC",
+      "fragmentExport": "CONFETTI_FRAGMENT_SRC",
+      "generateMSL": true
+    },
     "swift": {
       "module": "DopamineEffectConfetti",
       "sources": "swift",
