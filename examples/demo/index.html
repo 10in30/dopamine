@@ -1,41 +1,117 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Dopamine — Solarbloom</title>
+    <!-- Apply the stored theme BEFORE first paint so there's no dark→light flash.
+         Defaults to dark (also what headless capture sees, keeping reels stable). -->
+    <script>
+      try {
+        var t = localStorage.getItem("dopamine-theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
     <style>
-      :root {
+      /* ---- Theme tokens -------------------------------------------------- */
+      /* Dark is the default (and what the headless reel records — its values are
+         intentionally unchanged). Light is an override layer. Every surface color
+         is a token so the two themes stay in lockstep as effects are added. */
+      :root,
+      :root[data-theme="dark"] {
         color-scheme: dark;
+        --stage: #070910;                 /* the recessed floor / backdrop      */
+        --stage-glow: #1a2336;            /* warm pool the cast light rakes over */
         --bg: #0b0d12;
-        --bg-2: #070910;
         --card: #141925;
+        --card-top: #1b2233;
         --card-edge: #222a3a;
+        --card-hi: #ffffff14;             /* top-edge highlight the light catches */
+        --backplate-a: #10141f;
+        --backplate-b: #0c0f17;
+        --backplate-edge: #1a2030;
         --ink: #eef2fb;
         --muted: #8b95ad;
         --accent: #2f3a54;
+        --seg-on: #43507a;
+        --seg-on-edge: #5d6da3;
+        --range: #6e7dff;
+        --fire-a: #ffffff;
+        --fire-b: #d7ddf2;
+        --fire-ink: #0b0d12;
+        --pause-a: #e9edff;
+        --pause-b: #b9c3ea;
+        --badge-bg: #10331f;
+        --badge-ink: #7ff0b0;
+        --badge-edge: #1c5235;
       }
+      /* Light mode. NOTE: the effect's LIGHT layer is `mix-blend-mode: screen`, so
+         on a pure-white stage it would vanish — that's the whole point of offering
+         the toggle: you can watch how the same effect reads vivid against a dark
+         stage and far subtler (carried mostly by its multiply SHADOW layer) against
+         a light one. So the light stage is a soft, slightly-deep neutral, not #fff. */
+      :root[data-theme="light"] {
+        color-scheme: light;
+        --stage: #c9cedd;
+        --stage-glow: #eef1f8;
+        --bg: #e7eaf3;
+        --card: #ffffff;
+        --card-top: #f7f9fe;
+        --card-edge: #d4d9e8;
+        --card-hi: #ffffff;
+        --backplate-a: #d7dcec;
+        --backplate-b: #cfd5e6;
+        --backplate-edge: #c2c9dc;
+        --ink: #1b2030;
+        --muted: #5d6680;
+        --accent: #d9deec;
+        --seg-on: #5566c4;
+        --seg-on-edge: #3f4fb0;
+        --range: #5566e6;
+        --fire-a: #4655d6;
+        --fire-b: #3b49bd;
+        --fire-ink: #ffffff;
+        --pause-a: #eef0fb;
+        --pause-b: #d6dcf2;
+        --badge-bg: #dcf6e6;
+        --badge-ink: #1f7a47;
+        --badge-edge: #aee2c2;
+      }
+
       * { box-sizing: border-box; }
       html, body { margin: 0; min-height: 100%; }
-      /* Solid dark root so the effect ALWAYS has a dark backdrop. The light canvas
-         uses mix-blend-mode: screen, which is invisible over a light backdrop — so
-         any area the body's gradient doesn't cover (e.g. if the height chain breaks
-         in some browser, or in light mode) must still be dark, or the effect gets
-         "cut off" where the light shows through. */
-      html { background: var(--bg-2); }
+
+      /* The stage backdrop. THIS is the mobile-crop fix: the effect canvases are
+         `position: fixed; inset: 0` (see overlay.ts), so they blend against the
+         whole VISUAL viewport — but on mobile browsers (Arc, mobile Safari) the
+         root background does NOT reliably paint the area under a collapsing
+         toolbar / overscroll gutter. Where it didn't, the browser's white default
+         showed through, and since the light layer is `screen` (invisible over
+         white) the effect looked CROPPED with a white stripe. A dedicated fixed,
+         inset:0 element shares the canvases' exact coordinate space, so it always
+         provides a solid stage to blend against — no white can ever peek through. */
+      .stage {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        background-color: var(--stage);
+        background-image:
+          radial-gradient(1200px 800px at 50% -8%, var(--stage-glow) 0%, var(--bg) 52%, var(--stage) 100%);
+        transition: background-color 0.25s ease;
+        pointer-events: none;
+      }
+      /* Belt-and-suspenders: also tint the root so overscroll past the fixed stage
+         (rubber-banding on iOS) reveals the stage color, never white. */
+      html { background: var(--stage); }
+
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
-        /* A deeper, vignetted backdrop reads as the recessed "floor" beneath the
-           raised surfaces, so the cast light has a dark ground to rake across. The
-           solid background-color is the fallback under the gradient. */
-        background-color: var(--bg-2);
-        background-image:
-          radial-gradient(1200px 800px at 50% -8%, #1a2336 0%, var(--bg) 52%, var(--bg-2) 100%);
         color: var(--ink);
         min-height: 100dvh;
         display: grid;
         place-items: center;
-        padding: 20px;
+        /* Respect notches/safe areas so content isn't tucked under mobile chrome. */
+        padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom));
         /* The whole document is a perspective viewport: child surfaces lifted on
            translateZ genuinely sit at different depths, so a light wash from
            above rakes across raised vs recessed planes. */
@@ -46,6 +122,8 @@
       /* The 3D scene: a subtly tilted slab that the surfaces are mounted onto.
          preserve-3d lets each child keep its own Z within this space. */
       .scene {
+        position: relative;
+        z-index: 1;
         width: min(1100px, 100%);
         transform-style: preserve-3d;
         transform: rotateX(7deg) rotateZ(-0.4deg);
@@ -62,15 +140,15 @@
         position: absolute;
         inset: -42px -34px -56px;
         border-radius: 30px;
-        background: linear-gradient(160deg, #10141f, #0c0f17);
-        border: 1px solid #1a2030;
+        background: linear-gradient(160deg, var(--backplate-a), var(--backplate-b));
+        border: 1px solid var(--backplate-edge);
         transform: translateZ(-60px);
         box-shadow: 0 50px 90px -40px #000, inset 0 1px 0 #ffffff0a;
       }
 
       .card {
         position: relative;
-        background: linear-gradient(180deg, #1b2233, var(--card));
+        background: linear-gradient(180deg, var(--card-top), var(--card));
         border: 1px solid var(--card-edge);
         border-radius: 20px;
         padding: 28px;
@@ -87,7 +165,7 @@
         content: "";
         position: absolute; inset: 0;
         border-radius: inherit;
-        background: linear-gradient(180deg, #ffffff14, transparent 22%);
+        background: linear-gradient(180deg, var(--card-hi), transparent 22%);
         pointer-events: none;
       }
 
@@ -108,46 +186,77 @@
       .badge {
         display: inline-flex; align-items: center; gap: 8px;
         margin-top: 22px; padding: 9px 14px; border-radius: 999px;
-        background: #10331f; color: #7ff0b0; font-size: 13px; font-weight: 600;
-        border: 1px solid #1c5235;
+        background: var(--badge-bg); color: var(--badge-ink); font-size: 13px; font-weight: 600;
+        border: 1px solid var(--badge-edge);
         transform: translateZ(26px);
-        box-shadow: 0 10px 18px -10px #0b3a22cc;
+        box-shadow: 0 10px 18px -10px #0b3a2266;
       }
 
       /* Controls sit lower than the receipt — a recessed companion panel. */
       .panel { display: grid; gap: 18px; transform: translateZ(22px); }
+      .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
       .panel h2 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted); }
       .control { display: grid; gap: 8px; }
       .control label { font-size: 14px; display: flex; justify-content: space-between; }
       .control label b { color: var(--muted); font-weight: 600; }
+
       .seg { display: flex; gap: 6px; }
       .seg button {
         flex: 1; padding: 9px 0; border-radius: 10px; cursor: pointer; font-size: 13px;
         background: var(--accent); color: var(--ink); border: 1px solid transparent; transition: 0.15s;
       }
-      .seg button[aria-pressed="true"] { background: #43507a; border-color: #5d6da3; }
-      input[type="range"] { width: 100%; accent-color: #6e7dff; }
+      .seg button[aria-pressed="true"] { background: var(--seg-on); border-color: var(--seg-on-edge); color: #fff; }
+
+      /* A compact segmented control for the theme toggle in the panel header. */
+      .seg-sm { gap: 4px; flex: 0 0 auto; }
+      .seg-sm button { flex: 0 0 auto; padding: 6px 11px; font-size: 12px; border-radius: 8px; }
+
+      /* The effect picker. A single row got crowded as the set grew (and it keeps
+         growing), so it's now a responsive auto-fit grid of chips: it wraps to as
+         many rows as needed, every chip stays comfortably tappable, and adding the
+         next effect just appends a button — no relayout work. */
+      .effect-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
+        gap: 6px;
+      }
+      .effect-grid button {
+        position: relative;
+        padding: 10px 6px; border-radius: 10px; cursor: pointer; font-size: 13px;
+        background: var(--accent); color: var(--ink); border: 1px solid transparent; transition: 0.15s;
+      }
+      .effect-grid button:hover { border-color: var(--seg-on-edge); }
+      .effect-grid button[aria-pressed="true"] { background: var(--seg-on); border-color: var(--seg-on-edge); color: #fff; }
+      /* A small ∞ marker flags the CONTINUOUS effects (they loop until stopped). */
+      .effect-grid button[data-loop]::after {
+        content: "∞";
+        position: absolute; top: 3px; right: 6px;
+        font-size: 10px; line-height: 1; opacity: 0.55;
+      }
+
+      input[type="range"] { width: 100%; accent-color: var(--range); }
 
       /* The primary action is lifted highest of all — the closest object to the
          viewer, so when the effect fires from it the light visibly spills down
          the raised faces and its shadow falls onto the panel behind. */
       .fire {
         margin-top: 6px; padding: 16px; font-size: 16px; font-weight: 700; cursor: pointer;
-        border: 0; border-radius: 14px; color: #0b0d12;
-        background: linear-gradient(180deg, #fff, #d7ddf2);
+        border: 0; border-radius: 14px; color: var(--fire-ink);
+        background: linear-gradient(180deg, var(--fire-a), var(--fire-b));
         transform: translateZ(72px);
         box-shadow:
           0 6px 12px -4px #0009,
-          0 22px 40px -16px #aeb8ffcc,
+          0 22px 40px -16px #aeb8ff80,
           0 40px 60px -30px #000;
       }
       .fire:active { transform: translateZ(60px) translateY(1px); }
       .fire:disabled { opacity: 0.45; cursor: default; box-shadow: 0 6px 12px -4px #0007; }
-      #pause { background: linear-gradient(180deg, #e9edff, #b9c3ea); transform: translateZ(64px); }
+      #pause { background: linear-gradient(180deg, var(--pause-a), var(--pause-b)); color: var(--fire-ink); transform: translateZ(64px); }
       .hint { color: var(--muted); font-size: 12px; text-align: center; transform: translateZ(10px); }
     </style>
   </head>
   <body>
+    <div class="stage" aria-hidden="true"></div>
     <main class="scene">
       <div class="backplate" aria-hidden="true"></div>
       <section class="card receipt" aria-label="Order summary">
@@ -161,10 +270,16 @@
       </section>
 
       <section class="panel card" aria-label="Effect controls">
-        <h2>Dopamine</h2>
+        <div class="panel-head">
+          <h2>Dopamine</h2>
+          <div class="seg seg-sm" id="theme" role="group" aria-label="Theme">
+            <button data-theme="dark" aria-pressed="true">Dark</button>
+            <button data-theme="light">Light</button>
+          </div>
+        </div>
         <div class="control">
           <label>Effect</label>
-          <div class="seg" id="effect">
+          <div class="effect-grid" id="effect">
             <button data-effect="solarbloom">Solarbloom</button>
             <button data-effect="inkstroke">Verdict</button>
             <button data-effect="comic" aria-pressed="true">Comic</button>
@@ -174,8 +289,8 @@
             <button data-effect="confetti">Confetti</button>
             <button data-effect="heartburst">Heart</button>
             <button data-effect="lightning">Lightning</button>
-            <button data-effect="halo">Halo</button>
-            <button data-effect="dots">Dots</button>
+            <button data-effect="halo" data-loop>Halo</button>
+            <button data-effect="dots" data-loop>Dots</button>
           </div>
         </div>
         <div class="control">
@@ -196,7 +311,7 @@
         </div>
         <button class="fire" id="fire">Complete order ✨</button>
         <button class="fire" id="pause" disabled>Pause loop</button>
-        <p class="hint">Each fire seeds a unique palette — watch the cards catch the light and throw shadow. For a CONTINUOUS effect (Halo, Dots), Fire toggles the loop and <b>Pause loop</b> freezes it mid-breath, then resumes it drift-free.</p>
+        <p class="hint">Each fire seeds a unique palette — watch the cards catch the light and throw shadow. Toggle <b>Light/Dark</b> to compare how an effect reads on each stage. For a CONTINUOUS effect (Halo, Dots — marked ∞), Fire toggles the loop and <b>Pause loop</b> freezes it mid-breath, then resumes it drift-free.</p>
       </section>
     </main>
     <script type="module" src="/src/main.ts"></script>

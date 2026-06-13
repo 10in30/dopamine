@@ -57,6 +57,33 @@ const state = {
 const moodFor = (effect: EffectName, mood: DopamineMood): string =>
   effect === "fail" ? FAIL_MOOD[mood] : mood;
 
+// Theme segmented control (Dark/Light). Lets you compare how the same effect
+// reads against a dark vs light stage — the light layer (screen blend) is vivid
+// on dark and far subtler on light, where the shadow layer carries it. The choice
+// persists across reloads; default is dark (also what headless capture records).
+type Theme = "dark" | "light";
+const themeGroup = $("#theme");
+function applyTheme(theme: Theme, persist: boolean): void {
+  document.documentElement.dataset.theme = theme;
+  if (persist) {
+    try {
+      localStorage.setItem("dopamine-theme", theme);
+    } catch {
+      /* private mode / blocked storage — fine, the choice just won't persist */
+    }
+  }
+  themeGroup
+    .querySelectorAll("button")
+    .forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.theme === theme)));
+}
+// Sync the buttons to whatever the pre-paint inline script already applied (don't
+// persist the default — only an explicit user choice should be remembered).
+applyTheme((document.documentElement.dataset.theme as Theme) ?? "dark", false);
+themeGroup.addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-theme]");
+  if (btn) applyTheme(btn.dataset.theme as Theme, true);
+});
+
 // Mood segmented control
 const moodGroup = $("#mood");
 moodGroup.addEventListener("click", (e) => {
