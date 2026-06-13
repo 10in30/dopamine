@@ -62,6 +62,27 @@ test("heartburst: the dist packages carry ONLY the panel draw beyond the generat
   );
 });
 
+test("confetti: the dist packages carry ONLY the panel draw beyond the generated sources", async () => {
+  // confetti CONVERGED onto the heartburst panel-hybrid path: the web Canvas2D
+  // panel is now mirrored by per-platform panel draws, the procedural Metal/GLSL
+  // shaders retired for the single-source GLSL, and the factory/tempo/uniforms
+  // are generated — so each platform ships exactly one hand-written file (the
+  // panel draw).
+  const eff = await loadEffect(root, "effects/confetti");
+  const swift = await generateSwiftPackage({ root, eff, outDir: "/tmp/out" });
+  const swiftSources = swift.filter((f) => f.path.endsWith(".swift") && !f.path.endsWith("Package.swift"));
+  expect(swiftSources.map((f) => f.path.split("/").pop()).sort()).toEqual(
+    ["Confetti.swift", "ConfettiBundle.swift", "ConfettiPanel.swift", "ConfettiUniforms.swift"].sort(),
+  );
+  expect(swift.find((f) => f.path.endsWith("/Confetti.swift")).content).toContain("drawConfettiPanel");
+  const android = await generateAndroidLibrary({ root, eff });
+  const ktSources = android.filter((f) => f.path.endsWith(".kt"));
+  expect(ktSources.map((f) => f.path.split("/").pop()).sort()).toEqual(
+    ["Confetti.kt", "ConfettiPanel.kt", "ConfettiShader.kt"].sort(),
+  );
+  expect(android.find((f) => f.path.endsWith("/Confetti.kt")).content).toContain("drawConfettiPanel");
+});
+
 test("a render.panel effect without its panel-draw file is rejected with a pointer", async () => {
   // The generated factory wires draw<Name>Panel; emitting a shell without the
   // hand-written draw would fail at compile time — refuse with a pointer.

@@ -29,6 +29,7 @@ import { HALO_FRAGMENT_SRC } from "../../../effects/halo/web/src/halo-shader.ts"
 import { FAIL_FRAGMENT_SRC } from "../../../effects/fail/web/src/fail-shader.ts";
 import { HEARTBURST_FRAGMENT_SRC } from "../../../effects/heartburst/web/src/heartburst-shader.ts";
 import { COMIC_FRAGMENT_SRC } from "../../../effects/comic/web/src/comic-shader.ts";
+import { CONFETTI_FRAGMENT_SRC } from "../../../effects/confetti/web/src/confetti-shader.ts";
 
 const root = new URL("../../../", import.meta.url);
 const readDope = (slug) =>
@@ -52,6 +53,9 @@ const SNAPSHOT = [
   // comic is the heaviest panel hybrid: the panel sampler at texture(0), the
   // 2-arg atan→atan2, radians() inlining, and the scatter `uSeed`→u.comicSeed map.
   { slug: "comic", fragment: COMIC_FRAGMENT_SRC },
+  // confetti is a panel hybrid: the panel sampler at texture(0) sampled in a
+  // ring-blur loop (the cast shadow) + the panel-sampling light/finish pass.
+  { slug: "confetti", fragment: CONFETTI_FRAGMENT_SRC },
 ];
 
 const transpile = (slug, fragment) => {

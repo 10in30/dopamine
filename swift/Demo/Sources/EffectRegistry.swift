@@ -82,7 +82,7 @@ enum EffectRegistry {
         },
         DemoEffect(name: "confetti") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: ConfettiResources.bundle),
-                  let host = try? MetalOverlayHost(config: ConfettiConfig(), device: device,
+                  let host = try? MetalOverlayHost(config: Confetti.passConfig(), device: device,
                                                    library: lib, wantsShadow: false),
                   let fx = try? Confetti() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
