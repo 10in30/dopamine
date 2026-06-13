@@ -25,7 +25,7 @@ inline float benday(float2 frag, float cell, float v, float ang) {
 fragment float4 heartburst_fragment(
     VSOut in [[stage_in]],
     constant HeartburstUniforms &u [[buffer(0)]],
-    texture2d<float> panel [[texture(0)]],
+    texture2d<float> panelTex [[texture(0)]],
     sampler texSampler [[sampler(0)]]
 ) {
     float2 vUv = float2(in.position.x, u.resolution.y - in.position.y) / u.resolution;
@@ -48,7 +48,7 @@ fragment float4 heartburst_fragment(
       float2 tuv = souv + o;
       float2 inb = step(float2(0.0), tuv) * step(tuv, float2(1.0));
       float mask = inb.x * inb.y;
-      float4 s = panel.sample(texSampler, tuv);
+      float4 s = panelTex.sample(texSampler, tuv);
       occ += clamp(s.r + s.b, 0.0, 1.0) * mask;
     }
     occ /= 8.0;
@@ -59,7 +59,7 @@ fragment float4 heartburst_fragment(
   float2 fromC = frag - u.origin;
   float rad = length(fromC);
 
-  float4 panel = panel.sample(texSampler, vUv);
+  float4 panel = panelTex.sample(texSampler, vUv);
   float heartFill = panel.r;
   float ink = panel.g;
   float burstFill = panel.b;
@@ -100,7 +100,7 @@ fragment float4 heartburst_fragment(
     float2 px = 1.0 / res;
     for(int i = 0; i < 6; i++){
       float a = float(i) / 6.0 * TAU;
-      edge += panel.sample(texSampler, vUv + float2(cos(a), sin(a)) * px * 3.0).r;
+      edge += panelTex.sample(texSampler, vUv + float2(cos(a), sin(a)) * px * 3.0).r;
     }
     edge /= 6.0;
   }
@@ -108,7 +108,7 @@ fragment float4 heartburst_fragment(
   heartCol *= 1.0 - rimDark * 0.5 * (1.0 - u.style);
 
   
-  float blush = benday(frag, u.dotSize, mix(0.35, 0.6, u.halftone), radians(20.0) + u.heartburstSeed);
+  float blush = benday(frag, u.dotSize, mix(0.35, 0.6, u.halftone), ((20.0) * 0.017453292519943295) + u.heartburstSeed);
   heartCol += (u.c2 - heartCol) * blush * u.halftone * u.style * 0.28;
 
   col += heartCol * heartFill * u.presence * u.exposure * 1.6;

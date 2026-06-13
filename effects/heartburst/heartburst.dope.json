@@ -1820,7 +1820,7 @@
     "samplers": [
       {
         "web": "uPanel",
-        "name": "panel",
+        "name": "panelTex",
         "texture": 0,
         "note": "the per-frame panel texture (render.panel)"
       }
