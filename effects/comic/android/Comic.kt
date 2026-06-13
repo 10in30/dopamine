@@ -94,7 +94,7 @@ class Comic(context: Context) : DrawableEffect {
         // The web `PanelConfig.shadowHeightFrac` is a constant 0.5 (the panel's
         // implied occluder height); no `.dope` param drives it.
         shadowHeightFrac = { 0.5 },
-        passUniforms = { _, _, params, density ->
+        passUniforms = { _, _, params, density, _, _ ->
             // dotSize is authored at 1x dpr; multiply by the live density.
             // inkBoost fattens the ink toward the pop end. Both mirror the web
             // `passUniforms` (cross-checked vs swift `packUniforms`).

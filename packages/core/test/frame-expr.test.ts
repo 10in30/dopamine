@@ -58,6 +58,7 @@ describe("evalFrameExpr (the per-frame grammar)", () => {
 
   it("evaluates the math + tempo primitives identically to engine/tempo", () => {
     expect(evalFrameExpr({ sin: 1.2 }, ctx())).toBe(Math.sin(1.2));
+    expect(evalFrameExpr({ cos: 1.2 }, ctx())).toBe(Math.cos(1.2));
     expect(evalFrameExpr({ exp: -0.5 }, ctx())).toBe(Math.exp(-0.5));
     expect(evalFrameExpr({ clamp01: 1.7 }, ctx())).toBe(clamp01(1.7));
     expect(evalFrameExpr({ envelope: [{ input: "life" }, { param: "overshoot" }] }, ctx())).toBe(
@@ -90,12 +91,14 @@ describe("evalParamExpr (params-only, e.g. shadowHeightFrac)", () => {
 });
 
 describe("evalPassExpr (render.pass: params + pass-geometry inputs)", () => {
-  const pass = { targetMinDimPx: 400, sdfRange: 18, sdfViewBoxW: 100 };
+  const pass = { targetMinDimPx: 400, sdfRange: 18, sdfViewBoxW: 100, dpr: 2 };
 
   it("evaluates the pass-geometry inputs (supplied by the runner per pass)", () => {
     expect(evalPassExpr({ input: "targetMinDimPx" }, {}, pass)).toBe(400);
     expect(evalPassExpr({ input: "sdfRange" }, {}, pass)).toBe(18);
     expect(evalPassExpr({ input: "sdfViewBoxW" }, {}, pass)).toBe(100);
+    // heartburst's halftone cell: dotSize scaled to device px.
+    expect(evalPassExpr({ mul: [{ param: "dotSize" }, { input: "dpr" }] }, { dotSize: 7.5 }, pass)).toBe(15);
     // fail's ✗ box: 0.15 × the target min dim.
     expect(evalPassExpr({ mul: [0.15, { input: "targetMinDimPx" }] }, {}, pass)).toBe(60);
     // fail's SDF range mapping: range * (2*boxPx / viewBoxW).

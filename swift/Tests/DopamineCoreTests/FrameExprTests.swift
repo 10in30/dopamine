@@ -65,6 +65,7 @@ final class FrameExprTests: XCTestCase {
 
     func testMathAndTempoPrimitivesMatchTempoSwift() throws {
         XCTAssertEqual(try evalFrameExpr(expr(#"{"sin": 1.2}"#), ctx()), sin(1.2))
+        XCTAssertEqual(try evalFrameExpr(expr(#"{"cos": 1.2}"#), ctx()), cos(1.2))
         XCTAssertEqual(try evalFrameExpr(expr(#"{"exp": -0.5}"#), ctx()), exp(-0.5))
         XCTAssertEqual(try evalFrameExpr(expr(#"{"clamp01": 1.7}"#), ctx()), tempoClamp01(1.7))
         XCTAssertEqual(
@@ -97,10 +98,16 @@ final class FrameExprTests: XCTestCase {
 
     func testPassExprInputs() throws {
         // The pass-geometry inputs, supplied by the runner once per pass.
-        let pass = PassExprInputs(targetMinDimPx: 400, sdfRange: 18, sdfViewBoxW: 100)
+        let pass = PassExprInputs(targetMinDimPx: 400, sdfRange: 18, sdfViewBoxW: 100, dpr: 2)
         XCTAssertEqual(try evalPassExpr(expr(#"{"input": "targetMinDimPx"}"#), [:], pass), 400)
         XCTAssertEqual(try evalPassExpr(expr(#"{"input": "sdfRange"}"#), [:], pass), 18)
         XCTAssertEqual(try evalPassExpr(expr(#"{"input": "sdfViewBoxW"}"#), [:], pass), 100)
+        // heartburst's halftone cell: dotSize scaled to device px.
+        XCTAssertEqual(
+            try evalPassExpr(
+                expr(#"{"mul": [{"param": "dotSize"}, {"input": "dpr"}]}"#),
+                ["dotSize": .number(7.5)], pass),
+            15)
         // fail's ✗ box: 0.15 × the target min dim; params address like any mode.
         XCTAssertEqual(
             try evalPassExpr(expr(#"{"mul": [0.15, {"input": "targetMinDimPx"}]}"#), [:], pass),

@@ -546,7 +546,7 @@ authored once and interpreted identically on every platform.
 
 plus `{ "param": "<name>" }` (a resolved render param) and the nodes: number
 literal, `const`, `add`, `sub` (left fold), `mul`, `div` (left fold, plain IEEE),
-`min`, `max`, `pow: [a, b]`, `sin`, `exp`, `clamp01`,
+`min`, `max`, `pow: [a, b]`, `sin`, `cos`, `exp`, `clamp01`,
 `lt: [a, b, then, else]` (lazy branches), and the tempo primitives
 `envelope: [t, overshoot]`, `easeOutCubic`, `easeOutBack: [x, overshoot]` — the
 same tempo primitives every platform ships, so evaluated output is
@@ -556,8 +556,8 @@ written. Anything outside the grammar **throws** (same posture as §4.1).
 
 The SAME grammar runs in two more modes: PARAMS-ONLY
 (`render.shadowHeightFrac` — every `{input}` throws) and PER-PASS
-(`render.pass`, §8.2 — the frame clocks throw and three pass-geometry inputs
-are available instead: `targetMinDimPx`, `sdfRange`, `sdfViewBoxW`).
+(`render.pass`, §8.2 — the frame clocks throw and the pass-geometry inputs
+are available instead: `targetMinDimPx`, `sdfRange`, `sdfViewBoxW`, `dpr`).
 
 ### 7.2 Continuous effects — `tempo.loop`
 
@@ -640,7 +640,7 @@ An effect with declarative per-frame logic also carries, under `render`:
   must have a `binding.extras` entry — the platforms emit it under that
   entry's web name / packed struct field). Each value is a §7.1 expression
   evaluated ONCE PER PASS (not per resolve, not per frame) over the resolved
-  params plus three pass-geometry inputs; the frame clocks (`animMs`/`life`/
+  params plus the pass-geometry inputs; the frame clocks (`animMs`/`life`/
   `elapsedMs`/`loopS`/`phase`) **throw** here. A `note` key is documentation,
   like `binding.note`. The inputs:
 
@@ -649,13 +649,25 @@ An effect with declarative per-frame logic also carries, under `render`:
   | `targetMinDimPx` | min dimension of the TARGETED element box in device px, falling back to the full canvas when untargeted — the same box the standard `uTarget` carries, so a pass-sized centrepiece tracks the element |
   | `sdfRange` | the declared `range` of the SDF behind the first `binding.samplers` entry with an `outline` source; 0 when none (declared metadata — no bitmap decode needed) |
   | `sdfViewBoxW` | that SDF's `viewBox[2]` (author-units width); 0 when absent |
+  | `dpr` | the device-pixel ratio the surface renders at (web `devicePixelRatio` / Android `density` / the Metal content scale) — express a value in CSS-ish units and scale to device px (heartburst's halftone cell `dotSize · dpr`) |
 
   This is what datafied fail's box/stroke/range pixel hooks: e.g.
   `"boxPx": { "mul": [0.15, { "input": "targetMinDimPx" }] }`.
 - **`consts`** — the loop-cap consts the §4.1 `clampMax`/`clampMin` flags
   reference (`MAX_RINGS`, `MAX_DROPS`, …).
-- **`config`** — runner config; today `usesOrigin` (whether the shader is
-  anchored on `uOrigin`).
+- **`config`** — runner config: `usesOrigin` (whether the shader is anchored
+  on `uOrigin`) and `stepping: "none"` (the effect's clock NEVER snaps
+  animate-on-twos — the Canvas2D-panel semantics, where snapping would stutter
+  hand-drawn panel geometry; default is style-driven snapping).
+- **`panel`** — the dynamic PANEL the host draws each frame and the shader
+  samples: `{ "sampler": "uPanelTex", "texture": 0 }` (`sampler` must name a
+  `binding.samplers` entry; `texture` defaults to 0, the cross-platform panel
+  slot). Only the WIRING is data — the draw itself stays code, the
+  **panel-draw seam**: a hybrid effect's platform folders shrink to exactly one
+  hand-written draw file each (`effects/heartburst/swift/HeartburstPanel.swift`,
+  `android/HeartburstPanel.kt`; the web `draw` rides the `panelDraw` hook), and
+  the toolchain generates everything else, including the panel-wired factory
+  shells.
 
 **Per-frame ARRAYS (`binding.arrays`) — the frameArrays seam.** An effect that
 CPU-precomputes fragment-independent geometry once per frame (lightning's bolt

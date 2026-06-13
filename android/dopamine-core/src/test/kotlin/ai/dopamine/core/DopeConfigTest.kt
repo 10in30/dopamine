@@ -238,4 +238,108 @@ class DopeConfigTest {
             assertEquals(flash, out["uFlash"]!!, 0.0)
         }
     }
+
+    // ═══════════════ heartburst (the PANEL-class prover: render.panel) ═══════
+    @Test
+    fun heartburstDerivesTheExpectedPanelConfig() {
+        val (_, plan) = load("heartburst")
+        assertEquals(
+            setOf(
+                "uExposure", "uGlow", "uGloss", "uHalftone", "uSaturation", "uSeed",
+                "uPresence", "uBeat", "uBurst", "uFlash", "uDotSize", "uPanel",
+            ),
+            plan.uniforms.toSet(),
+        )
+        assertEquals(
+            mapOf(
+                "heartburstSeed" to "uSeed", "heartScale" to null, "burstCount" to null,
+                "burstSpread" to null, "inkWeight" to null, "beatStrength" to null,
+                "doubleBeat" to null, "dotSize" to null, "seed" to null,
+            ),
+            plan.bindings,
+        )
+        // The dynamic-panel wiring (`render.panel`): sampler at the panel slot.
+        assertEquals("uPanel", plan.panelSampler)
+        assertEquals(0, plan.panelTexture)
+        assertEquals("heartburstSeed", plan.scatterKey)
+        assertEquals(emptyMap<String, Double>(), plan.consts)
+        assertEquals(180.0, plan.reducedMotionPeakMs!!, 0.0)
+        assertEquals(360.0, plan.reducedMotionHoldMs!!, 0.0)
+        // render.pass: the dpr-scaled halftone cell (uDotSize = dotSize · density).
+        val out = plan.passUniforms(400.0, mapOf("dotSize" to DopeValue.Number(7.5)), dpr = 2.0)
+        assertEquals(15.0, out["uDotSize"]!!, 0.0)
+        // Expression shadow height: heartScale · 1.1.
+        assertEquals(
+            0.3 * 1.1,
+            plan.shadowHeightFrac(mapOf("heartScale" to DopeValue.Number(0.3))),
+            0.0,
+        )
+    }
+
+    @Test
+    fun heartburstFrameMatchesTheHandTempoItReplaced() {
+        val (_, plan) = load("heartburst")
+        // The old HeartburstTempo.kt formulas, kept here as the delta-0 oracle.
+        fun beatPulse(t: Double, center: Double, width: Double): Double {
+            val x = (t - center) / width
+            if (x <= -1 || x >= 1) return 0.0
+            val lobe = 0.5 + 0.5 * kotlin.math.cos(x * Math.PI)
+            return if (x < 0) Math.pow(lobe, 0.7) else Math.pow(lobe, 1.4)
+        }
+        fun heartbeatScale(life: Double, strength: Double, doubleBeat: Double): Double {
+            val t = tempoClamp01(life)
+            val lub = beatPulse(t, 0.1, 0.1)
+            val dub = beatPulse(t, 0.21, 0.075) * 0.62 * tempoClamp01(doubleBeat)
+            val beat = kotlin.math.max(lub, dub)
+            val sag = if (t > 0.3) 0.06 * easeOutCubic((t - 0.3) / (1 - 0.3)) else 0.0
+            return 1 + beat * 0.42 * strength - sag
+        }
+        fun burstProgress(life: Double): Double {
+            val t = tempoClamp01(life)
+            if (t <= 0.3) return 0.0
+            return easeOutCubic((t - 0.3) / (1 - 0.3))
+        }
+        fun heartburstEnvelope(life: Double, strength: Double, doubleBeat: Double): Double {
+            val t = tempoClamp01(life)
+            if (t <= 0.0 || t >= 1.0) return 0.0
+            val lub = beatPulse(t, 0.1, 0.1)
+            val dub = beatPulse(t, 0.21, 0.075) * 0.62 * tempoClamp01(doubleBeat)
+            val beats = kotlin.math.max(lub, dub) * 0.9 * strength
+            val b = burstProgress(life)
+            val flare = b * Math.pow(1 - b, 1.1) * 2.4
+            return tempoClamp01(kotlin.math.max(beats, flare * (0.7 + 0.3 * strength)))
+        }
+        fun heartPresence(life: Double): Double {
+            val t = tempoClamp01(life)
+            if (t < 0.04) return t / 0.04
+            if (t < 0.8) return 1.0
+            val fade = 1 - (t - 0.8) / 0.2
+            return Math.pow(kotlin.math.max(0.0, fade), 1.4)
+        }
+        fun heartFlash(life: Double, strength: Double, doubleBeat: Double): Double {
+            val beat = kotlin.math.max(0.0, heartbeatScale(life, strength, doubleBeat) - 1)
+            val b = burstProgress(life)
+            val spike = if (b > 0) kotlin.math.exp(-Math.pow((b - 0.06) / 0.12, 2.0)) else 0.0
+            return kotlin.math.min(1.2, beat * 1.6 + spike * 0.8)
+        }
+        for ((strength, doubleBeat) in listOf(0.6 to 0.0, 1.0 to 1.0, 1.25 to 0.3)) {
+            val params = mapOf<String, DopeValue>(
+                "beatStrength" to DopeValue.Number(strength),
+                "doubleBeat" to DopeValue.Number(doubleBeat),
+            )
+            for (i in -10..120) {
+                val life = i / 100.0
+                // Panels never snap on twos: animMs == elapsedMs (what the GL
+                // panel runner feeds the plan).
+                val ms = life * 2000.0
+                val out = plan.frame(ms, life, ms, params)
+                assertEquals(heartburstEnvelope(life, strength, doubleBeat), out["amp"]!!, 0.0)
+                assertEquals(heartPresence(life), out["uPresence"]!!, 0.0)
+                val beat = kotlin.math.max(0.0, heartbeatScale(life, strength, doubleBeat) - 1)
+                assertEquals(kotlin.math.min(1.0, beat * 2.2), out["uBeat"]!!, 0.0)
+                assertEquals(burstProgress(life), out["uBurst"]!!, 0.0)
+                assertEquals(heartFlash(life, strength, doubleBeat), out["uFlash"]!!, 0.0)
+            }
+        }
+    }
 }

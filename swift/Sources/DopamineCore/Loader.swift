@@ -241,11 +241,12 @@ public struct DopePassSpec {
     /// Evaluate every entry for one pass. The doc was validated at parse, so
     /// an eval failure here is a data bug the dope-config tests gate; degrade
     /// to 0 rather than crash the render loop (same posture as `frame`).
+    /// `dpr` is the layer's content scale (the web `devicePixelRatio`).
     public func evaluate(
-        targetMinDimPx: Double, params: [String: DopeValue]
+        targetMinDimPx: Double, dpr: Double = 1, params: [String: DopeValue]
     ) -> [(String, Double)] {
         let pass = PassExprInputs(
-            targetMinDimPx: targetMinDimPx, sdfRange: sdfRange, sdfViewBoxW: sdfViewBoxW)
+            targetMinDimPx: targetMinDimPx, sdfRange: sdfRange, sdfViewBoxW: sdfViewBoxW, dpr: dpr)
         return entries.map { ($0.0, (try? evalPassExpr($0.1, params, pass)) ?? 0) }
     }
 }
@@ -282,6 +283,10 @@ public struct DopeDoc {
     public var consts: [String: Double]
     /// Runner config (`render.config.usesOrigin`): whether the shader reads `uOrigin`.
     public var usesOrigin: Bool?
+    /// Runner config (`render.config.stepping`): `"none"` ⇒ the clock NEVER
+    /// snaps "on twos" (the Canvas2D-panel runner semantics, web-canonical for
+    /// panel effects); nil ⇒ the default style-driven snap.
+    public var stepping: String? = nil
     /// The uniform-binding contract (`binding`), when the doc ships one.
     public var binding: DopeBinding?
     /// The raw ordered JSON (for `content` / `geometry` consumers).

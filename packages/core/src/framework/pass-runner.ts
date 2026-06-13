@@ -136,6 +136,7 @@ export interface PassConfig {
     canvas: HTMLCanvasElement,
     params: PassParams,
     targetPx: { width: number; height: number },
+    dpr: number,
   ): Record<string, number>;
   /**
    * The shadow occluder "height" as a fraction of min canvas dim — Solarbloom's
@@ -312,7 +313,7 @@ export function createPassInstance(
     }
 
     // Extra per-pass scalar uniforms (canvas/target-size-dependent, non-aux).
-    applyFloatMap(gl, u, config.passUniforms?.(c, params, resolveTargetPx(c, ctx.targetSize, dpr)));
+    applyFloatMap(gl, u, config.passUniforms?.(c, params, resolveTargetPx(c, ctx.targetSize, dpr), dpr));
 
     // Standard uniforms.
     gl.uniform2f(u.uResolution, c.width, c.height);

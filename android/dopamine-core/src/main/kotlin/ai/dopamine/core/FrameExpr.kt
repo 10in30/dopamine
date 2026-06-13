@@ -21,6 +21,7 @@ package ai.dopamine.core
 
 import kotlin.math.exp
 import kotlin.math.pow
+import kotlin.math.cos
 import kotlin.math.sin
 
 /** The per-frame expression grammar — an expression tree over the frame ctx. */
@@ -37,6 +38,7 @@ sealed class FrameExprNode {
     data class Max(val nodes: List<FrameExprNode>) : FrameExprNode()
     data class Pow(val a: FrameExprNode, val b: FrameExprNode) : FrameExprNode()
     data class Sin(val node: FrameExprNode) : FrameExprNode()
+    data class Cos(val node: FrameExprNode) : FrameExprNode()
     data class Exp(val node: FrameExprNode) : FrameExprNode()
     data class Clamp01(val node: FrameExprNode) : FrameExprNode()
 
@@ -83,6 +85,7 @@ fun decodeFrameExpr(json: JsonValue): FrameExprNode {
             FrameExprNode.Pow(a[0], a[1])
         }
         "sin" -> FrameExprNode.Sin(child("sin"))
+        "cos" -> FrameExprNode.Cos(child("cos"))
         "exp" -> FrameExprNode.Exp(child("exp"))
         "clamp01" -> FrameExprNode.Clamp01(child("clamp01"))
         "lt" -> {
@@ -143,13 +146,18 @@ data class PassExprInputs(
     val sdfRange: Double = 0.0,
     /** That SDF's `viewBox[2]` (author-units width); 0 when absent. */
     val sdfViewBoxW: Double = 0.0,
+    /**
+     * The device-pixel ratio (the surface density) — so a pass value authored
+     * in CSS-ish units can scale to device px (web parity).
+     */
+    val dpr: Double = 1.0,
 )
 
 /** Which inputs an expression may read: the three evaluation entry points. */
 private enum class ExprMode { FRAME, PARAMS, PASS }
 
 private val FRAME_INPUTS = setOf("animMs", "life", "elapsedMs", "loopS", "phase")
-private val PASS_INPUTS = setOf("targetMinDimPx", "sdfRange", "sdfViewBoxW")
+private val PASS_INPUTS = setOf("targetMinDimPx", "sdfRange", "sdfViewBoxW", "dpr")
 
 /**
  * Resolve an `{input}` name under the given mode — the same gating (and the
@@ -167,6 +175,7 @@ private fun evalInput(name: String, ctx: FrameExprCtx, mode: ExprMode): Double {
             "targetMinDimPx" -> ctx.pass?.targetMinDimPx ?: 0.0
             "sdfRange" -> ctx.pass?.sdfRange ?: 0.0
             "sdfViewBoxW" -> ctx.pass?.sdfViewBoxW ?: 0.0
+            "dpr" -> ctx.pass?.dpr ?: 0.0
             else -> throw DopeException("dope: unknown frame input \"$name\"")
         }
     }
@@ -209,6 +218,7 @@ private fun evalNode(node: FrameExprNode, ctx: FrameExprCtx, mode: ExprMode): Do
         node.nodes.map { evalNode(it, ctx, mode) }.maxOrNull() ?: Double.NEGATIVE_INFINITY
     is FrameExprNode.Pow -> evalNode(node.a, ctx, mode).pow(evalNode(node.b, ctx, mode))
     is FrameExprNode.Sin -> sin(evalNode(node.node, ctx, mode))
+    is FrameExprNode.Cos -> cos(evalNode(node.node, ctx, mode))
     is FrameExprNode.Exp -> exp(evalNode(node.node, ctx, mode))
     is FrameExprNode.Clamp01 -> tempoClamp01(evalNode(node.node, ctx, mode))
     is FrameExprNode.Lt ->

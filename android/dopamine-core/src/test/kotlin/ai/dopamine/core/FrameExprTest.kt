@@ -9,6 +9,7 @@ package ai.dopamine.core
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.sin
 
@@ -84,6 +85,7 @@ class FrameExprTest {
     @Test
     fun evaluatesMathAndTempoPrimitivesIdenticallyToTempoKt() {
         assertEquals(sin(1.2), evalFrameExpr(expr("""{"sin":1.2}"""), ctx()), 0.0)
+        assertEquals(cos(1.2), evalFrameExpr(expr("""{"cos":1.2}"""), ctx()), 0.0)
         assertEquals(exp(-0.5), evalFrameExpr(expr("""{"exp":-0.5}"""), ctx()), 0.0)
         assertEquals(tempoClamp01(1.7), evalFrameExpr(expr("""{"clamp01":1.7}"""), ctx()), 0.0)
         assertEquals(
@@ -127,10 +129,20 @@ class FrameExprTest {
     @Test
     fun evalPassExprEvaluatesThePassGeometryInputs() {
         // The pass-geometry inputs, supplied by the runner once per pass.
-        val pass = PassExprInputs(targetMinDimPx = 400.0, sdfRange = 18.0, sdfViewBoxW = 100.0)
+        val pass = PassExprInputs(targetMinDimPx = 400.0, sdfRange = 18.0, sdfViewBoxW = 100.0, dpr = 2.0)
         assertEquals(400.0, evalPassExpr(expr("""{"input":"targetMinDimPx"}"""), emptyMap(), pass), 0.0)
         assertEquals(18.0, evalPassExpr(expr("""{"input":"sdfRange"}"""), emptyMap(), pass), 0.0)
         assertEquals(100.0, evalPassExpr(expr("""{"input":"sdfViewBoxW"}"""), emptyMap(), pass), 0.0)
+        // heartburst's halftone cell: dotSize scaled to device px.
+        assertEquals(
+            15.0,
+            evalPassExpr(
+                expr("""{"mul":[{"param":"dotSize"},{"input":"dpr"}]}"""),
+                mapOf("dotSize" to DopeValue.Number(7.5)),
+                pass,
+            ),
+            0.0,
+        )
         // fail's ✗ box: 0.15 × the target min dim; params address like any mode.
         assertEquals(
             0.15 * 400.0,

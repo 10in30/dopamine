@@ -66,8 +66,9 @@ genuinely **per-effect**:
    `<Name>.metal` AND the Kotlin `<Name>Shader.kt` are GENERATED from that one
    GLSL source** by `@dopamine/build` (`tools/dopamine/src/shader.mjs` for MSL;
    `android-shader.mjs` for the `.kt`) — one source, no copies to drift. See
-   "Single-source shaders" below. Panel/hybrid effects instead author their
-   shaders per platform — a supported path.
+   "Single-source shaders" below. This now includes the PANEL hybrids
+   (heartburst): the `.dope` `render.panel` block wires the panel sampler, and
+   only the panel DRAW stays per-platform code (the panel-draw seam).
 2. the **per-effect timing** — for effects with `tempo.frame` (declarative
    per-frame logic) this is **`.dope` DATA**, not code: `tempo.frame`
    (the per-frame amp + extras as expression trees), `tempo.reducedMotion`,
@@ -93,8 +94,12 @@ effect ships NO `effects/<name>/swift` or `effects/<name>/android` folder — th
 toolchain emits the Swift factory shell + resource-bundle accessor and the
 Kotlin registration shim from the `.dope` (`tools/dopamine/src/factory.mjs`,
 gated byte-for-byte by `tools/dopamine/test/factory.test.mjs`; inkstroke is the
-reference). Hand-written platform sources remain a supported path for effects
-with panel draws or code-shaped hooks.
+reference). A PANEL hybrid (heartburst is the reference) ships exactly ONE
+hand-written file per platform — the panel draw
+(`effects/<name>/swift/<Name>Panel.swift`, `android/<Name>Panel.kt`) — and the
+generated factory shells wire it in. Fuller hand-written platform sources
+remain a supported path for effects with code-shaped hooks (solarbloom,
+confetti, comic).
 
 If you find yourself editing the core runtimes to add an effect, stop — that
 almost always means something that should be generalized is being special-cased.
@@ -214,9 +219,12 @@ copies to drift:
   golden images).
 
 > **Which effects use which path:** effects whose `.dope` declares
-> `x-build.shader` get generated MSL/Kotlin shaders. Panel/hybrid effects
-> (offscreen render targets / panel textures) author their shaders per
-> platform — a supported path. Effects with CPU-precomputed per-frame geometry
+> `x-build.shader` get generated MSL/Kotlin shaders — including the PANEL
+> hybrid heartburst, whose `.dope` `render.panel` block wires the panel
+> sampler (texture(0)) into the generated shaders and factories; only its
+> panel DRAW stays per-platform code. Remaining panel/hybrid effects (comic,
+> confetti, solarbloom) still author their shaders per platform — a supported
+> path. Effects with CPU-precomputed per-frame geometry
 > (e.g. lightning) are fully single-source too: the geometry LOGIC rides
 > `x-build.logic` — a restricted-TS module (`lightning-logic.ts`) that
 > `tools/dopamine/src/logic.mjs` transpiles to the `<Name>Renderer.swift` /

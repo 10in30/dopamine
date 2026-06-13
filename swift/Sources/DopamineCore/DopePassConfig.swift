@@ -48,6 +48,9 @@ public struct DopePassConfig<U>: PassConfig {
     /// The continuous-loop period (`tempo.loop.periodMs`), nil for one-shots.
     /// The runner derives the standard `loopS`/`phase` clock uniforms from it.
     public let loopPeriodMs: Double?
+    /// `render.config.stepping: "none"` ⇒ no "animate on twos" snap (the web
+    /// panel-runner semantics, declared in the data).
+    public let snapsOnTwos: Bool
 
     private let ampExpr: JSONValue
     private let extraExprs: [(String, JSONValue)]
@@ -78,6 +81,7 @@ public struct DopePassConfig<U>: PassConfig {
         self.fragmentFunction = fragmentFunction
         self.usesOrigin = doc.usesOrigin ?? false
         self.loopPeriodMs = doc.loop?.periodMs
+        self.snapsOnTwos = doc.stepping != "none"
         self.ampExpr = frame.amp
         self.extraExprs = frame.extras
         self.shadowSpec = shadow
@@ -123,24 +127,30 @@ public struct DopePassConfig<U>: PassConfig {
         return (amp, extras)
     }
 
-    /// The generated packer, after the declarative `render.pass` top-up and
-    /// the optional code-shaped extras hook.
+    /// Per-PASS uniforms (`render.pass`), evaluated on the runner's
+    /// once-per-pass seam — the runner supplies the live target geometry
+    /// (full-canvas fallback applied) + the layer's `dpr`, and merges the
+    /// result into the frame extras before `packUniforms`.
+    public func passExtras(
+        targetMinDimPx: Double, dpr: Double, params: [String: DopeValue]
+    ) -> [String: Double] {
+        guard let pass = passSpec else { return [:] }
+        var out: [String: Double] = [:]
+        for (name, value) in pass.evaluate(targetMinDimPx: targetMinDimPx, dpr: dpr, params: params) {
+            out[name] = value
+        }
+        return out
+    }
+
+    /// The generated packer, after the optional code-shaped extras hook (which
+    /// runs LAST, so it may override the declarative `render.pass` values the
+    /// runner already merged into `extras`).
     public func packUniforms(
         standard: StandardUniforms,
         params: [String: DopeValue],
         extras: [String: Double]
     ) -> U {
         var ex = extras
-        if let pass = passSpec {
-            // Per-PASS uniforms (`render.pass`), evaluated here because this is
-            // the once-per-pass seam that sees the live target geometry.
-            // `standard.target` already carries the targeted element box with
-            // the full-canvas fallback applied (MetalPassRunner.standard()).
-            let minDim = Double(min(standard.target.x, standard.target.y))
-            for (name, value) in pass.evaluate(targetMinDimPx: minDim, params: params) {
-                ex[name] = value
-            }
-        }
         extrasHook?(standard, params, &ex)
         return pack(standard, params, ex)
     }

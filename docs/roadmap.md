@@ -55,13 +55,28 @@ ships NO `swift/` or `android/` folder, like aurora/ripple/inkstroke/halo/fail):
   is a thin `registerDopeEffect` shim with the one code-shaped
   `hooks.frameArrays` call.
 
-## Extend the declarative path to panel/hybrid effects
+## Extend the declarative path to panel/hybrid effects — PROVER LANDED; remaining work
 
-Effects that render through an offscreen panel or multiple passes (offscreen
-render targets, Canvas2D panel textures) author their shaders and panel draws
-per platform. Candidate work: multi-pass / aux-texture support in the shader
-generation path, and a declarative vocabulary for the panel pipeline, so more
-of the hybrid class can ride the data path.
+The panel pipeline is now declarative everywhere except the draw itself: the
+`.dope` carries `render.panel` (sampler + texture-unit wiring) and
+`render.config.stepping: "none"` (the panel-clock semantics), the GLSL→MSL
+path handles the panel sampler, and the generated factory shells wire a
+hand-written PANEL-DRAW file — the one genuinely code-shaped piece — into the
+shared runners (`DopePanelPassConfig` on Swift; the panel-aware `dopePassConfig`
+on web/Android). **heartburst is the prover**: its platform folders contain
+exactly one file each (`HeartburstPanel.swift` / `HeartburstPanel.kt`);
+factory, tempo, shader and bundle accessor are all generated or data. Still
+open:
+
+- **solarbloom** — datafy its code tempo + aux-texture hooks (the fail
+  precedent covers the baked-SDF half; the canvas-rasterized glyph texture
+  needs a panel-style seam or stays a hook).
+- **confetti** — the web (Canvas2D panel) and Swift (full-screen GPU pass)
+  render paths differ ARCHITECTURALLY; converging them on the panel path is a
+  redesign decision, not a mechanical migration.
+- **comic** — the typography/lettering pipeline is the heaviest code-shaped
+  piece; datafy its tempo/config alongside, but don't force the lettering into
+  data.
 
 ## Shared capability modules
 

@@ -14,6 +14,7 @@
 package ai.dopamine.gl
 
 import ai.dopamine.core.DopeDoc
+import ai.dopamine.core.DopeException
 import ai.dopamine.core.DopePassPlan
 import ai.dopamine.core.DopeValue
 import ai.dopamine.core.dopePassPlan
@@ -71,12 +72,51 @@ private fun derivePassUniforms(
     plan: DopePassPlan,
 ): ((Int, Int, Map<String, DopeValue>, Float, Float, Float) -> Map<String, Float>)? {
     if (!plan.hasPassUniforms && plan.samplerOnUniforms.isEmpty()) return null
-    return { _, _, params, _, targetWidthPx, targetHeightPx ->
+    return { _, _, params, density, targetWidthPx, targetHeightPx ->
         val out = LinkedHashMap<String, Float>()
-        for ((web, v) in plan.passUniforms(min(targetWidthPx, targetHeightPx).toDouble(), params)) {
+        for ((web, v) in plan.passUniforms(min(targetWidthPx, targetHeightPx).toDouble(), params, density.toDouble())) {
             out[web] = v.toFloat()
         }
         for (web in plan.samplerOnUniforms) out[web] = 0f
         out
     }
 }
+
+/**
+ * Build a {@link PanelConfig} (the Canvas-panel runner's config) from a
+ * datafied PANEL `.dope` + its GLSL + the ONE genuinely code-shaped piece —
+ * the per-frame Canvas `draw` (the panel-draw seam; the generated factory
+ * shims wire `draw<Name>Panel` here). Mirrors the web `dopePanelConfig`:
+ * uniforms/bindings/`tempo.frame`/`render.shadowHeightFrac`/`render.pass`
+ * derive exactly as for a pass effect; `panelSampler` comes from
+ * `render.panel.sampler`. The panel runner never snaps "on twos"
+ * (`render.config.stepping: "none"` — its frame clock IS the wall clock).
+ */
+fun dopePanelConfig(
+    doc: DopeDoc,
+    vertex: String,
+    fragment: String,
+    plan: DopePassPlan = dopePassPlan(doc),
+    draw: PanelDraw,
+): PanelConfig = PanelConfig(
+    vertex = vertex,
+    fragment = fragment,
+    uniforms = plan.uniforms,
+    panelSampler = plan.panelSampler
+        ?: throw DopeException("dope: ${doc.id} has no render.panel (not a panel effect)"),
+    bindings = plan.bindings,
+    shadowHeightFrac = { params -> plan.shadowHeightFrac(params) },
+    draw = draw,
+    frame = { info, params ->
+        // Panels never snap on twos, so the snapped clock IS the wall clock —
+        // `animMs := elapsedMs` (mirrors the web dopePanelConfig).
+        val out = LinkedHashMap<String, Float>()
+        for ((name, v) in plan.frame(info.elapsedMs, info.life, info.elapsedMs, params)) {
+            out[name] = v.toFloat()
+        }
+        out
+    },
+    // The same per-pass derivation as the pass config (the panel runner's
+    // passUniforms now shares the pass runner's signature).
+    passUniforms = derivePassUniforms(plan),
+)

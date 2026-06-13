@@ -83,11 +83,24 @@ public protocol PassConfig {
     /// wraps the effect clock at `durationMs`, so a perpetually-ticking host
     /// loops seamlessly with no per-effect period plumbing.
     var loopPeriodMs: Double? { get }
+    /// Whether the runner applies the style-driven "animate on twos" clock snap.
+    /// Default true; a PANEL effect (`render.config.stepping: "none"`) returns
+    /// false — the web panel runner never snaps (hand-drawn panel geometry
+    /// would stutter), so the port converges on that.
+    var snapsOnTwos: Bool { get }
     /// The shadow occluder "height" as a fraction of min canvas dim.
     func shadowHeightFrac(_ params: [String: DopeValue]) -> Double
     /// Compute the effect-specific time-varying values; MUST return `amp` (fed to
     /// the shadow geometry). Mirrors the web `frame()` hook.
     func frame(_ info: FrameInfo, _ params: [String: DopeValue]) -> (amp: Double, extras: [String: Double])
+    /// PER-PASS extras (the web `passUniforms` seam): values computed once per
+    /// frame from the live pass geometry (`targetMinDimPx` with the full-canvas
+    /// fallback applied, the layer's `dpr`) and merged into the frame extras
+    /// BEFORE `packUniforms` — the once-per-pass home of `render.pass`.
+    /// Default: none.
+    func passExtras(
+        targetMinDimPx: Double, dpr: Double, params: [String: DopeValue]
+    ) -> [String: Double]
     /// Pack the standard uniforms + resolved params + frame extras into the
     /// fragment uniform STRUCT the `.metal` reads. This is the GLSL→MSL binding
     /// seam: the auto-bind by NAME the web does via `gl.uniform*` becomes a single
@@ -127,12 +140,18 @@ public struct PassFrameArray {
 public extension PassConfig {
     /// Default: a one-shot effect (no `tempo.loop`).
     var loopPeriodMs: Double? { nil }
+    /// Default: the style-driven "animate on twos" snap applies.
+    var snapsOnTwos: Bool { true }
     /// Default: pure-shader effects bind no extra arrays.
     func frameArrays(
         _ info: FrameInfo,
         _ params: [String: DopeValue],
         width: Float, height: Float, origin: SIMD2<Float>
     ) -> [PassFrameArray] { [] }
+    /// Default: no per-pass extras.
+    func passExtras(
+        targetMinDimPx: Double, dpr: Double, params: [String: DopeValue]
+    ) -> [String: Double] { [:] }
 }
 
 /// Errors the runner can raise during pipeline build.
@@ -341,12 +360,26 @@ public final class MetalPassRunner<Config: PassConfig> {
             elapsedMs = elapsedMs.truncatingRemainder(dividingBy: durationMs)
         }
         // "Animate on twos": snap the clock toward a coarse grid as style rises.
+        // Panel effects (`render.config.stepping: "none"`) never snap — the web
+        // panel runner doesn't, and hand-drawn panel geometry would stutter.
         let style = Double(standardStyle())
         let stepped = (elapsedMs / NPR_TIME_STEP_MS).rounded(.down) * NPR_TIME_STEP_MS
-        let animMs = elapsedMs + (stepped - elapsedMs) * style
+        let animMs = config.snapsOnTwos ? elapsedMs + (stepped - elapsedMs) * style : elapsedMs
         let life = Swift.min(max(animMs, 0) / max(durationMs, 1), 1)
         let info = FrameInfo(animMs: animMs, life: life, elapsedMs: elapsedMs)
-        let (amp, extras) = config.frame(info, params)
+        let (amp, frameExtras) = config.frame(info, params)
+        var extras = frameExtras
+
+        // PER-PASS extras (`render.pass` / the web `passUniforms` seam): computed
+        // once from the live pass geometry and merged in BEFORE packUniforms (a
+        // config's own extras hook may still override them downstream).
+        let targetW = targetPx.x > 0 ? targetPx.x * dpr : width
+        let targetH = targetPx.y > 0 ? targetPx.y * dpr : height
+        for (k, v) in config.passExtras(
+            targetMinDimPx: Double(Swift.min(targetW, targetH)), dpr: Double(dpr), params: params
+        ) {
+            extras[k] = v
+        }
 
         // Per-frame array uniforms (CPU-precomputed geometry). Computed ONCE and
         // bound to both passes. `origin` is gl_FragCoord space (y-UP), matching the

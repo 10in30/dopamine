@@ -151,8 +151,20 @@ export interface DopeDoc {
     pass?: Record<string, FrameExprNode>;
     /** Loop-cap consts the param mapping's clampMax/clampMin reference. */
     consts?: Record<string, number>;
-    /** Runner config (today: whether the shader reads `uOrigin`). */
-    config?: { usesOrigin?: boolean };
+    /**
+     * The dynamic PANEL the host draws each frame and the shader samples
+     * (`sampler` must appear in `binding.samplers`; `texture` defaults to 0 —
+     * the cross-platform panel slot). The draw itself stays code (the
+     * per-platform panel-draw seam); only the wiring is data.
+     */
+    panel?: { sampler: string; texture?: number; note?: string };
+    /**
+     * Runner config: whether the shader reads `uOrigin`, and the clock
+     * stepping — `"none"` declares the effect's clock NEVER snaps "on twos"
+     * (the Canvas2D-panel runner semantics; panel geometry is hand-drawn, so
+     * snapping the clock would stutter it). Default: style-driven snapping.
+     */
+    config?: { usesOrigin?: boolean; stepping?: "none" };
     backends?: unknown;
     fallbackOrder?: string[];
   };
@@ -462,6 +474,29 @@ export function parseDope(src: string | object): DopeDoc {
     throw new Error("dope: document missing render.params / palette.perMood / baselines");
   }
   if (doc.tempo?.loop) assertValidLoop(doc.tempo.loop, doc.baselines);
+  if (doc.render?.panel) assertValidPanel(doc.render.panel, doc.binding);
   assertStandalone(doc);
   return doc;
+}
+
+/**
+ * `render.panel` invariants: the panel sampler must be one of the declared
+ * `binding.samplers` (the panel is a texture binding like any other — one
+ * source of truth for the uniform list), and the unit must be a non-negative
+ * integer.
+ */
+function assertValidPanel(
+  panel: NonNullable<DopeDoc["render"]["panel"]>,
+  binding: DopeDoc["binding"],
+): void {
+  const samplers = (binding?.samplers ?? []).map((s) => (typeof s === "string" ? s : s.web));
+  if (!panel.sampler || !samplers.includes(panel.sampler)) {
+    throw new Error(
+      `dope: render.panel.sampler "${panel.sampler}" is not a declared binding.samplers entry`,
+    );
+  }
+  const unit = panel.texture ?? 0;
+  if (!Number.isInteger(unit) || unit < 0) {
+    throw new Error(`dope: render.panel.texture must be a non-negative integer (got ${unit})`);
+  }
 }

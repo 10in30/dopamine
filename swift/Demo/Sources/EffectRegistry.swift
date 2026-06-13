@@ -96,7 +96,7 @@ enum EffectRegistry {
         },
         DemoEffect(name: "heartburst") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: HeartburstResources.bundle),
-                  let host = try? MetalOverlayHost(config: HeartburstConfig(), device: device,
+                  let host = try? MetalOverlayHost(config: Heartburst.passConfig(), device: device,
                                                    library: lib, wantsShadow: false),
                   let fx = try? Heartburst() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })

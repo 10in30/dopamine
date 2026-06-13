@@ -39,7 +39,8 @@ export type FrameExprNode =
         // (evalPassExpr); the frame/params modes reject them.
         | "targetMinDimPx"
         | "sdfRange"
-        | "sdfViewBoxW";
+        | "sdfViewBoxW"
+        | "dpr";
     }
   | { add: FrameExprNode[] }
   | { sub: FrameExprNode[] }
@@ -49,6 +50,7 @@ export type FrameExprNode =
   | { max: FrameExprNode[] }
   | { pow: [FrameExprNode, FrameExprNode] }
   | { sin: FrameExprNode }
+  | { cos: FrameExprNode }
   | { exp: FrameExprNode }
   | { clamp01: FrameExprNode }
   | { lt: [FrameExprNode, FrameExprNode, FrameExprNode, FrameExprNode] }
@@ -97,13 +99,20 @@ export interface PassExprInputs {
   sdfRange: number;
   /** That SDF's `viewBox[2]` (author-units width); 0 when absent. */
   sdfViewBoxW: number;
+  /**
+   * The device-pixel ratio (web `devicePixelRatio` / Android `density` / the
+   * Metal layer's content scale) the surface renders at — so a pass value can
+   * be expressed in CSS-ish units and scaled to device px (e.g. heartburst's
+   * halftone cell `uDotSize = dotSize · dpr`).
+   */
+  dpr: number;
 }
 
 /** Which inputs an expression may read: the three evaluation entry points. */
 type ExprMode = "frame" | "params" | "pass";
 
 const FRAME_INPUTS = ["animMs", "life", "elapsedMs", "loopS", "phase"] as const;
-const PASS_INPUTS = ["targetMinDimPx", "sdfRange", "sdfViewBoxW"] as const;
+const PASS_INPUTS = ["targetMinDimPx", "sdfRange", "sdfViewBoxW", "dpr"] as const;
 
 function evalInput(name: string, ctx: FrameExprCtx, mode: ExprMode): number {
   const isFrame = (FRAME_INPUTS as readonly string[]).includes(name);
@@ -158,6 +167,7 @@ function evalNode(node: FrameExprNode, ctx: FrameExprCtx, mode: ExprMode): numbe
     return Math.pow(evalNode(node.pow[0], ctx, mode), evalNode(node.pow[1], ctx, mode));
   }
   if ("sin" in node) return Math.sin(evalNode(node.sin, ctx, mode));
+  if ("cos" in node) return Math.cos(evalNode(node.cos, ctx, mode));
   if ("exp" in node) return Math.exp(evalNode(node.exp, ctx, mode));
   if ("clamp01" in node) return clamp01(evalNode(node.clamp01, ctx, mode));
   if ("lt" in node) {

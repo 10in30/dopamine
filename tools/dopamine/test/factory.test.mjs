@@ -36,6 +36,43 @@ test("inkstroke: the generated factory shells match the committed snapshots", ()
   expect(emitKotlinFactory("inkstroke", "ai.dopamine.effect.inkstroke")).toBe(golden("Inkstroke.kt"));
 });
 
+test("heartburst: the generated factory shells wire the panel-draw seam (snapshot)", () => {
+  // heartburst is the PANEL-class prover: its shells are generated like any
+  // declarative effect, plus the `render.panel` wiring — the Swift shell hands
+  // `drawHeartburstPanel` to `DopePanelPassConfig`, the Kotlin shell to
+  // `dopePanelConfig`/`createPanelInstance` (the hand-written panel draw is
+  // the ONLY per-effect platform source).
+  expect(emitSwiftFactory("heartburst", null, true)).toBe(golden("Heartburst.swift"));
+  expect(emitKotlinFactory("heartburst", "ai.dopamine.effect.heartburst", null, true)).toBe(
+    golden("Heartburst.kt"),
+  );
+});
+
+test("heartburst: the dist packages carry ONLY the panel draw beyond the generated sources", async () => {
+  const eff = await loadEffect(root, "effects/heartburst");
+  const swift = await generateSwiftPackage({ root, eff, outDir: "/tmp/out" });
+  const swiftSources = swift.filter((f) => f.path.endsWith(".swift") && !f.path.endsWith("Package.swift"));
+  expect(swiftSources.map((f) => f.path.split("/").pop()).sort()).toEqual(
+    ["Heartburst.swift", "HeartburstBundle.swift", "HeartburstPanel.swift", "HeartburstUniforms.swift"].sort(),
+  );
+  const android = await generateAndroidLibrary({ root, eff });
+  const ktSources = android.filter((f) => f.path.endsWith(".kt"));
+  expect(ktSources.map((f) => f.path.split("/").pop()).sort()).toEqual(
+    ["Heartburst.kt", "HeartburstPanel.kt", "HeartburstShader.kt"].sort(),
+  );
+});
+
+test("a render.panel effect without its panel-draw file is rejected with a pointer", async () => {
+  // The generated factory wires draw<Name>Panel; emitting a shell without the
+  // hand-written draw would fail at compile time — refuse with a pointer.
+  const eff = await loadEffect(root, "effects/heartburst");
+  const broken = { ...eff, dir: "/tmp/nonexistent-heartburst" };
+  await expect(generateSwiftPackage({ root, eff: broken, outDir: "/tmp/out" })).rejects.toThrow(
+    /HeartburstPanel\.swift/,
+  );
+  await expect(generateAndroidLibrary({ root, eff: broken })).rejects.toThrow(/HeartburstPanel\.kt/);
+});
+
 test("lightning: the generated factory shells wire the frameArrays seam (snapshot)", async () => {
   // lightning has generated per-frame-geometry logic (x-build.logic): its shells
   // additionally call the generated renderer and bind the bundle through

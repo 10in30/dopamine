@@ -193,9 +193,20 @@
         },
         "config": {
           "type": "object",
-          "description": "Generic-runner config.",
+          "description": "Generic-runner config. `stepping: \"none\"` declares the effect's clock NEVER snaps animate-on-twos (the Canvas2D-panel semantics — hand-drawn panel geometry would stutter if snapped); default is style-driven snapping.",
           "properties": {
-            "usesOrigin": { "type": "boolean" }
+            "usesOrigin": { "type": "boolean" },
+            "stepping": { "const": "none" }
+          }
+        },
+        "panel": {
+          "type": "object",
+          "description": "The dynamic PANEL the host draws each frame and the shader samples (§8.2): `sampler` must name a binding.samplers entry; `texture` defaults to 0 (the cross-platform panel slot). The draw itself stays code — the per-platform panel-draw seam (effects/<name>/{web src,swift,android} keep ONLY the draw file); all wiring is data.",
+          "required": ["sampler"],
+          "properties": {
+            "sampler": { "type": "string" },
+            "texture": { "type": "number" },
+            "note": { "type": "string" }
           }
         },
         "backends": {
@@ -329,7 +340,7 @@
         { "type": "number" },
         { "type": "object", "properties": { "const": { "type": "number" } }, "required": ["const"] },
         { "type": "object", "properties": { "param": { "type": "string" } }, "required": ["param"] },
-        { "type": "object", "properties": { "input": { "enum": ["animMs", "life", "elapsedMs", "loopS", "phase", "targetMinDimPx", "sdfRange", "sdfViewBoxW"] } }, "required": ["input"] },
+        { "type": "object", "properties": { "input": { "enum": ["animMs", "life", "elapsedMs", "loopS", "phase", "targetMinDimPx", "sdfRange", "sdfViewBoxW", "dpr"] } }, "required": ["input"] },
         { "type": "object", "properties": { "add": { "type": "array", "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["add"] },
         { "type": "object", "properties": { "sub": { "type": "array", "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["sub"] },
         { "type": "object", "properties": { "mul": { "type": "array", "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["mul"] },
@@ -338,6 +349,7 @@
         { "type": "object", "properties": { "max": { "type": "array", "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["max"] },
         { "type": "object", "properties": { "pow": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["pow"] },
         { "type": "object", "properties": { "sin": { "$ref": "#/$defs/frameExpr" } }, "required": ["sin"] },
+        { "type": "object", "properties": { "cos": { "$ref": "#/$defs/frameExpr" } }, "required": ["cos"] },
         { "type": "object", "properties": { "exp": { "$ref": "#/$defs/frameExpr" } }, "required": ["exp"] },
         { "type": "object", "properties": { "clamp01": { "$ref": "#/$defs/frameExpr" } }, "required": ["clamp01"] },
         { "type": "object", "properties": { "lt": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/$defs/frameExpr" } } }, "required": ["lt"] },
