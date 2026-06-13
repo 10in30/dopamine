@@ -105,3 +105,40 @@ for (const { slug } of SNAPSHOT) {
     expect(gen.content).toBe(want);
   });
 }
+
+// The single-source guard: a uniform the codegen can't bind (e.g. the panel
+// runtime's `uCenter` alias — which compiles on web but is undeclared in the
+// generated MSL struct, the comic/heartburst macOS-only failure class) must
+// THROW at transpile time, not slip through to the Metal compiler.
+test("glslToMSL throws on a uniform the codegen can't bind (uCenter → uOrigin hint)", () => {
+  const fragment = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform vec2 uResolution;
+uniform vec2 uCenter;
+void main() {
+  vec2 d = gl_FragCoord.xy - uCenter;
+  fragColor = vec4(length(d) / uResolution.x, 0.0, 0.0, 1.0);
+}`;
+  const fields = buildFields({ render: { params: {} }, binding: {} }, {});
+  expect(() => glslToMSL({ slug: "probe", fragment, uniformMap: buildUniformMap(fields), samplers: [], arrays: [] }))
+    .toThrow(/uCenter[\s\S]*uOrigin/);
+});
+
+// A buffer-array param (binding.arrays — lightning's uVerts/uBoltMeta) is a
+// LEGITIMATE bare `u<Name>` in the MSL (a `constant floatN *` fragment param),
+// so the guard must NOT flag it. (Covered transitively by lightning's snapshot,
+// pinned here directly so the guard's array exclusion can't silently regress.)
+test("glslToMSL does not flag declared buffer-array params as unbindable", () => {
+  const fragment = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform vec2 uResolution;
+uniform vec2 uVerts[2];
+void main() { fragColor = vec4(uVerts[0] / uResolution, 0.0, 1.0); }`;
+  const fields = buildFields({ render: { params: {} }, binding: {} }, {});
+  expect(() => glslToMSL({
+    slug: "probe", fragment, uniformMap: buildUniformMap(fields), samplers: [],
+    arrays: [{ name: "verts", web: "uVerts", size: 2, buffer: 1 }],
+  })).not.toThrow();
+});
