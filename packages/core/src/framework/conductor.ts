@@ -65,6 +65,19 @@ interface ActiveEffect {
   autoPaused: boolean;
 }
 
+/**
+ * Backdrop-aware compositing for a host. When set, the host composites against a
+ * known surface colour: the light canvas uses premultiplied source-over
+ * (`mix-blend-mode: normal`) instead of `screen` — so the effect stays visible
+ * on any surface, white included — and the multiply shadow is strengthened as
+ * the surface lightens (where the source-over light reads faintest). `null` is
+ * the classic dark path (screen light + multiply shadow, byte-identical).
+ */
+export interface CompositeMode {
+  /** Backdrop relative luminance 0 (black) .. 1 (white). */
+  luminance: number;
+}
+
 /** A persistent overlay + GL contexts + RAF loop bound to one target element. */
 interface Host {
   overlay: Overlay;
@@ -74,6 +87,8 @@ interface Host {
   active: Set<ActiveEffect>;
   raf: number;
   resize: () => void;
+  /** Backdrop compositing, or null for the classic screen/multiply path. */
+  composite: CompositeMode | null;
 }
 
 const hosts = new Map<HTMLElement, Host>();
@@ -109,19 +124,32 @@ function syncHostSize(host: Host): void {
   if (host.shadow) syncCanvasSize(host.shadow.canvas, host.dpr);
 }
 
-function getHost(target: HTMLElement, wantShadow: boolean): Host {
+function getHost(target: HTMLElement, wantShadow: boolean, composite: CompositeMode | null): Host {
   let host = hosts.get(target);
   if (host) {
-    // A later effect may need a shadow canvas the host wasn't created with.
-    if (wantShadow && !host.shadow) {
-      const shadowCanvas = host.overlay.ensureShadow();
-      host.shadow = createGLContext(shadowCanvas);
+    // The light canvas's premultiplied-alpha buffer is a context-CREATION
+    // attribute, so flipping between the screen path and the backdrop path means
+    // rebuilding the host. (A backdrop COLOUR change within the same mode just
+    // updates the luminance-driven styles below — no rebuild.) Switching modes
+    // is a deliberate host-level action (a theme toggle), so dropping the warm
+    // contexts + any in-flight effect is acceptable and rare.
+    if (!!host.composite !== !!composite) {
+      teardown(target);
+      host = undefined;
+    } else {
+      // A later effect may need a shadow canvas the host wasn't created with.
+      if (wantShadow && !host.shadow) {
+        const shadowCanvas = host.overlay.ensureShadow();
+        host.shadow = createGLContext(shadowCanvas);
+      }
+      host.composite = composite;
+      applyCompositeStyles(host);
+      return host;
     }
-    return host;
   }
 
   const overlay = createOverlay(target, { shadow: wantShadow });
-  const light = createGLContext(overlay.canvas);
+  const light = createGLContext(overlay.canvas, { premultiplied: !!composite });
   const shadow = overlay.shadow ? createGLContext(overlay.shadow) : null;
   const h: Host = {
     overlay,
@@ -131,6 +159,7 @@ function getHost(target: HTMLElement, wantShadow: boolean): Host {
     active: new Set(),
     raf: 0,
     resize: () => {},
+    composite,
   };
   h.resize = () => {
     h.dpr = effectiveDpr(h.light.canvas);
@@ -138,20 +167,46 @@ function getHost(target: HTMLElement, wantShadow: boolean): Host {
   };
   h.dpr = effectiveDpr(overlay.canvas);
   syncHostSize(h);
+  applyCompositeStyles(h);
   window.addEventListener("resize", h.resize);
   hosts.set(target, h);
   return h;
 }
 
-/** Clear the light canvas to black (screen identity) + arm additive blending. */
+/**
+ * Clear the light canvas + arm additive blending. The default screen path
+ * clears to OPAQUE black (screen identity); the backdrop path clears to
+ * TRANSPARENT black so the premultiplied light composites source-over (dark
+ * regions stay transparent, the page shows through). Both accumulate concurrent
+ * effects additively (`ONE, ONE`).
+ */
 function beginLight(host: Host): void {
   const { gl, canvas } = host.light;
   gl.viewport(0, 0, canvas.width, canvas.height);
-  gl.clearColor(0, 0, 0, 1);
+  gl.clearColor(0, 0, 0, host.composite ? 0 : 1);
   gl.clear(gl.COLOR_BUFFER_BIT);
   gl.enable(gl.BLEND);
   gl.blendEquation(gl.FUNC_ADD);
   gl.blendFunc(gl.ONE, gl.ONE);
+}
+
+const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
+
+/**
+ * Reflect the host's compositing mode onto the canvas CSS: the light layer
+ * blends `normal` (source-over) in backdrop mode vs `screen` by default, and
+ * the shadow layer's opacity ramps with backdrop luminance (a near-black
+ * surface hides multiply shadow anyway, while a light surface leans on it for
+ * depth). In the default path the styles are left exactly as the overlay set
+ * them (screen + full-strength shadow), so nothing changes.
+ */
+function applyCompositeStyles(host: Host): void {
+  host.light.canvas.style.mixBlendMode = host.composite ? "normal" : "screen";
+  if (host.shadow) {
+    host.shadow.canvas.style.opacity = host.composite
+      ? String(clamp01(0.4 + 0.6 * host.composite.luminance))
+      : "";
+  }
 }
 
 /** Clear the shadow canvas to white (multiply identity) + arm MIN blending. */
@@ -363,6 +418,7 @@ function buildEffectContext(
     get dpr() {
       return host.dpr;
     },
+    composite: host.composite ? { premultiplied: true } : undefined,
   };
 }
 
@@ -374,6 +430,12 @@ export interface PlayRequest {
   /** Targeted element size (CSS px); the centrepiece is sized to this box. */
   targetSize?: { width: number; height: number };
   feeling: FeelingInput;
+  /**
+   * Backdrop-aware compositing for this fire (from the public `backdrop`
+   * option). `null`/omitted ⇒ the classic screen/multiply path. All effects on
+   * one target share a compositing mode; a fire that changes it rebuilds the host.
+   */
+  composite?: CompositeMode | null;
 }
 
 /**
@@ -405,7 +467,7 @@ export function play(req: PlayRequest): PlayHandle {
   if (!isBrowser()) return resolvedHandle();
 
   const wantShadow = req.factory.castsShadow !== false;
-  const host = getHost(req.target, wantShadow);
+  const host = getHost(req.target, wantShadow, req.composite ?? null);
   const mood = resolveMood(req.feeling.mood);
   const params = req.factory.resolve(req.feeling, mood);
 
@@ -503,7 +565,7 @@ export interface PreparedHandle {
 export function prepare(req: PlayRequest): PreparedHandle | null {
   if (!isBrowser()) return null;
   const wantShadow = req.factory.castsShadow !== false;
-  const host = getHost(req.target, wantShadow);
+  const host = getHost(req.target, wantShadow, req.composite ?? null);
   const mood = resolveMood(req.feeling.mood);
   const params = req.factory.resolve(req.feeling, mood);
 

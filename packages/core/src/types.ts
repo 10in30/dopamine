@@ -48,4 +48,16 @@ export interface DopamineSuccessOptions {
    * sits beneath the overlay.
    */
   target?: HTMLElement;
+  /**
+   * The page colour the effect composites against, as any CSS colour string
+   * (e.g. `"#ffffff"`, `"rgb(20 24 37)"`, a named colour). Omit (the default)
+   * for the classic dark compositing: the light layer uses
+   * `mix-blend-mode: screen`, which is rich on a dark UI but mathematically
+   * invisible on white. Pass the actual surface colour and the runtime switches
+   * the light layer to PREMULTIPLIED source-over light — visible on ANY surface,
+   * white included — and strengthens the multiply shadow as the surface
+   * lightens. Use this whenever the effect plays over a light or unknown-colour
+   * background.
+   */
+  backdrop?: string;
 }

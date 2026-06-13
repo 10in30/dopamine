@@ -39,6 +39,7 @@ import {
   bindScalars,
   bindShadowGeometry,
   bindTarget,
+  compositeLightFragment,
   computeScalarBinds,
   resolveTargetPx,
 } from "./pass-common.js";
@@ -222,6 +223,12 @@ export function createPassInstance(
   const pal = params.palette as RGB[];
   const dpr = ctx.dpr;
   const panelCfg = config.panel;
+  // In backdrop-aware mode the LIGHT pass emits premultiplied light (alpha =
+  // brightness) so it composites source-over and stays visible on any surface;
+  // the SHADOW pass keeps the original opaque fragment for its multiply blend.
+  const lightFragment = ctx.composite?.premultiplied
+    ? compositeLightFragment(config.fragment)
+    : config.fragment;
   const allUniforms = [
     ...new Set([...STANDARD, ...config.uniforms, ...(panelCfg ? [panelCfg.sampler] : [])]),
   ];
@@ -276,7 +283,7 @@ export function createPassInstance(
   ): void => {
     const { gl } = glc;
     const c = glc.canvas;
-    const { u } = beginProgram(glc, config.vertex, config.fragment, allUniforms);
+    const { u } = beginProgram(glc, config.vertex, isShadow ? config.fragment : lightFragment, allUniforms);
 
     // Aux textures (baked SDF icons / rasterized canvas glyphs).
     for (const a of aux) {

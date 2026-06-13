@@ -143,6 +143,17 @@ function originTarget(): {
   };
 }
 
+// The surface the effect composites against. In DARK mode we omit `backdrop`,
+// keeping the classic `mix-blend-mode: screen` light (rich cast light over the
+// dark UI — and unchanged for the headless reels). In LIGHT mode we pass the
+// actual stage colour so the runtime switches to premultiplied source-over
+// light, which stays visible on the light surface instead of vanishing into it.
+const stageEl = $(".stage");
+function currentBackdrop(): string | undefined {
+  if (document.documentElement.dataset.theme !== "light") return undefined;
+  return getComputedStyle(stageEl).backgroundColor || "#ffffff";
+}
+
 // A CONTINUOUS effect (halo, dots) loops until stopped — Fire becomes a toggle
 // for it: the first click starts the loading indicator, the next click stops it
 // (the way a real host would stop it when its work completes).
@@ -176,6 +187,7 @@ function fire(overrides: Partial<typeof state> = {}): Promise<void> {
     mood: moodFor(effect, mood),
     intensity,
     whimsy,
+    backdrop: currentBackdrop(),
     ...originTarget(),
   });
   if (getEffect(effect)?.loop) {
@@ -219,6 +231,7 @@ function prepare(overrides: Partial<typeof state> & { seed?: number } = {}): Pre
     intensity,
     whimsy,
     seed,
+    backdrop: currentBackdrop(),
     ...originTarget(),
   });
 }
