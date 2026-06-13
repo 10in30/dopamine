@@ -1,10 +1,37 @@
 {
   "name": "@dopaminefx/build",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "Dopamine cross-platform effect build toolchain — generates the web / SwiftPM / Android artifacts from a single effect folder (the expanded .dope package).",
-  "bin": { "dopamine": "src/cli.mjs" },
+  "bin": {
+    "dopamine": "src/cli.mjs"
+  },
   "main": "src/index.mjs",
-  "exports": { ".": "./src/index.mjs" }
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "license": "MIT",
+  "author": "10in30",
+  "homepage": "https://github.com/10in30/dopamine#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/10in30/dopamine.git",
+    "directory": "tools/dopamine"
+  },
+  "bugs": {
+    "url": "https://github.com/10in30/dopamine/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "keywords": [
+    "dopamine",
+    "visual-effects",
+    "build-tool",
+    "codegen"
+  ]
 }

@@ -10,7 +10,11 @@
     "effects/*/web"
   ],
   "scripts": {
-    "build": "node tools/dopamine/src/cli.mjs build && npm run build -w @dopaminefx/core && npm run build -w @dopaminefx/effect-solarbloom -w @dopaminefx/effect-inkstroke -w @dopaminefx/effect-comic -w @dopaminefx/effect-fail -w @dopaminefx/effect-aurora -w @dopaminefx/effect-ripple -w @dopaminefx/effect-confetti -w @dopaminefx/effect-heartburst -w @dopaminefx/effect-lightning -w @dopaminefx/effect-halo -w @dopaminefx/effect-dots && npm run build -w @dopaminefx/effects && npm run build -w @dopaminefx/react && npm run build -w @dopaminefx/demo",
+    "build": "npm run build:packages && npm run build -w @dopaminefx/demo",
+    "build:packages": "node tools/dopamine/src/cli.mjs build && npm run build -w @dopaminefx/core && npm run build -w @dopaminefx/effect-solarbloom -w @dopaminefx/effect-inkstroke -w @dopaminefx/effect-comic -w @dopaminefx/effect-fail -w @dopaminefx/effect-aurora -w @dopaminefx/effect-ripple -w @dopaminefx/effect-confetti -w @dopaminefx/effect-heartburst -w @dopaminefx/effect-lightning -w @dopaminefx/effect-halo -w @dopaminefx/effect-dots && npm run build -w @dopaminefx/effects && npm run build -w @dopaminefx/react",
+    "changeset": "changeset",
+    "version": "changeset version && npm install --package-lock-only --ignore-scripts",
+    "release": "npm run build:packages && changeset publish",
     "pretest": "node tools/dopamine/src/cli.mjs build",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -28,6 +32,8 @@
     "dopamine:check": "node tools/dopamine/src/cli.mjs build --check"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "^0.7.0",
+    "@changesets/cli": "^2.31.0",
     "esbuild": "^0.21.5",
     "playwright": "^1.48.2",
     "typescript": "^5.6.3",

@@ -12,23 +12,45 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src"],
-  "sideEffects": ["./src/index.ts", "./src/element.ts", "./dist/index.js", "./dist/element.js"],
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": [
+    "./src/index.ts",
+    "./src/element.ts",
+    "./dist/index.js",
+    "./dist/element.js"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@dopaminefx/core": "0.1.0",
-    "@dopaminefx/effect-solarbloom": "0.1.0",
-    "@dopaminefx/effect-inkstroke": "0.1.0",
-    "@dopaminefx/effect-comic": "0.1.0",
-    "@dopaminefx/effect-fail": "0.1.0",
-    "@dopaminefx/effect-aurora": "0.1.0",
-    "@dopaminefx/effect-ripple": "0.1.0",
-    "@dopaminefx/effect-confetti": "0.1.0",
-    "@dopaminefx/effect-heartburst": "0.1.0",
-    "@dopaminefx/effect-lightning": "0.1.0",
-    "@dopaminefx/effect-halo": "0.1.0",
-    "@dopaminefx/effect-dots": "0.1.0"
+    "@dopaminefx/core": "^0.1.0",
+    "@dopaminefx/effect-solarbloom": "^0.1.0",
+    "@dopaminefx/effect-inkstroke": "^0.1.0",
+    "@dopaminefx/effect-comic": "^0.1.0",
+    "@dopaminefx/effect-fail": "^0.1.0",
+    "@dopaminefx/effect-aurora": "^0.1.0",
+    "@dopaminefx/effect-ripple": "^0.1.0",
+    "@dopaminefx/effect-confetti": "^0.1.0",
+    "@dopaminefx/effect-heartburst": "^0.1.0",
+    "@dopaminefx/effect-lightning": "^0.1.0",
+    "@dopaminefx/effect-halo": "^0.1.0",
+    "@dopaminefx/effect-dots": "^0.1.0"
+  },
+  "license": "MIT",
+  "author": "10in30",
+  "homepage": "https://github.com/10in30/dopamine#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/10in30/dopamine.git",
+    "directory": "packages/effects"
+  },
+  "bugs": {
+    "url": "https://github.com/10in30/dopamine/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

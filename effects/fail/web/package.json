@@ -2,7 +2,9 @@
   "name": "@dopaminefx/effect-fail",
   "version": "0.1.0",
   "description": "Fail — a stamped-cross error/failure effect for Dopamine.",
-  "keywords": ["dopamine-effect"],
+  "keywords": [
+    "dopamine-effect"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -13,12 +15,32 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src"],
-  "sideEffects": ["./src/index.ts", "./dist/index.js"],
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": [
+    "./src/index.ts",
+    "./dist/index.js"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@dopaminefx/core": "0.1.0"
+    "@dopaminefx/core": "^0.1.0"
+  },
+  "license": "MIT",
+  "author": "10in30",
+  "homepage": "https://github.com/10in30/dopamine#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/10in30/dopamine.git",
+    "directory": "effects/fail/web"
+  },
+  "bugs": {
+    "url": "https://github.com/10in30/dopamine/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

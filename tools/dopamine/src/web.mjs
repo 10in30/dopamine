@@ -13,16 +13,23 @@
  * The in-repo workspace package (effects/comic/web) consumes the SAME sources +
  * a gitignored generated `src/<slug>.dope.json` (written by build.mjs), so the
  * monorepo builds/tests against source while this dist package is the publish form.
+ *
+ * VERSIONING: each effect is versioned INDEPENDENTLY. The single source of truth
+ * is the tracked workspace manifest `effects/<id>/web/package.json` (bumped by
+ * Changesets) — its `version` and its `@dopaminefx/core` range are read here so
+ * the emitted standalone package stays byte-honest with what npm actually ships.
  */
 
 import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
-function emitWebPackageJson({ pkgName, slug, meta }) {
+const REPO = "https://github.com/10in30/dopamine";
+
+function emitWebPackageJson({ pkgName, slug, meta, version, coreRange, directory }) {
   return JSON.stringify(
     {
       name: pkgName,
-      version: "0.1.0",
+      version,
       description: meta?.description ?? `${meta?.name ?? slug} — a Dopamine effect.`,
       keywords: ["dopamine-effect"],
       type: "module",
@@ -33,7 +40,13 @@ function emitWebPackageJson({ pkgName, slug, meta }) {
       files: ["dist", "src"],
       sideEffects: ["./src/index.ts", "./dist/index.js"],
       scripts: { build: "tsc -p tsconfig.json" },
-      dependencies: { "@dopaminefx/core": "^0.1.0" },
+      dependencies: { "@dopaminefx/core": coreRange },
+      license: "MIT",
+      author: "10in30",
+      homepage: `${REPO}#readme`,
+      repository: { type: "git", url: `git+${REPO}.git`, directory },
+      bugs: { url: `${REPO}/issues` },
+      publishConfig: { access: "public" },
     },
     null,
     2,
@@ -68,11 +81,18 @@ function emitWebTsconfig() {
  * Generate the npm package artifacts for one loaded effect (`eff` from loadEffect).
  * @returns {Promise<Array<{ path: string, content: string }>>} dist-relative paths.
  */
-export async function generateNpmPackage({ eff }) {
+export async function generateNpmPackage({ root, eff }) {
   const { dir, doc, slug, dope } = eff;
   const web = doc["x-build"].web ?? {};
   const pkgName = web.package ?? `@dopaminefx/effect-${slug}`;
-  const srcAbs = join(dir, web.sources ?? "web", "src");
+  const sourcesRel = web.sources ?? "web";
+  const srcAbs = join(dir, sourcesRel, "src");
+
+  // The tracked workspace manifest is the per-effect version source of truth.
+  const wsPkg = JSON.parse(await readFile(join(dir, sourcesRel, "package.json"), "utf8"));
+  const version = wsPkg.version ?? "0.0.0";
+  const coreRange = wsPkg.dependencies?.["@dopaminefx/core"] ?? "^0.1.0";
+  const directory = (root ? relative(root, join(dir, sourcesRel)) : join(dir, sourcesRel)).replace(/\\/g, "/");
 
   const pkgRel = join("web", `effect-${slug}`);
   const out = [];
@@ -90,7 +110,7 @@ export async function generateNpmPackage({ eff }) {
   out.push({ path: join(pkgRel, "src", `${slug}.dope.json`), content: dope });
 
   // (3) generated package.json + tsconfig (standalone; external @dopaminefx/core dep).
-  out.push({ path: join(pkgRel, "package.json"), content: emitWebPackageJson({ pkgName, slug, meta: doc.meta }) });
+  out.push({ path: join(pkgRel, "package.json"), content: emitWebPackageJson({ pkgName, slug, meta: doc.meta, version, coreRange, directory }) });
   out.push({ path: join(pkgRel, "tsconfig.json"), content: emitWebTsconfig() });
 
   return out;
