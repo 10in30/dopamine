@@ -43,12 +43,21 @@ describe("dopamine toolchain — comic → standalone platform packages", () => 
     const byPath = new Map(dist.map((a) => [a.path, a.content]));
     const M = "swift/DopamineEffectComic";
     const S = `${M}/Sources/DopamineEffectComic`;
+    // comic is on the declarative PANEL seam: the factory shell (Comic.swift),
+    // the bundle accessor and the MSL shader are GENERATED; the ONLY hand-written
+    // Swift is the panel draw (ComicPanel.swift). (No ComicTempo.swift — the
+    // factory-level timing is datafied into tempo.frame; the draw-side slam timing
+    // lives in ComicPanel.swift.)
     for (const p of [
       `${M}/Package.swift`, `${S}/Comic.swift`, `${S}/ComicBundle.swift`,
-      `${S}/ComicTempo.swift`, `${S}/ComicPanel.swift`, `${S}/ComicUniforms.swift`,
+      `${S}/ComicPanel.swift`, `${S}/ComicUniforms.swift`,
       `${S}/Shaders/Comic.metal`, `${S}/Shaders/DopamineLook.metal`,
       `${S}/Shaders/ComicUniforms.metal`, `${S}/Resources/comic.dope.json`,
     ]) expect(byPath.has(p), p).toBe(true);
+    // The factory-level tempo is datafied — no hand-written ComicTempo.swift.
+    expect(byPath.has(`${S}/ComicTempo.swift`)).toBe(false);
+    // The generated factory wires the panel draw (DopePanelPassConfig).
+    expect(byPath.get(`${S}/Comic.swift`)).toContain("drawComicPanel");
     expect(byPath.get(`${M}/Package.swift`)).toContain('product(name: "DopamineCore"');
     const swiftU = byPath.get(`${S}/ComicUniforms.swift`);
     expect(swiftU).toContain("public func packComicUniforms(");
@@ -87,14 +96,19 @@ describe("dopamine toolchain — comic → standalone platform packages", () => 
     const { dist } = await buildEffect({ root, effectDir: "effects/comic", outDir });
     const byPath = new Map(dist.map((a) => [a.path, a.content]));
     const A = "android/dopamine-effect-comic";
+    // The Kotlin registration shim (Comic.kt) + the GLSL (ComicShader.kt) are
+    // GENERATED; the ONLY hand-written Kotlin is the panel draw (ComicPanel.kt).
     for (const p of [
       `${A}/build.gradle.kts`, `${A}/src/main/AndroidManifest.xml`,
       `${A}/src/main/assets/comic.dope.json`,
       `${A}/src/main/kotlin/ai/dopamine/effect/comic/Comic.kt`,
       `${A}/src/main/kotlin/ai/dopamine/effect/comic/ComicShader.kt`,
       `${A}/src/main/kotlin/ai/dopamine/effect/comic/ComicPanel.kt`,
-      `${A}/src/main/kotlin/ai/dopamine/effect/comic/ComicTempo.kt`,
     ]) expect(byPath.has(p), p).toBe(true);
+    // The factory-level tempo is datafied — no hand-written ComicTempo.kt.
+    expect(byPath.has(`${A}/src/main/kotlin/ai/dopamine/effect/comic/ComicTempo.kt`)).toBe(false);
+    // The generated registration shim wires the panel draw (dopePanelConfig).
+    expect(byPath.get(`${A}/src/main/kotlin/ai/dopamine/effect/comic/Comic.kt`)).toContain("drawComicPanel");
     expect(byPath.get(`${A}/build.gradle.kts`)).toContain('namespace = "ai.dopamine.effect.comic"');
 
     // The data spine embedded in ALL THREE packages is byte-identical (the portable

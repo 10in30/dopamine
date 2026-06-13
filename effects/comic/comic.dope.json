@@ -52,7 +52,77 @@
   "tempo": {
     "durationMs": {
       "from": { "round": { "mul": [{ "baseline": "durationMs" }, { "lerp": ["intensity", 1.1, 0.9] }] } }
-    }
+    },
+    "frame": {
+      "amp": {
+        "lt": [
+          { "clamp01": { "input": "life" } }, 0.04,
+          { "easeOutCubic": { "div": [{ "clamp01": { "input": "life" } }, 0.04] } },
+          {
+            "lt": [
+              { "clamp01": { "input": "life" } }, 0.82,
+              1,
+              {
+                "pow": [
+                  { "clamp01": { "sub": [1, { "div": [{ "sub": [{ "clamp01": { "input": "life" } }, 0.82] }, 0.18] }] } },
+                  1.4
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "extras": {
+        "presence": {
+          "lt": [
+            { "clamp01": { "input": "life" } }, 0.04,
+            { "easeOutCubic": { "div": [{ "clamp01": { "input": "life" } }, 0.04] } },
+            {
+              "lt": [
+                { "clamp01": { "input": "life" } }, 0.82,
+                1,
+                {
+                  "pow": [
+                    { "clamp01": { "sub": [1, { "div": [{ "sub": [{ "clamp01": { "input": "life" } }, 0.82] }, 0.18] }] } },
+                    1.4
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "flash": {
+          "min": [
+            1.2,
+            {
+              "add": [
+                { "exp": { "sub": [0, { "div": [{ "input": "elapsedMs" }, 110] }] } },
+                {
+                  "mul": [
+                    0.25,
+                    {
+                      "exp": {
+                        "sub": [
+                          0,
+                          {
+                            "div": [
+                              { "max": [{ "sub": [{ "input": "elapsedMs" }, 130] }, { "sub": [130, { "input": "elapsedMs" }] }] },
+                              160
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "reducedMotion": { "peakMs": 220, "holdMs": 360 },
+    "note": "Datafied per-frame logic (the web/Swift/Kotlin comic factory frame() hook, delta-0). amp = impactPresence(life): a snap-in over the first 4% of life, a proud hold to 82%, then a pow(.,1.4) clean fade. presence mirrors amp (panel opacity / shadow geometry). flash is the impact light spike: a fast exp decay off the slam (IMPACT_MS·0.55 = 110ms) plus a small secondary bump around the hold (IMPACT_HOLD_MS·0.2 = 130ms, width IMPACT_MS·0.8 = 160ms), clamped to 1.2. The per-letter SLAM SCALE (impactScale) + per-letter layout stay in the panel-draw seam (code by design)."
   },
   "geometry": {
     "kind": "radial",
@@ -118,6 +188,22 @@
       },
       "style": { "type": "float", "from": { "control": "whimsy" } }
     },
+    "shadowHeightFrac": 0.5,
+    "pass": {
+      "note": "Per-PASS uniforms: the Ben-Day cell is authored in CSS-ish px and scaled to device px on the host (uDotSize = dotSize * dpr); uInkBoost fattens the ink toward the pop end (1 + style * 0.4).",
+      "dotSize": { "mul": [{ "param": "dotSize" }, { "input": "dpr" }] },
+      "inkBoost": { "add": [1, { "mul": [{ "param": "style" }, 0.4] }] }
+    },
+    "panel": {
+      "sampler": "uPanel",
+      "texture": 0,
+      "note": "The Canvas2D/CoreGraphics/android.graphics panel (jagged starburst balloon + hand-lettered word + bold ink contours, R=wordFill G=ink B=burstFill) the host redraws every frame; the draw itself — incl. the per-letter slam SCALE + the display-face lettering — is the per-platform panel-draw seam (web panelDraw hook / ComicPanel files)."
+    },
+    "consts": {},
+    "config": {
+      "usesOrigin": true,
+      "stepping": "none"
+    },
     "backends": {
       "webgl2": {
         "stage": "fullscreen-triangle",
@@ -133,13 +219,21 @@
     "note": "CROSS-PLATFORM uniform-binding contract. Which render.params are NOT shader uniforms, the seed-keyed scatter field, the per-frame/host extras, and the texture samplers — one source of truth for the web u<Name> list, the Swift struct + packer, and the MSL struct. SHIPS in the portable .dope (the runtime derives its uniform bindings from it); the toolchain consumes it too for the Metal struct codegen. Only `x-build`, `slug` and `kind` stay toolchain-only.",
     "excludeParams": ["style", "overshoot", "scale", "burstPoints", "inkWeight", "dotSize"],
     "scatterKey": "comicSeed",
+    "scatterWeb": "uSeed",
     "extras": [
-      { "name": "presence", "type": "float", "web": "uPresence", "note": "impactPresence(life)" },
+      { "name": "presence", "type": "float", "web": "uPresence", "note": "impactPresence(life) — panel opacity / presence 0..1" },
       { "name": "flash", "type": "float", "web": "uFlash", "note": "0..1 impact flash (fast spike, decays)" },
-      { "name": "dotSize", "type": "float", "web": "uDotSize", "note": "Ben-Day cell size (device px = dotSize*dpr)" },
-      { "name": "inkBoost", "type": "float", "web": "uInkBoost", "note": "ink darkness/spread (1 + style*0.4)" }
+      { "name": "dotSize", "type": "float", "web": "uDotSize", "note": "Ben-Day cell size in device px (dpr-scaled; render.pass)" },
+      { "name": "inkBoost", "type": "float", "web": "uInkBoost", "note": "ink darkness/spread, 1 + style*0.4 (render.pass)" }
     ],
-    "samplers": ["uPanel"]
+    "samplers": [
+      {
+        "web": "uPanel",
+        "name": "panelTex",
+        "texture": 0,
+        "note": "the per-frame panel texture (render.panel)"
+      }
+    ]
   },
 
   "x-build": {
@@ -148,6 +242,13 @@
       "note": "Shared display faces — the single stored format is SIL-OFL woff2 (effects/comic/fonts). The web embeds them base64 (comic-fonts.ts via scripts/embed-fonts.mjs); the toolchain converts woff2→ttf at build time (fonttools) and bundles the ttf into the Swift (Resources/fonts) + Android (assets/fonts) packages, so every platform ships its own lettering. No .ttf is committed.",
       "source": "fonts",
       "files": ["Bangers-Regular.woff2", "Anton-Regular.woff2", "LuckiestGuy-Regular.woff2"]
+    },
+    "shader": {
+      "note": "Single-source shader: the canonical web GLSL is the ONLY hand-written shader; the MSL and the Kotlin are generated from it. The panel samples at texture(0).",
+      "web": "web/src/comic-shader.ts",
+      "vertexExport": "COMIC_VERTEX_SRC",
+      "fragmentExport": "COMIC_FRAGMENT_SRC",
+      "generateMSL": true
     },
     "swift": {
       "module": "DopamineEffectComic",

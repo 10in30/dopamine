@@ -32,8 +32,8 @@ const FIXTURES = {
   // captured per element below and re-bound flat, so the Android-derived
   // fragment renders the exact same precomputed frame.
   lightning: { mood: "electric", intensity: 0.95, whimsy: 0.4, seed: 12345, lifeFrac: 0.45 },
-  // fail/solarbloom/confetti/heartburst sample textures the harness can't bind
-  // standalone (the baked SDF; the per-frame Canvas2D panel) — see
+  // fail/solarbloom/confetti/heartburst/comic sample textures the harness can't
+  // bind standalone (the baked SDF; the per-frame Canvas2D panel) — see
   // scripts/lib/shader-src.mjs (gated by the MSL/Android snapshots + CI: the
   // macOS Metal compile and the emulator's real GL ES driver run the generated
   // variants of those shaders).

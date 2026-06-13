@@ -432,7 +432,25 @@ export function glslToMSL({ slug, fragment, uniformMap, samplers = [], arrays = 
   });
   out.push(`) ${fragBody}`);
   out.push("");
-  return out.join("\n");
+  const emitted = out.join("\n");
+
+  // GUARD: every shader uniform must map to a struct field (`u.<field>`); the
+  // ONLY legitimately-bare `u<Name>` tokens are the declared buffer-array params
+  // (`binding.arrays`). Any other surviving `u<Name>` is a uniform the codegen
+  // doesn't know — it would compile here but the macOS Metal compiler rejects it
+  // as an undeclared identifier (the comic `uCenter` / heartburst-class bug).
+  // Catch it at `dopamine build` time instead, with a pointer.
+  const arrayWeb = new Set(bufferArrays.map((a) => a.web));
+  const stray = [...new Set(emitted.match(/\bu[A-Z][A-Za-z0-9_]*/g) ?? [])].filter((t) => !arrayWeb.has(t));
+  if (stray.length) {
+    const hint = stray.includes("uCenter")
+      ? " — `uCenter` is the web panel-runtime alias; a single-source shader must read `uOrigin` (the generated MSL maps it to the uniform struct), and set `render.config.usesOrigin: true`"
+      : " — declare it in `render.params` / the `binding` contract, or use a standard uniform name";
+    throw new Error(
+      `shader: ${slug} reads uniform(s) the codegen can't bind: ${stray.join(", ")}${hint}`,
+    );
+  }
+  return emitted;
 }
 
 /** Emit the fragment-entry BODY: y-flip preamble, shadow early-returns, light-out tail. */

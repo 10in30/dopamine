@@ -1,46 +1,50 @@
-// Comic Impact Canvas PANEL drawing — port of swift's `ComicPanel.swift` (itself a
-// faithful port of the web `comic-renderer.ts`), to `android.graphics`.
+// Comic Impact Canvas PANEL drawing — the PANEL-DRAW SEAM, ported to
+// `android.graphics` (a faithful port of the web `comic-renderer.ts` / the Swift
+// `ComicPanel.swift`). This is the ONLY hand-written Kotlin the effect ships; the
+// registration shim (`Comic.kt`) and the GLSL (`ComicShader.kt`) are GENERATED
+// from comic.dope.json + the canonical web GLSL, and the generated factory wires
+// `drawComicPanel` into `dopePanelConfig(draw=)`. Everything time-shaped the
+// SHADER consumes (amp/presence/flash) is `tempo.frame` DATA; the draw-side
+// timing below (the per-letter slam SCALE + the presence the panel GEOMETRY
+// needs) stays code by design — and the per-letter display-face LETTERING is
+// genuinely code too (glyph layout is not datafied).
 //
 // HYBRID effect: the crisp vector forms (the jagged starburst balloon, the blocky
 // onomatopoeia word, the bold ink contours) are NOT procedural in the shader — the
 // web draws them into an offscreen Canvas2D ("panel") and the fragment shader
-// (ComicShader.kt) samples that texture and adds the Ben-Day halftone / action
-// lines / flash / pop-art look on top. The shared `GlPanelRunner` owns the panel
-// Bitmap + per-frame upload + light pass; this file supplies ONLY the per-effect
-// draw.
+// (the generated ComicShader.kt) samples that texture and adds the Ben-Day
+// halftone / action lines / flash / pop-art look on top. The shared
+// `GlPanelRunner` owns the panel Bitmap + per-frame upload + light pass; this file
+// supplies ONLY the per-effect draw.
 //
 // PANEL CHANNEL ENCODING (must match ComicShader.kt exactly):
 //   R = word FILL mask · G = INK mask (all black contours) · B = burst FILL mask.
 // The web draws every layer with `globalCompositeOperation = "lighter"` (additive)
-// so the R/G/B channel masks accumulate INDEPENDENTLY — a red word fill must not
-// zero the blue burst it overlaps. `PorterDuff.Mode.ADD` is the Android equivalent
-// (swift used `.plusLighter`); set on every Paint.
+// so the R/G/B channel masks accumulate INDEPENDENTLY; `PorterDuff.Mode.ADD` is the
+// Android equivalent (swift used `.plusLighter`); set on every Paint.
 //
 // COORDINATE FLIP: `GlPanelRunner` pre-flips the Canvas to a y-up store (the web's
 // UNPACK_FLIP_Y), so this draws in y-DOWN top-left logical coords (web-identical).
-// The starburst + check PATHS flip cleanly under that global flip; TEXT also draws
-// upright because `Canvas.drawText` honors the canvas matrix (unlike swift/CoreText
-// glyph rasters, which needed a manual counter-flip).
+// `Canvas.drawText` honors the canvas matrix so text draws upright under that flip.
 //
-// ANIMATED (leveled up to web parity): the panel is redrawn EVERY frame with the
-// LIVE slam scale + presence — `GlPanelRunner` passes `info.elapsedMs` + `.life`
-// per frame — so the word slams in / recoils / fades exactly like the web. dpr = 1
-// because the runner already rasterizes at the device size.
-//
-// TYPOGRAPHY (leveled up to web parity): the mood-picked bundled display face
-// (Bangers / Anton / Luckiest Guy) is loaded from `assets/fonts/` (ttf converted
-// from the shared woff2 by the toolchain) and laid out per-letter with the full
-// skew / stretch / tilt / per-letter rotation + baseline jitter / 3D extrude /
-// stacked outline / inkRoundness treatment, from the typography fields the loader
-// composes into the resolved bag. Falls back to a bold system face if unavailable.
+// TYPOGRAPHY (web parity): the mood-picked bundled display face (Bangers / Anton /
+// Luckiest Guy) is loaded from `assets/fonts/` (ttf converted from the shared woff2
+// by the toolchain), via the AssetManager `PanelFrameInfo` carries, and laid out
+// per-letter with the full skew / stretch / tilt / per-letter rotation + baseline
+// jitter / 3D extrude / stacked outline / inkRoundness treatment from the
+// typography fields the loader composes into the resolved bag. Falls back to a bold
+// system face if the face (or the AssetManager) is unavailable.
 
 package ai.dopamine.effect.comic
 
 import ai.dopamine.core.DopeValue
+import ai.dopamine.core.easeOutCubic
 import ai.dopamine.core.mulberry32
 import ai.dopamine.core.number
 import ai.dopamine.core.pickFromList
 import ai.dopamine.core.string
+import ai.dopamine.core.tempoClamp01
+import ai.dopamine.gl.PanelFrameInfo
 import android.content.res.AssetManager
 import android.graphics.Canvas
 import android.graphics.Color
@@ -50,6 +54,7 @@ import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Typeface
+import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -60,10 +65,15 @@ import kotlin.math.sin
  * burst diameter ≈ 0.88·basis, so a comic ≈ 1.5× the element). Sync w/ web + swift. */
 private const val COMIC_TARGET_FILL: Float = 1.7f
 
+/** Window (ms) over which the comic word SLAMS in. */
+private const val IMPACT_MS: Double = 200.0
+/** Hold (ms) the word sits proud at full size before it begins to settle out. */
+private const val IMPACT_HOLD_MS: Double = 650.0
+
 /** The per-fire SLAMMED token pool — the comic.dope `content.pool` (the seven
  * affirmations + the checkmark sentinel, equal odds). Kept in sync with the
- * `.dope`; reskinning the word list is a `.dope` edit on the `Comic` factory (this
- * static mirror only feeds the host-side panel draw — same as swift). */
+ * `.dope`; reskinning the word list is a `.dope` edit (this mirror only feeds the
+ * host-side panel draw — the loader does not pick the word). */
 private val WORD_POOL: List<String> =
     listOf("YES!", "DONE!", "NICE!", "OKAY!", "WIN!", "GREAT!", "WOO!", "✓")
 
@@ -79,10 +89,10 @@ private val COMIC_FONT_FILES: Map<String, String> = mapOf(
 /** Loaded-Typeface cache (keyed by ttf basename) so each face is decoded once. */
 private val typefaceCache = HashMap<String, Typeface?>()
 
-private fun loadFace(assets: AssetManager, face: String): Typeface {
+private fun loadFace(assets: AssetManager?, face: String): Typeface {
     val family = face.trim('"')
     val file = COMIC_FONT_FILES[family]
-    if (file != null) {
+    if (assets != null && file != null) {
         val tf = typefaceCache.getOrPut(file) {
             runCatching { Typeface.createFromAsset(assets, "fonts/$file.ttf") }.getOrNull()
         }
@@ -94,26 +104,52 @@ private fun loadFace(assets: AssetManager, face: String): Typeface {
 
 private fun channel(v: Double): Int = (255.0 * v).roundToInt().coerceIn(0, 255)
 
+// ── Draw-side tempo (the curves the panel GEOMETRY needs; the shader-facing
+//    per-frame values ride `tempo.frame` in the `.dope`). Ports of comic-tempo.ts. ──
+
+/** Comic impact SCALE over elapsed ms: big at t≈0, slamming to ≈1 by IMPACT_MS
+ * (with a small spring), then resting. `overshoot` scales the slam magnitude. */
+private fun impactScale(elapsedMs: Double, overshoot: Double): Double {
+    val t = elapsedMs
+    if (t <= 0.0) return 1.0 + 0.85 * overshoot
+    if (t < IMPACT_MS) {
+        val x = t / IMPACT_MS
+        val eased = easeOutCubic(x)
+        val big = 1.0 + 0.85 * overshoot
+        val dip = -0.12 * overshoot * sin(x * PI) * (1 - x)
+        return big + (1 - big) * eased + dip
+    }
+    return 1.0
+}
+
+/** Comic impact OPACITY/presence over normalized life (delta-0 with the
+ * `tempo.frame` amp/presence the shader reads — the panel GEOMETRY needs the
+ * same curve to fade the forms in/out). */
+private fun impactPresence(life: Double): Double {
+    val t = tempoClamp01(life)
+    if (t < 0.04) return easeOutCubic(t / 0.04)
+    if (t < 0.82) return 1.0
+    val fade = tempoClamp01(1 - (t - 0.82) / 0.18)
+    return fade.pow(1.4)
+}
+
+private fun Double.pow(e: Double): Double = Math.pow(this, e)
+
 /**
- * Draw the offscreen panel for this frame: a jagged starburst balloon (B fill +
- * G outline), then the onomatopoeia word (R fill + G ink contour, full per-letter
- * typography in the mood face) or a vector checkmark, at the LIVE slam pose.
- * Channel encoding: R = word fill · G = ink (contours) · B = starburst fill.
+ * The per-frame panel draw the GENERATED factory wires into
+ * `dopePanelConfig(draw=)` (the generic `PanelDraw` shape). LIVE pose: a jagged
+ * starburst balloon (B fill + G outline) then the seed-picked onomatopoeia word
+ * (R fill + G ink contour, full per-letter typography in the mood face) or a
+ * vector checkmark, at the live slam pose.
  */
 fun drawComicPanel(
     canvas: Canvas,
-    assets: AssetManager,
+    widthPx: Int,
+    heightPx: Int,
     params: Map<String, DopeValue>,
-    elapsedMs: Double,
-    life: Double,
-    centerX: Float,
-    centerY: Float,
-    targetWidthPx: Float,
-    targetHeightPx: Float,
-    canvasW: Int,
-    canvasH: Int,
+    info: PanelFrameInfo,
 ) {
-    if (canvasW <= 1 || canvasH <= 1) return
+    if (widthPx <= 1 || heightPx <= 1) return
 
     // Resolved-bag scalars (defaults mirror comic.dope authored ranges + swift).
     val comicSeed = params.number("comicSeed", 0.0) // the per-fire scatter offset
@@ -124,16 +160,16 @@ fun drawComicPanel(
     val overshoot = params.number("overshoot", 1.0)
 
     // LIVE slam: presence over life, scale over elapsedMs (web parity).
-    val presence = impactPresence(life)
+    val presence = impactPresence(info.life)
     if (presence <= 0.001) return
-    val slamScale = impactScale(elapsedMs, overshoot).toFloat()
+    val slamScale = impactScale(info.elapsedMs, overshoot).toFloat()
     val dpr = 1.0f // the runner already rasterizes the panel at the device size.
 
     // Position + size the word/starburst to the targeted element (defaults to the
     // canvas centre + full canvas, reproducing the old screen-centred pose).
-    val cx = centerX
-    val cy = centerY
-    val minDim = min(min(targetWidthPx, targetHeightPx) * COMIC_TARGET_FILL, min(canvasW, canvasH).toFloat())
+    val cx = info.centerX
+    val cy = info.centerY
+    val minDim = min(min(info.targetWidthPx, info.targetHeightPx) * COMIC_TARGET_FILL, min(widthPx, heightPx).toFloat())
     // The web rng seeds the burst jitter from (comicSeed * 1000) >>> 0.
     val rng = mulberry32((comicSeed * 1000.0).toLong().toUInt())
 
@@ -243,7 +279,7 @@ fun drawComicPanel(
     }
 
     // ----- WORD RUN (mood face, full per-letter typography) -------------------
-    val typeface = loadFace(assets, params.string("face", ""))
+    val typeface = loadFace(info.assets, params.string("face", ""))
     val chars = word.map { it.toString() }
 
     // Target size, then SHRINK-TO-FIT so longer words never spill the burst.

@@ -75,7 +75,7 @@ enum EffectRegistry {
         },
         DemoEffect(name: "comic") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: ComicResources.bundle),
-                  let host = try? MetalOverlayHost(config: ComicConfig(), device: device,
+                  let host = try? MetalOverlayHost(config: Comic.passConfig(), device: device,
                                                    library: lib, wantsShadow: false),
                   let fx = try? Comic() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })

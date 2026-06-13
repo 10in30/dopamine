@@ -94,6 +94,9 @@ fun createPanelInstance(config: PanelConfig, params: Map<String, DopeValue>, ctx
                 // Panel draw is y-down top-left (canvas space): the centre is the anchor.
                 centerX = ctx.anchorX, centerY = ctx.anchorY,
                 targetWidthPx = targetW, targetHeightPx = targetH,
+                // Pass the host AssetManager through so a panel draw can load bundled
+                // assets (comic's display-face ttf); null for asset-free effects.
+                assets = ctx.assets,
             )
             val frameUniforms = config.frame(info, params)
 
