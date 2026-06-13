@@ -12,9 +12,26 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.json"
+  },
+  "license": "MIT",
+  "author": "10in30",
+  "homepage": "https://github.com/10in30/dopamine#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/10in30/dopamine.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/10in30/dopamine/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -83,7 +83,7 @@ export async function buildEffect({ root, effectDir, outDir }) {
     dist.push(...(await generateSwiftPackage({ root, eff, outDir, fonts, logic })));
   }
   if (build.web) {
-    dist.push(...(await generateNpmPackage({ eff })));
+    dist.push(...(await generateNpmPackage({ root, eff })));
     // The in-repo workspace package imports `./<slug>.dope.json`; write the portable
     // copy into its src (gitignored) so it builds/tests against source.
     const webSrc = build.web.sources ?? "web";

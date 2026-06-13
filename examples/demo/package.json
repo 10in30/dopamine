@@ -9,19 +9,19 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@dopaminefx/core": "0.1.0",
-    "@dopaminefx/effects": "0.1.0",
-    "@dopaminefx/effect-solarbloom": "0.1.0",
-    "@dopaminefx/effect-inkstroke": "0.1.0",
-    "@dopaminefx/effect-comic": "0.1.0",
-    "@dopaminefx/effect-fail": "0.1.0",
-    "@dopaminefx/effect-aurora": "0.1.0",
-    "@dopaminefx/effect-ripple": "0.1.0",
-    "@dopaminefx/effect-confetti": "0.1.0",
-    "@dopaminefx/effect-heartburst": "0.1.0",
-    "@dopaminefx/effect-lightning": "0.1.0",
-    "@dopaminefx/effect-halo": "0.1.0",
-    "@dopaminefx/effect-dots": "0.1.0"
+    "@dopaminefx/core": "^0.1.0",
+    "@dopaminefx/effects": "^0.1.0",
+    "@dopaminefx/effect-solarbloom": "^0.1.0",
+    "@dopaminefx/effect-inkstroke": "^0.1.0",
+    "@dopaminefx/effect-comic": "^0.1.0",
+    "@dopaminefx/effect-fail": "^0.1.0",
+    "@dopaminefx/effect-aurora": "^0.1.0",
+    "@dopaminefx/effect-ripple": "^0.1.0",
+    "@dopaminefx/effect-confetti": "^0.1.0",
+    "@dopaminefx/effect-heartburst": "^0.1.0",
+    "@dopaminefx/effect-lightning": "^0.1.0",
+    "@dopaminefx/effect-halo": "^0.1.0",
+    "@dopaminefx/effect-dots": "^0.1.0"
   },
   "devDependencies": {
     "vite": "^5.4.10"
