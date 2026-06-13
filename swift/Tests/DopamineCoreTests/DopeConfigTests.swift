@@ -190,7 +190,7 @@ final class DopeConfigTests: XCTestCase {
 
         // The panel sampler binds at texture(0) — the cross-platform panel slot.
         XCTAssertEqual(doc.binding?.samplers, [DopeBindingSampler(
-            web: "uPanel", name: "panel", texture: 0, outline: nil, on: nil)])
+            web: "uPanel", name: "panelTex", texture: 0, outline: nil, on: nil)])
 
         // render.pass: the dpr-scaled halftone cell (uDotSize = dotSize · dpr).
         let pass = try XCTUnwrap(doc.renderPass)
