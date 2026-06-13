@@ -120,6 +120,15 @@ The one Android-specific shader change: the final emit is `dopLightOut(col)`
 RGB look is byte-identical. (Solarbloom's shader already emits exactly this
 form on every platform.)
 
+**Backdrop API (light surfaces).** Premultiplied source-over is visible on any
+surface — including white — so `PlayOptions.backdrop` (a CSS colour string, the
+Android mirror of the web `backdrop` option) opts the effect into a light
+surface. Its relative luminance is set into the `uBackdropLum` uniform (`0` by
+default ⇒ no change ⇒ the dark look is unchanged), which drives `dopLightOut`'s
+**saturation + presence boost** so soft glows read as colour on a light surface
+instead of washing out. The boost math is shared with the web `dopLightOutGLSL`
+and the Metal light-out tail, so the look matches across platforms.
+
 A `uShadow` multiply pass exists in the config/shader contract for portability,
 but the single-surface host renders **light only** (a multiply shadow needs the
 backdrop the GL surface can't read — the same limitation swift documents on iOS).

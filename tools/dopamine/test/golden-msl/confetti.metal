@@ -62,6 +62,11 @@ fragment float4 confetti_fragment(
   
   col = dop_ditherAdd(col, frag, u.timeS, 1.0 - u.style);
 
-  float outA = clamp(max(max(col.r, col.g), col.b), 0.0, 1.0);
+  col = max(col, 0.0);
+    float bk = clamp(u.backdropLum, 0.0, 1.0);
+    float luma = dot(col, float3(0.2126, 0.7152, 0.0722));
+    col = max(mix(float3(luma), col, 1.0 + bk * 0.600), 0.0);
+    float outA = clamp(max(max(col.r, col.g), col.b), 0.0, 1.0);
+    outA = clamp(outA * (1.0 + bk * 0.800), 0.0, 1.0);
     return float4(col, outA);
 }

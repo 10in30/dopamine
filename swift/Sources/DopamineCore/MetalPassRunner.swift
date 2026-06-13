@@ -62,6 +62,7 @@ public struct StandardUniforms {
     public var shadowOffset: SIMD2<Float> = .zero
     public var shadowSoft: Float = 0
     public var shadowStrength: Float = 0
+    public var backdropLum: Float = 0            // backdrop luminance 0 dark .. 1 white (light-out boost)
     public init() {}
 }
 
@@ -185,6 +186,10 @@ public final class MetalPassRunner<Config: PassConfig> {
     // of rebuilding the whole runner. See `MetalOverlayHost.prepare`.
     private var params: [String: DopeValue]
     public private(set) var durationMs: Double
+    /// Backdrop relative luminance (0 dark .. 1 white) the overlay composites
+    /// against. Drives the light-out saturation/presence boost (`backdropLum`
+    /// uniform); 0 ⇒ no boost ⇒ the dark look is unchanged. Set by the host.
+    public var backdropLuminance: Double = 0
 
     // Texture plumbing for HYBRID effects. Pure-shader effects (Solarbloom et al.)
     // draw everything analytically and bind nothing; but comic/heartburst draw
@@ -363,6 +368,7 @@ public final class MetalPassRunner<Config: PassConfig> {
             s.shadowSoft = Float(sg.soft)
             s.shadowStrength = Float(sg.strength)
         }
+        s.backdropLum = Float(backdropLuminance)
         return s
     }
 
