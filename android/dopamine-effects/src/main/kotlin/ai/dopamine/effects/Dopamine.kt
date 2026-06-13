@@ -2,9 +2,9 @@
 //
 // Each effect module is self-contained and exposes `<Name>.register(context)`
 // (it needs a Context to read its byte-identical `.dope` from the merged assets).
-// `registerAll` lights up the whole set in one call. The canonical TEN effects:
+// `registerAll` lights up the whole set in one call. The canonical ELEVEN effects:
 // solarbloom, aurora, comic, confetti, fail, heartburst, inkstroke, lightning,
-// ripple, halo — each ported on the SAME shared `.dope` spine the web + swift use.
+// ripple, halo, dots — each on the SAME shared `.dope` spine the web + swift use.
 
 package ai.dopamine.effects
 
@@ -12,6 +12,7 @@ import ai.dopamine.core.EffectRegistry
 import ai.dopamine.effect.aurora.Aurora
 import ai.dopamine.effect.comic.Comic
 import ai.dopamine.effect.confetti.Confetti
+import ai.dopamine.effect.dots.Dots
 import ai.dopamine.effect.fail.Fail
 import ai.dopamine.effect.halo.Halo
 import ai.dopamine.effect.heartburst.Heartburst
@@ -22,7 +23,7 @@ import ai.dopamine.effect.solarbloom.Solarbloom
 import android.content.Context
 
 object Dopamine {
-    /** Register all ten built-in effects. Returns the registered effect names. */
+    /** Register all eleven built-in effects. Returns the registered effect names. */
     fun registerAll(context: Context): List<String> {
         val app = context.applicationContext
         Solarbloom.register(app)
@@ -35,6 +36,7 @@ object Dopamine {
         Lightning.register(app)
         Ripple.register(app)
         Halo.register(app)
+        Dots.register(app)
         return EffectRegistry.names()
     }
 }

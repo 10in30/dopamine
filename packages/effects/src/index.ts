@@ -1,7 +1,7 @@
 /**
  * @dopaminefx/effects — the batteries-included UMBRELLA.
  *
- * Importing this registers ALL ten built-in effects (each `@dopaminefx/effect-*`
+ * Importing this registers ALL eleven built-in effects (each `@dopaminefx/effect-*`
  * package self-registers on import) and re-exports the whole `@dopaminefx/core`
  * runtime/API surface, plus the `celebrate*` convenience wrappers and the
  * `<dopamine-success>` custom element.
@@ -31,6 +31,7 @@ import { confetti } from "@dopaminefx/effect-confetti";
 import { heartburst } from "@dopaminefx/effect-heartburst";
 import { lightning } from "@dopaminefx/effect-lightning";
 import { halo } from "@dopaminefx/effect-halo";
+import { dots } from "@dopaminefx/effect-dots";
 
 // The bundled-face preloaders live with their effects; re-export for convenience.
 export { ensureComicFonts } from "@dopaminefx/effect-comic";
@@ -42,13 +43,13 @@ export { registerElement, DopamineSuccessElement } from "./element.js";
 /** Force-retain the registrations against tree-shaking; also the built-in set. */
 const BUILTINS = [
   solarbloom, inkstroke, comic, failEffect,
-  aurora, ripple, confetti, heartburst, lightning, halo,
+  aurora, ripple, confetti, heartburst, lightning, halo, dots,
 ] as const;
 
 /** Built-in effect names usable with the convenience API + the demo/scripts. */
 export type EffectName =
   | "solarbloom" | "inkstroke" | "comic" | "fail"
-  | "aurora" | "ripple" | "confetti" | "heartburst" | "lightning" | "halo";
+  | "aurora" | "ripple" | "confetti" | "heartburst" | "lightning" | "halo" | "dots";
 
 /** The names of every effect registered by `@dopaminefx/effects` on import. */
 export const builtinEffectNames: readonly EffectName[] = BUILTINS.map(

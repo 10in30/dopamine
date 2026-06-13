@@ -25,6 +25,7 @@ import DopamineEffectInkstroke
 import DopamineEffectLightning
 import DopamineEffectRipple
 import DopamineEffectHalo
+import DopamineEffectDots
 
 /// Type-erased overlay host. All members below are already public on
 /// `MetalOverlayHost<Config>`, so the conformance is empty.
@@ -35,6 +36,11 @@ public protocol AnyEffectHost: AnyObject {
     func prepare(params: [String: DopeValue]) throws
     /// Cheap: start the prepared effect's clock.
     func play()
+    /// Drift-free pause/resume of a CONTINUOUS effect's clock (battery economics
+    /// for a perpetual loop in a backgrounded view).
+    func pause(now: CFTimeInterval)
+    func resume(now: CFTimeInterval)
+    var isPaused: Bool { get }
     func tick(now: CFTimeInterval, dpr: Float, anchorPx: SIMD2<Float>, targetPx: SIMD2<Float>)
     /// Render ONE light frame at a synthetic `elapsedMs` into a CPU-readable
     /// image (the deterministic CI media recorder — see
@@ -127,6 +133,13 @@ enum EffectRegistry {
                   let host = try? MetalOverlayHost(config: Halo.passConfig(), device: device,
                                                    library: lib, wantsShadow: false),
                   let fx = try? Halo() else { return nil }
+            return (host, { (try? fx.resolve($0)) ?? [:] })
+        },
+        DemoEffect(name: "dots") { device in
+            guard let lib = try? device.makeDefaultLibrary(bundle: DotsResources.bundle),
+                  let host = try? MetalOverlayHost(config: Dots.passConfig(), device: device,
+                                                   library: lib, wantsShadow: false),
+                  let fx = try? Dots() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
     ]

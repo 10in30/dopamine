@@ -98,7 +98,7 @@ if (androidSdkAvailable) {
     // once every one of them is present (otherwise it can't compile). All ten ship.
     val umbrellaEffects = listOf(
         "solarbloom", "aurora", "comic", "confetti", "fail",
-        "heartburst", "inkstroke", "lightning", "ripple", "halo",
+        "heartburst", "inkstroke", "lightning", "ripple", "halo", "dots",
     )
     val haveUmbrellaEffects = umbrellaEffects.all {
         File(rootDir, "dopamine-effect-$it/build.gradle.kts").exists() ||
