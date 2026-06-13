@@ -198,7 +198,7 @@
       "peakMs": 260,
       "holdMs": 360
     },
-    "note": "Datafied per-frame logic (the web/Swift/Kotlin solarbloom factory frame() hook, delta-0). amp = envelope(life, overshoot) — the held-breath success envelope (anticipation→peak→settle). check = checkProgress(elapsedMs) = easeOutCubic(elapsedMs/240): the functional confirmation draws within ~240 ms on the REAL (un-stepped) clock so it lands near the ~100 ms reward signal and reads smoothly even where the bloom/motes step on twos. The mote SPRITE PANEL geometry + the whimsy-picked glyph-fallback canvas stay code hooks (the sprite-panel + glyph-aux seams); the baked-SDF checkmark binds declaratively from binding.samplers (the fail precedent)."
+    "note": "Datafied per-frame logic (delta-0 with the historical hand frame() hook). amp = envelope(life, overshoot) — the held-breath success envelope (anticipation→peak→settle). check = checkProgress(elapsedMs) = easeOutCubic(elapsedMs/240): the functional confirmation draws within ~240 ms on the REAL (un-stepped) clock so it lands near the ~100 ms reward signal and reads smoothly even where the bloom/motes step on twos. The mote SPRITE PANEL geometry stays the one per-platform draw (the sprite-panel seam); the baked-SDF checkmark binds declaratively from binding.samplers on every platform (the fail precedent). The whimsy-picked glyph-fallback canvas is a web-only optional hook (the canonical effect always ships the baked SDF)."
   },
   "geometry": {
     "kind": "radial",
@@ -389,7 +389,7 @@
     "panel": {
       "sampler": "uMotePanel",
       "texture": 3,
-      "note": "SPRITE-PANEL seam (a PASS effect's dynamic sprite layer, NOT a panel-kind whole-content panel): the drifting light motes are rasterized into an offscreen Canvas2D/CoreGraphics/android.graphics panel each frame (each mote's pose + lit colour + streak + twinkle computed ONCE per frame) and the shader SAMPLES it for the mote layer; the volumetric bloom + checkmark stay procedural in the shader. The panel binds at texture(3) so texture(1) stays the baked-SDF slot (the checkmark) — so on web this PASS hybrid keeps BOTH the sprite panel AND the aux SDF (the panel runner hosts only one panel + no aux, so solarbloom uses the PASS runner with the panelDraw + auxTextures hooks). The draw itself is the per-platform sprite-panel-draw seam (web panelDraw hook); the native shaders keep the procedural per-pixel mote loop (a supported per-platform path)."
+      "note": "SPRITE-PANEL seam (a PASS effect's dynamic sprite layer, NOT a panel-kind whole-content panel): the drifting light motes are rasterized into an offscreen Canvas2D/CoreGraphics/android.graphics panel each frame (each mote's pose + lit colour + streak + twinkle computed ONCE per frame) and the shader SAMPLES it for the mote layer; the volumetric bloom + checkmark stay procedural in the shader. The panel binds at texture(3) so texture(1) stays the baked-SDF slot (the checkmark) — this PASS hybrid keeps BOTH the sprite panel AND the aux SDF on EVERY platform: the generic pass runner (web pass-runner / Metal MetalPassRunner+MetalOverlayHost / Android GlPassRunner) hosts a sprite panel at an arbitrary unit ALONGSIDE the baked-SDF aux (the heartburst sprite-panel + fail SDF-aux seams, composed). The draw itself is the per-platform sprite-panel-draw seam (web panelDraw hook / SolarbloomPanel.swift / SolarbloomPanel.kt) — the ONLY hand-written per-platform source."
     },
     "consts": {
       "MAX_MOTES": 80
@@ -428,14 +428,21 @@
       { "web": "uCheckTex", "name": "checkTex", "texture": 0,
         "note": "GLYPH-FALLBACK seam: the whimsy-picked bundled check-font glyph (✓ / ✔), rasterized into an offscreen canvas and uploaded by an optional host glyph-fallback hook, used only when the baked SDF is absent. Code-shaped (the host font rasterize) — stays a hook; the canonical effect always ships the baked SDF, and natives don't bind aux textures (analytic fallback)." },
       { "web": "uSdfTex", "name": "sdfTex", "texture": 1, "outline": "checkmark", "on": "sdfOn",
-        "note": "Declarative SDF source: the baked geometry.outlines.checkmark SDF binds here on web (flipping the sdfOn extra to 1); the native runtimes don't bind aux textures yet — sdfOn stays 0 and the shader's analytic two-segment ✓ renders (the fail precedent)." },
+        "note": "Declarative SDF source: the baked geometry.outlines.checkmark SDF binds here on EVERY platform (web, Metal, GL — the generic pass runner decodes the inline SDF, uploads an R8 texture and flips the sdfOn extra to 1); the analytic two-segment ✓ is the fallback when the SDF is absent (the fail precedent)." },
       { "web": "uMotePanel", "name": "motePanel", "texture": 3,
-        "note": "SPRITE-PANEL sampler (render.panel): the drifting-mote Canvas2D/CoreGraphics panel the web redraws + uploads every frame at texture(3), leaving texture(1) as the baked-SDF slot. Bound by the web PASS runner's panelDraw hook; the native shaders render the motes procedurally instead (no panel bound)." }
+        "note": "SPRITE-PANEL sampler (render.panel): the drifting-mote Canvas2D/CoreGraphics/android.graphics panel the runner redraws + uploads every frame at texture(3), leaving texture(1) as the baked-SDF slot. Bound by the pass runner's sprite-panel seam on every platform; the per-platform mote DRAW is the panel-draw seam (web panelDraw hook / SolarbloomPanel.swift / SolarbloomPanel.kt)." }
     ]
   },
 
   "x-build": {
     "note": "TOOLCHAIN build config (vendor-namespaced `x-` so runtime parsers ignore it; stripped from the embedded .dope). One block per platform: how `dopamine build` assembles the standalone, installable package into dist/<platform>/.",
+    "shader": {
+      "note": "Single-source shader: the canonical web GLSL is the ONLY hand-written shader; the MSL and the Kotlin are GENERATED from it. This is a PASS HYBRID — the shader samples a SPRITE PANEL (uMotePanel at texture(3)) AND a baked-SDF checkmark aux (uSdfTex at texture(1)); the volumetric bloom + checkmark glow stay procedural. The generic pass runner binds the panel at its render.panel.texture unit and the baked SDF at its binding.samplers[].texture unit on every platform (the fail SDF-aux + the heartburst sprite-panel seams, composed).",
+      "web": "web/src/solarbloom-shader.ts",
+      "vertexExport": "VERTEX_SRC",
+      "fragmentExport": "FRAGMENT_SRC",
+      "generateMSL": true
+    },
     "swift": {
       "module": "DopamineEffectSolarbloom",
       "sources": "swift",

@@ -60,9 +60,12 @@ enum EffectRegistry {
     /// effect — the eight in-flight Swift ports each append a line here on merge.
     static let all: [DemoEffect] = [
         DemoEffect(name: "solarbloom") { device in
+            // solarbloom is the PASS-HYBRID prover: the generated factory wraps
+            // DopeSpritePanelPassConfig (the sprite-panel mote layer at texture(3)
+            // ALONGSIDE the baked-✓ SDF at texture(1)); the host draws + uploads
+            // the panel each tick via its PanelDrawing conformance.
             guard let lib = try? device.makeDefaultLibrary(bundle: SolarbloomResources.bundle),
-                  let cfg = try? SolarbloomConfig(),
-                  let host = try? MetalOverlayHost(config: cfg, device: device,
+                  let host = try? MetalOverlayHost(config: Solarbloom.passConfig(), device: device,
                                                    library: lib, wantsShadow: false),
                   let fx = try? Solarbloom() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
