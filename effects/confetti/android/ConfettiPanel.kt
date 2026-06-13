@@ -117,7 +117,9 @@ fun drawConfettiPanel(
     val cy = info.centerY.toDouble()
 
     val add = PorterDuffXfermode(PorterDuff.Mode.ADD)
-    val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; xfermode = add }
+    // `this.style` is REQUIRED: inside `apply`, the bare `style` would resolve to
+    // the outer local `val style` (the Double cel-mix param), not Paint.style.
+    val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.style = Paint.Style.FILL; xfermode = add }
     val rect = RectF()
 
     for (i in 0 until count) {
