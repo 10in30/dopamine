@@ -1,0 +1,842 @@
+{
+  "fmt": "dopamine-effect",
+  "v": "1.0.0",
+  "id": "dopamine.success.comic",
+  "meta": {
+    "name": "Comic Impact",
+    "description": "A Golden/Silver-Age comic-book success shout: a hand-lettered affirmation slams in over a jagged starburst with halftone + action lines.",
+    "tags": [
+      "success",
+      "comic",
+      "impact"
+    ]
+  },
+  "controls": {
+    "mood": {
+      "type": "enum",
+      "label": "Mood",
+      "default": "celebratory",
+      "options": [
+        "serene",
+        "celebratory",
+        "electric"
+      ],
+      "ui": "segmented"
+    },
+    "intensity": {
+      "type": "scalar",
+      "label": "Intensity",
+      "default": 0.7,
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "ui": "slider",
+      "help": "Slam force, word size, spike + line count, saturation."
+    },
+    "whimsy": {
+      "type": "scalar",
+      "label": "Whimsy",
+      "default": 0.5,
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "ui": "slider",
+      "help": "Noir chiaroscuro (0) to full pop-art Ben-Day (1)."
+    },
+    "seed": {
+      "type": "int",
+      "label": "Seed",
+      "default": null,
+      "nullable": true,
+      "help": "Null = unique palette + word per fire; pin to reproduce."
+    },
+    "target": {
+      "type": "selector",
+      "label": "Target",
+      "default": "document.body"
+    }
+  },
+  "baselines": {
+    "serene": {
+      "durationMs": 2400,
+      "lightness": 0.82,
+      "chroma": 0.1,
+      "hueCenter": 230,
+      "hueRange": 120,
+      "scale": 0.34,
+      "burstPoints": 14,
+      "actionLines": 18,
+      "overshoot": 0.55
+    },
+    "celebratory": {
+      "durationMs": 1900,
+      "lightness": 0.82,
+      "chroma": 0.18,
+      "hueCenter": 50,
+      "hueRange": 320,
+      "scale": 0.4,
+      "burstPoints": 20,
+      "actionLines": 30,
+      "overshoot": 1
+    },
+    "electric": {
+      "durationMs": 1500,
+      "lightness": 0.8,
+      "chroma": 0.24,
+      "hueCenter": 35,
+      "hueRange": 150,
+      "scale": 0.46,
+      "burstPoints": 28,
+      "actionLines": 44,
+      "overshoot": 1.45
+    }
+  },
+  "palette": {
+    "model": "oklch",
+    "space": "linear-srgb",
+    "generator": "golden-angle",
+    "goldenAngleDeg": 137.50776405003785,
+    "stops": 3,
+    "hueSpread": 0.55,
+    "lightness": {
+      "baseline": "lightness",
+      "perStop": [
+        0,
+        0.06,
+        -0.05
+      ]
+    },
+    "chroma": {
+      "from": {
+        "mul": [
+          {
+            "baseline": "chroma"
+          },
+          {
+            "lerp": [
+              "intensity",
+              0.7,
+              1.5
+            ]
+          }
+        ]
+      },
+      "perStop": [
+        0,
+        0.02,
+        -0.01
+      ]
+    },
+    "seed": {
+      "deterministic": true,
+      "source": "controls.seed",
+      "prng": "mulberry32"
+    },
+    "perMood": {
+      "serene": {
+        "hueCenter": 230,
+        "hueRange": 120,
+        "lightness": 0.82,
+        "chroma": 0.1
+      },
+      "celebratory": {
+        "hueCenter": 50,
+        "hueRange": 320,
+        "lightness": 0.82,
+        "chroma": 0.18
+      },
+      "electric": {
+        "hueCenter": 35,
+        "hueRange": 150,
+        "lightness": 0.8,
+        "chroma": 0.24
+      }
+    }
+  },
+  "tempo": {
+    "durationMs": {
+      "from": {
+        "round": {
+          "mul": [
+            {
+              "baseline": "durationMs"
+            },
+            {
+              "lerp": [
+                "intensity",
+                1.1,
+                0.9
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "frame": {
+      "amp": {
+        "lt": [
+          {
+            "clamp01": {
+              "input": "life"
+            }
+          },
+          0.04,
+          {
+            "easeOutCubic": {
+              "div": [
+                {
+                  "clamp01": {
+                    "input": "life"
+                  }
+                },
+                0.04
+              ]
+            }
+          },
+          {
+            "lt": [
+              {
+                "clamp01": {
+                  "input": "life"
+                }
+              },
+              0.82,
+              1,
+              {
+                "pow": [
+                  {
+                    "clamp01": {
+                      "sub": [
+                        1,
+                        {
+                          "div": [
+                            {
+                              "sub": [
+                                {
+                                  "clamp01": {
+                                    "input": "life"
+                                  }
+                                },
+                                0.82
+                              ]
+                            },
+                            0.18
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  1.4
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "extras": {
+        "presence": {
+          "lt": [
+            {
+              "clamp01": {
+                "input": "life"
+              }
+            },
+            0.04,
+            {
+              "easeOutCubic": {
+                "div": [
+                  {
+                    "clamp01": {
+                      "input": "life"
+                    }
+                  },
+                  0.04
+                ]
+              }
+            },
+            {
+              "lt": [
+                {
+                  "clamp01": {
+                    "input": "life"
+                  }
+                },
+                0.82,
+                1,
+                {
+                  "pow": [
+                    {
+                      "clamp01": {
+                        "sub": [
+                          1,
+                          {
+                            "div": [
+                              {
+                                "sub": [
+                                  {
+                                    "clamp01": {
+                                      "input": "life"
+                                    }
+                                  },
+                                  0.82
+                                ]
+                              },
+                              0.18
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    1.4
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "flash": {
+          "min": [
+            1.2,
+            {
+              "add": [
+                {
+                  "exp": {
+                    "sub": [
+                      0,
+                      {
+                        "div": [
+                          {
+                            "input": "elapsedMs"
+                          },
+                          110
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "mul": [
+                    0.25,
+                    {
+                      "exp": {
+                        "sub": [
+                          0,
+                          {
+                            "div": [
+                              {
+                                "max": [
+                                  {
+                                    "sub": [
+                                      {
+                                        "input": "elapsedMs"
+                                      },
+                                      130
+                                    ]
+                                  },
+                                  {
+                                    "sub": [
+                                      130,
+                                      {
+                                        "input": "elapsedMs"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              160
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "reducedMotion": {
+      "peakMs": 220,
+      "holdMs": 360
+    },
+    "note": "Datafied per-frame logic (the web/Swift/Kotlin comic factory frame() hook, delta-0). amp = impactPresence(life): a snap-in over the first 4% of life, a proud hold to 82%, then a pow(.,1.4) clean fade. presence mirrors amp (panel opacity / shadow geometry). flash is the impact light spike: a fast exp decay off the slam (IMPACT_MS·0.55 = 110ms) plus a small secondary bump around the hold (IMPACT_HOLD_MS·0.2 = 130ms, width IMPACT_MS·0.8 = 160ms), clamped to 1.2. The per-letter SLAM SCALE (impactScale) + per-letter layout stay in the panel-draw seam (code by design)."
+  },
+  "geometry": {
+    "kind": "radial",
+    "viewBox": [
+      0,
+      0,
+      100,
+      100
+    ],
+    "outlines": {
+      "starburst": {
+        "role": "burst",
+        "note": "Procedural jagged star drawn in the panel from burstPoints + comicSeed."
+      }
+    }
+  },
+  "content": {
+    "note": "The per-fire SLAMMED token, picked by seed from this pool (words + the checkmark sentinel, equal odds). Reskin = edit this list, no code.",
+    "words": [
+      "YES!",
+      "DONE!",
+      "NICE!",
+      "OKAY!",
+      "WIN!",
+      "GREAT!",
+      "WOO!"
+    ],
+    "checkToken": "✓",
+    "pool": [
+      "YES!",
+      "DONE!",
+      "NICE!",
+      "OKAY!",
+      "WIN!",
+      "GREAT!",
+      "WOO!",
+      "✓"
+    ]
+  },
+  "typography": {
+    "note": "Mood selects the primary bundled display face; whimsy/intensity drive the lettering treatment (noir restrained caps to pop-art balloon). All curves are data; reskinning the font/feel is no-code. Reproduces engine/mood.ts comicTypography byte-for-byte (parity-tested).",
+    "fallbackStack": "\"Arial Black\", \"Haettenschweiler\", Impact, system-ui, sans-serif",
+    "perMood": {
+      "serene": {
+        "face": "\"Luckiest Guy\"",
+        "skew": 0,
+        "tilt": -0.015,
+        "stretchX": 1,
+        "tracking": 0.04,
+        "roundness": 1
+      },
+      "celebratory": {
+        "face": "\"Bangers\"",
+        "skew": -0.06,
+        "tilt": -0.05,
+        "stretchX": 1,
+        "tracking": 0,
+        "roundness": 0.55
+      },
+      "electric": {
+        "face": "\"Anton\"",
+        "skew": -0.26,
+        "tilt": -0.1,
+        "stretchX": 0.82,
+        "tracking": -0.02,
+        "roundness": 0.1
+      }
+    },
+    "fields": {
+      "fontStretchX": {
+        "from": {
+          "mul": [
+            {
+              "baseline": "stretchX"
+            },
+            {
+              "lerp": [
+                "whimsy",
+                1,
+                1.18
+              ]
+            }
+          ]
+        }
+      },
+      "fontSkew": {
+        "from": {
+          "mul": [
+            {
+              "baseline": "skew"
+            },
+            {
+              "lerp": [
+                "whimsy",
+                1,
+                0.7
+              ]
+            },
+            {
+              "lerp": [
+                "intensity",
+                0.9,
+                1.1
+              ]
+            }
+          ]
+        }
+      },
+      "fontTilt": {
+        "from": {
+          "add": [
+            {
+              "baseline": "tilt"
+            },
+            {
+              "lerp": [
+                "whimsy",
+                0,
+                -0.04
+              ]
+            }
+          ]
+        }
+      },
+      "fontTracking": {
+        "from": {
+          "add": [
+            {
+              "baseline": "tracking"
+            },
+            {
+              "lerp": [
+                "whimsy",
+                0,
+                0.02
+              ]
+            }
+          ]
+        }
+      },
+      "outlineLayers": {
+        "from": {
+          "max": [
+            1,
+            {
+              "round": {
+                "mul": [
+                  {
+                    "lerp": [
+                      "whimsy",
+                      1,
+                      3
+                    ]
+                  },
+                  {
+                    "lerp": [
+                      "intensity",
+                      0.95,
+                      1.05
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "extrudeDepth": {
+        "from": {
+          "mul": [
+            {
+              "lerp": [
+                "whimsy",
+                0,
+                0.13
+              ]
+            },
+            {
+              "lerp": [
+                "intensity",
+                0.85,
+                1.15
+              ]
+            }
+          ]
+        }
+      },
+      "letterRotJitter": {
+        "from": {
+          "lerp": [
+            "whimsy",
+            0,
+            0.16
+          ]
+        }
+      },
+      "letterBaselineJitter": {
+        "from": {
+          "lerp": [
+            "whimsy",
+            0,
+            0.06
+          ]
+        }
+      },
+      "inkRoundness": {
+        "clamp01": true,
+        "from": {
+          "mix": [
+            {
+              "mul": [
+                {
+                  "baseline": "roundness"
+                },
+                0.6
+              ]
+            },
+            1,
+            "whimsy"
+          ]
+        }
+      }
+    }
+  },
+  "render": {
+    "params": {
+      "exposure": {
+        "type": "float",
+        "from": {
+          "lerp": [
+            "intensity",
+            0.85,
+            1.5
+          ]
+        }
+      },
+      "overshoot": {
+        "type": "float",
+        "from": {
+          "mul": [
+            {
+              "baseline": "overshoot"
+            },
+            {
+              "lerp": [
+                "intensity",
+                0.7,
+                1.3
+              ]
+            }
+          ]
+        }
+      },
+      "scale": {
+        "type": "float",
+        "from": {
+          "mul": [
+            {
+              "baseline": "scale"
+            },
+            {
+              "lerp": [
+                "intensity",
+                0.85,
+                1.12
+              ]
+            }
+          ]
+        }
+      },
+      "burstPoints": {
+        "type": "int",
+        "from": {
+          "round": {
+            "mul": [
+              {
+                "baseline": "burstPoints"
+              },
+              {
+                "lerp": [
+                  "intensity",
+                  0.8,
+                  1.2
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "actionLines": {
+        "type": "int",
+        "from": {
+          "round": {
+            "mul": [
+              {
+                "baseline": "actionLines"
+              },
+              {
+                "lerp": [
+                  "intensity",
+                  0.7,
+                  1.25
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "halftone": {
+        "type": "float",
+        "clamp01": true,
+        "from": {
+          "lerp": [
+            "whimsy",
+            0.28,
+            1
+          ]
+        }
+      },
+      "dotSize": {
+        "type": "float",
+        "from": {
+          "lerp": [
+            "whimsy",
+            5,
+            11
+          ]
+        }
+      },
+      "saturation": {
+        "type": "float",
+        "clamp01": true,
+        "from": {
+          "mul": [
+            {
+              "lerp": [
+                "whimsy",
+                0.18,
+                1
+              ]
+            },
+            {
+              "lerp": [
+                "intensity",
+                0.8,
+                1.1
+              ]
+            }
+          ]
+        }
+      },
+      "inkWeight": {
+        "type": "float",
+        "from": {
+          "mul": [
+            {
+              "lerp": [
+                "whimsy",
+                5,
+                12
+              ]
+            },
+            {
+              "lerp": [
+                "intensity",
+                0.85,
+                1.1
+              ]
+            }
+          ]
+        }
+      },
+      "style": {
+        "type": "float",
+        "from": {
+          "control": "whimsy"
+        }
+      }
+    },
+    "shadowHeightFrac": 0.5,
+    "pass": {
+      "note": "Per-PASS uniforms: the Ben-Day cell is authored in CSS-ish px and scaled to device px on the host (uDotSize = dotSize * dpr); uInkBoost fattens the ink toward the pop end (1 + style * 0.4).",
+      "dotSize": {
+        "mul": [
+          {
+            "param": "dotSize"
+          },
+          {
+            "input": "dpr"
+          }
+        ]
+      },
+      "inkBoost": {
+        "add": [
+          1,
+          {
+            "mul": [
+              {
+                "param": "style"
+              },
+              0.4
+            ]
+          }
+        ]
+      }
+    },
+    "panel": {
+      "sampler": "uPanel",
+      "texture": 0,
+      "note": "The Canvas2D/CoreGraphics/android.graphics panel (jagged starburst balloon + hand-lettered word + bold ink contours, R=wordFill G=ink B=burstFill) the host redraws every frame; the draw itself — incl. the per-letter slam SCALE + the display-face lettering — is the per-platform panel-draw seam (web panelDraw hook / ComicPanel files)."
+    },
+    "consts": {},
+    "config": {
+      "usesOrigin": false,
+      "stepping": "none"
+    },
+    "backends": {
+      "webgl2": {
+        "stage": "fullscreen-triangle",
+        "blend": "screen",
+        "shader": {
+          "program": "comic"
+        },
+        "note": "Hybrid: a Canvas2D panel (word/burst/ink) is uploaded as a texture; the shader adds halftone, action lines, flash, styling."
+      }
+    },
+    "fallbackOrder": [
+      "webgl2"
+    ]
+  },
+  "binding": {
+    "note": "CROSS-PLATFORM uniform-binding contract. Which render.params are NOT shader uniforms, the seed-keyed scatter field, the per-frame/host extras, and the texture samplers — one source of truth for the web u<Name> list, the Swift struct + packer, and the MSL struct. SHIPS in the portable .dope (the runtime derives its uniform bindings from it); the toolchain consumes it too for the Metal struct codegen. Only `x-build`, `slug` and `kind` stay toolchain-only.",
+    "excludeParams": [
+      "style",
+      "overshoot",
+      "scale",
+      "burstPoints",
+      "inkWeight",
+      "dotSize"
+    ],
+    "scatterKey": "comicSeed",
+    "scatterWeb": "uSeed",
+    "extras": [
+      {
+        "name": "presence",
+        "type": "float",
+        "web": "uPresence",
+        "note": "impactPresence(life) — panel opacity / presence 0..1"
+      },
+      {
+        "name": "flash",
+        "type": "float",
+        "web": "uFlash",
+        "note": "0..1 impact flash (fast spike, decays)"
+      },
+      {
+        "name": "dotSize",
+        "type": "float",
+        "web": "uDotSize",
+        "note": "Ben-Day cell size in device px (dpr-scaled; render.pass)"
+      },
+      {
+        "name": "inkBoost",
+        "type": "float",
+        "web": "uInkBoost",
+        "note": "ink darkness/spread, 1 + style*0.4 (render.pass)"
+      }
+    ],
+    "samplers": [
+      {
+        "web": "uPanel",
+        "name": "panelTex",
+        "texture": 0,
+        "note": "the per-frame panel texture (render.panel)"
+      }
+    ]
+  }
+}

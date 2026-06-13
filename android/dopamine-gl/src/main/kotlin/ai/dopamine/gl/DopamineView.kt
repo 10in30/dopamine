@@ -66,6 +66,9 @@ class DopamineView @JvmOverloads constructor(
 
     private val glContext = GlContext()
     private val density: Float = resources.displayMetrics.density
+    // The app AssetManager, handed to a panel draw that loads bundled binary
+    // assets (comic's display-face ttf). Asset-free effects ignore it.
+    private val appAssets = context.applicationContext.assets
 
     /** Live effects, mutated ONLY on the GL thread (via onDrawFrame / queueEvent). */
     private class Active(
@@ -124,6 +127,10 @@ class DopamineView @JvmOverloads constructor(
                 targetWidthPx = options.targetWidthPx,
                 targetHeightPx = options.targetHeightPx,
                 density = density,
+                // Hand the panel draw the APK AssetManager so it can load bundled
+                // binary assets (comic's display-face ttf); ignored by effects
+                // that need none.
+                assets = appAssets,
             )
             try {
                 val instance = drawable.create(params, ctx)

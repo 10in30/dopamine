@@ -15,7 +15,8 @@
  */
 
 import { type ComicRenderParams, isCheckmark } from "./comic-params.js";
-import { mulberry32 } from "@dopaminefx/core";
+import { mulberry32, type PanelDraw } from "@dopaminefx/core";
+import { impactScale, impactPresence } from "./comic-tempo.js";
 import { EMBEDDED_FACES } from "./comic-fonts.js";
 
 // ---------------------------------------------------------------------------
@@ -89,6 +90,21 @@ if (typeof document !== "undefined") void ensureComicFonts();
 /** Starburst + word size relative to the targeted element box (≈1.5×). See the
  * Swift `COMIC_TARGET_FILL` — keep the two in sync. */
 const COMIC_TARGET_FILL = 1.7;
+
+/**
+ * The per-frame panel draw in the generic `PanelDraw` shape — the ONE
+ * code-shaped hook the data-driven factory wires (`registerDopePanelEffect`).
+ * Computes the DRAW-SIDE tempo (the per-letter slam SCALE + the panel presence,
+ * which stay code by design — the per-frame values the SHADER reads ride
+ * `tempo.frame`) and hands off to {@link drawPanel}.
+ */
+export const drawComicFrame: PanelDraw = (pctx, w, h, params, info) => {
+  const p = params as unknown as ComicRenderParams;
+  const scale = impactScale(info.elapsedMs, p.overshoot);
+  const presence = impactPresence(info.life);
+  const span = Math.min(info.targetPx.width, info.targetPx.height);
+  drawPanel(pctx, w, h, p, scale, presence, info.dpr, info.centerPx, span);
+};
 
 export function drawPanel(
   ctx: CanvasRenderingContext2D,

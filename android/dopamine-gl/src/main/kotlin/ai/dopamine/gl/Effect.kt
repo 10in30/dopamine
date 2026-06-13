@@ -27,6 +27,13 @@ data class EffectContext(
     val targetHeightPx: Float,
     /** Screen density — scales physically-sized features (web's `dpr`). */
     val density: Float,
+    /**
+     * The host's APK `AssetManager`, for a panel draw that needs BUNDLED binary
+     * assets (e.g. comic's display-face ttf in `assets/fonts/`). Null when the
+     * host did not supply one — the analog of the web Canvas2D draw reaching the
+     * `document.fonts`/embedded faces. General; effects that need no assets ignore it.
+     */
+    val assets: android.content.res.AssetManager? = null,
 )
 
 /** A live, drawable effect. Pure function of time: same `elapsedMs` → same frame. */
@@ -65,6 +72,12 @@ data class PanelFrameInfo(
     /** Targeted element SIZE in device px (the centrepiece is sized to this box). */
     val targetWidthPx: Float,
     val targetHeightPx: Float,
+    /**
+     * The host's APK `AssetManager` (from `EffectContext`), for a panel draw that
+     * loads BUNDLED binary assets (comic's display-face ttf). Null when none was
+     * supplied; effects that need no assets ignore it.
+     */
+    val assets: android.content.res.AssetManager? = null,
 )
 
 /**

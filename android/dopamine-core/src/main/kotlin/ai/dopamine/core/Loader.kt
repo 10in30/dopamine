@@ -252,5 +252,12 @@ fun resolveDopeParams(
     // THEN the per-fire scatter offset (same rng() * 1000 as the engine).
     out[scatterKey] = DopeValue.Number(rng() * 1000.0)
 
+    // Fold in the `.dope` TYPOGRAPHY table (letter effects like comic) so a
+    // generated factory shell needs no bespoke compose step — additive, and a
+    // no-op for an effect that declares no `typography` (the numeric/palette
+    // path, incl. the parity grid, is untouched). The web composes the same
+    // fields on top of the loader bag.
+    out.putAll(resolveTypography(doc, input.mood, input.intensity, input.whimsy))
+
     return out
 }

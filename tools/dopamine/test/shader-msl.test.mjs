@@ -28,6 +28,7 @@ import { INK_FRAGMENT_SRC } from "../../../effects/inkstroke/web/src/inkstroke-s
 import { HALO_FRAGMENT_SRC } from "../../../effects/halo/web/src/halo-shader.ts";
 import { FAIL_FRAGMENT_SRC } from "../../../effects/fail/web/src/fail-shader.ts";
 import { HEARTBURST_FRAGMENT_SRC } from "../../../effects/heartburst/web/src/heartburst-shader.ts";
+import { COMIC_FRAGMENT_SRC } from "../../../effects/comic/web/src/comic-shader.ts";
 
 const root = new URL("../../../", import.meta.url);
 const readDope = (slug) =>
@@ -48,6 +49,9 @@ const SNAPSHOT = [
   // heartburst exercises the PANEL seams: the `vUv` reconstruction (the panel
   // shaders sample in a y-up vUv) and the panel sampler at texture(0).
   { slug: "heartburst", fragment: HEARTBURST_FRAGMENT_SRC },
+  // comic is the heaviest panel hybrid: the panel sampler at texture(0), the
+  // 2-arg atan→atan2, radians() inlining, and the scatter `uSeed`→u.comicSeed map.
+  { slug: "comic", fragment: COMIC_FRAGMENT_SRC },
 ];
 
 const transpile = (slug, fragment) => {

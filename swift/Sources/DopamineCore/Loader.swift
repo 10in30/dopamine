@@ -411,6 +411,14 @@ public func resolveDopeParams(
     guard let scatterKey = doc.binding?.scatterKey else {
         throw DopeError.notDatafied("\(doc.id) has no binding.scatterKey")
     }
-    return try resolveDopeParams(
+    var bag = try resolveDopeParams(
         doc, input, consts: doc.consts, scatterKey: scatterKey, paletteOverride: paletteOverride)
+    // Fold in the `.dope` TYPOGRAPHY table (letter effects like comic) so a
+    // generated factory shell needs no bespoke compose step — additive, and a
+    // no-op for an effect that declares no `typography` (numeric/palette path
+    // untouched). The web composes the same fields on top of the loader bag.
+    for (k, v) in resolveTypography(doc, mood: input.mood, intensity: input.intensity, whimsy: input.whimsy) {
+        bag[k] = v
+    }
+    return bag
 }
