@@ -57,6 +57,23 @@ class PlayHandle internal constructor(
     fun stop() {
         view.queueEvent { view.requestStop(this) }
     }
+
+    /**
+     * Freeze the effect's timeline: it neither advances nor draws until `resume`,
+     * so a perpetual `tempo.loop` effect in a backgrounded view costs no battery
+     * (the analog of the web conductor parking its RAF). Idempotent.
+     */
+    fun pause() {
+        view.queueEvent { view.requestPause(this) }
+    }
+
+    /**
+     * Resume a paused effect: shift its start forward by the paused span so the
+     * clock (and a loop's seam) continues exactly where it froze — drift-free.
+     */
+    fun resume() {
+        view.queueEvent { view.requestResume(this) }
+    }
 }
 
 class DopamineView @JvmOverloads constructor(
@@ -80,12 +97,71 @@ class DopamineView @JvmOverloads constructor(
     ) {
         /** Set by the play handle's `stop()`; the next frame disposes. */
         var stopRequested: Boolean = false
+        /**
+         * Wall-clock nanos the effect was paused, or 0 while running. A paused
+         * effect's timeline is frozen — `onDrawFrame` neither advances nor draws
+         * it — and `resume` shifts `startedAtNanos` forward by the paused span, so
+         * the clock (and a loop's seam) continues drift-free.
+         */
+        var pausedAtNanos: Long = 0L
+        /** True when paused automatically because the view became invisible. */
+        var autoPaused: Boolean = false
     }
     private val active = ArrayList<Active>()
 
     /** GL-thread side of `PlayHandle.stop()`. */
     internal fun requestStop(handle: PlayHandle) {
         (handle.active as? Active)?.stopRequested = true
+    }
+
+    /** GL-thread side of `PlayHandle.pause()`. */
+    internal fun requestPause(handle: PlayHandle) {
+        val fx = handle.active as? Active ?: return
+        if (fx.pausedAtNanos == 0L) fx.pausedAtNanos = System.nanoTime()
+        fx.autoPaused = false
+    }
+
+    /** GL-thread side of `PlayHandle.resume()`. */
+    internal fun requestResume(handle: PlayHandle) {
+        resume(handle.active as? Active ?: return)
+        // A resumed effect needs the loop spinning again.
+        if (active.any { it.pausedAtNanos == 0L }) {
+            renderMode = RENDERMODE_CONTINUOUSLY
+            requestRender()
+        }
+    }
+
+    /** Shift an effect's start forward by its paused span — drift-free resume. */
+    private fun resume(fx: Active) {
+        if (fx.pausedAtNanos == 0L) return
+        fx.startedAtNanos += System.nanoTime() - fx.pausedAtNanos
+        fx.pausedAtNanos = 0L
+        fx.autoPaused = false
+    }
+
+    /**
+     * Visibility economics: when the overlay leaves the screen (host backgrounded,
+     * navigated away), AUTO-PAUSE every running effect so a perpetual `tempo.loop`
+     * spends no battery; auto-resume (drift-free) when it returns. Only the
+     * auto-paused effects resume — a manual `pause()` survives a visibility cycle.
+     * Mirrors the web conductor's hidden-tab auto-pause.
+     */
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        val visible = visibility == VISIBLE
+        queueEvent {
+            if (visible) {
+                var any = false
+                for (fx in active) if (fx.pausedAtNanos != 0L && fx.autoPaused) { resume(fx); any = true }
+                if (any && active.any { it.pausedAtNanos == 0L }) {
+                    renderMode = RENDERMODE_CONTINUOUSLY
+                    requestRender()
+                }
+            } else {
+                val now = System.nanoTime()
+                for (fx in active) if (fx.pausedAtNanos == 0L) { fx.pausedAtNanos = now; fx.autoPaused = true }
+            }
+        }
     }
 
     /** Slow-motion time scale (1.0 = real time); 0.25 plays at quarter speed. */
@@ -179,12 +255,18 @@ class DopamineView @JvmOverloads constructor(
             val it = active.iterator()
             while (it.hasNext()) {
                 val fx = it.next()
-                val elapsedMs = (now - fx.startedAtNanos) / 1_000_000.0 * timeScale
-                fx.instance.renderAt(minOf(elapsedMs, fx.durationMs))
                 if (fx.stopRequested) {
                     fx.instance.dispose()
                     it.remove()
-                } else if (elapsedMs >= fx.durationMs) {
+                    continue
+                }
+                // A paused effect (manual or the invisible-view auto-pause) holds:
+                // its clock doesn't advance and it isn't redrawn. The last frame
+                // stays on screen until resume (or stop / teardown).
+                if (fx.pausedAtNanos != 0L) continue
+                val elapsedMs = (now - fx.startedAtNanos) / 1_000_000.0 * timeScale
+                fx.instance.renderAt(minOf(elapsedMs, fx.durationMs))
+                if (elapsedMs >= fx.durationMs) {
                     if (fx.loops) {
                         // CONTINUOUS effect: re-arm at the seam instead of teardown.
                         // The .dope loop contract guarantees t == durationMs renders
@@ -199,7 +281,12 @@ class DopamineView @JvmOverloads constructor(
                     }
                 }
             }
-            if (active.isEmpty()) renderMode = RENDERMODE_WHEN_DIRTY
+            // Park the render loop when there's nothing to advance — no live
+            // effects, or every live effect is paused (no idle GPU churn). resume /
+            // a fresh play / the visibility listener re-arms CONTINUOUS mode.
+            if (active.isEmpty() || active.all { it.pausedAtNanos != 0L }) {
+                renderMode = RENDERMODE_WHEN_DIRTY
+            }
         }
     }
 }
