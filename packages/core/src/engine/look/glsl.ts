@@ -155,3 +155,29 @@ float benday(vec2 frag, float cell, float v, float ang){
   return 1.0 - smoothstep(r - aa, r + aa, d);
 }
 `;
+
+/**
+ * PREMULTIPLIED LIGHT OUT — the portable compositing emit.
+ *
+ * The default web overlay leans on CSS `mix-blend-mode: screen` to cast the
+ * effect's light onto the page, which is rich on a dark UI but mathematically
+ * invisible on white (`screen(x, 1) == 1`). The native stacks (iOS/Android) have
+ * no per-surface screen blend, so they instead emit PREMULTIPLIED light — `rgb`
+ * unchanged, `alpha = its own brightness` — and let the OS composite it
+ * source-over: dark regions go transparent (the host shows through), bright
+ * light reads as cast colour, and crucially it stays visible on ANY backdrop,
+ * white included. This is byte-identical to Android's `Look.kt` `dopLightOut`.
+ *
+ * The web runtime reuses this for its "backdrop"-aware compositing path: when a
+ * caller passes a known surface colour, the light pass swaps its opaque
+ * `vec4(col, 1.0)` emit for `dopLightOut(col)` and composites source-over
+ * (`mix-blend-mode: normal`) instead of screen — see `pass-common.ts`'s
+ * `compositeLightFragment`.
+ */
+export const GLSL_LIGHT_OUT = /* glsl */ `
+vec4 dopLightOut(vec3 col){
+  col = max(col, 0.0);
+  float a = clamp(max(max(col.r, col.g), col.b), 0.0, 1.0);
+  return vec4(col, a);
+}
+`;

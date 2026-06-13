@@ -64,6 +64,14 @@ export interface EffectContext {
   readonly targetSize?: { width: number; height: number };
   /** Device-pixel ratio to render at (already capped by the runtime). */
   readonly dpr: number;
+  /**
+   * Present when the host composites against a known backdrop colour rather than
+   * the default `mix-blend-mode: screen`. The runners then emit PREMULTIPLIED
+   * light (alpha = brightness) on the light pass so the effect stays visible on
+   * any surface — white included — composited source-over. Absent ⇒ the classic
+   * screen/opaque path (byte-identical to before).
+   */
+  readonly composite?: { premultiplied: boolean };
 }
 
 /** A live, drawable effect. Pure function of time: same `elapsedMs` → same frame. */

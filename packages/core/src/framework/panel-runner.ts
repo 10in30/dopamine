@@ -36,6 +36,7 @@ import {
   bindScalars,
   bindShadowGeometry,
   bindTarget,
+  compositeLightFragment,
   computeScalarBinds,
 } from "./pass-common.js";
 
@@ -125,6 +126,11 @@ export function createPanelInstance<P extends PassParams>(
   const dpr = ctx.dpr;
   const sampler = config.panelSampler ?? "uPanel";
   const allUniforms = [...new Set([...STANDARD, sampler, ...config.uniforms])];
+  // Backdrop-aware mode: the light pass emits premultiplied light (source-over,
+  // visible on any surface); the shadow pass keeps the opaque multiply fragment.
+  const lightFragment = ctx.composite?.premultiplied
+    ? compositeLightFragment(config.fragment)
+    : config.fragment;
 
   // The numeric params that auto-bind to a uniform.
   const scalarBinds = computeScalarBinds(params, config.bindings ?? {});
@@ -157,7 +163,7 @@ export function createPanelInstance<P extends PassParams>(
   ): void => {
     const { gl } = glc;
     const c = glc.canvas;
-    const { u } = beginProgram(glc, config.vertex, config.fragment, allUniforms);
+    const { u } = beginProgram(glc, config.vertex, isShadow ? config.fragment : lightFragment, allUniforms);
 
     // Upload the freshly-drawn panel (changes every frame).
     gl.activeTexture(gl.TEXTURE0);

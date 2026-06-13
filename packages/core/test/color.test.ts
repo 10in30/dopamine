@@ -1,6 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { buildPalette, oklchToLinearSrgb, wrapHue, GOLDEN_ANGLE_DEG } from "../src/engine/color.js";
+import { buildPalette, oklchToLinearSrgb, parseBackdrop, wrapHue, GOLDEN_ANGLE_DEG } from "../src/engine/color.js";
 import { mulberry32 } from "../src/engine/seed.js";
+
+describe("parseBackdrop", () => {
+  it("parses #rrggbb and computes luminance (0 black .. 1 white)", () => {
+    expect(parseBackdrop("#000000")).toEqual({ rgb: { r: 0, g: 0, b: 0 }, luminance: 0 });
+    const white = parseBackdrop("#ffffff")!;
+    expect(white.rgb).toEqual({ r: 1, g: 1, b: 1 });
+    expect(white.luminance).toBeCloseTo(1);
+  });
+
+  it("parses #rgb shorthand and is case-insensitive", () => {
+    const a = parseBackdrop("#FFF")!;
+    expect(a.rgb).toEqual({ r: 1, g: 1, b: 1 });
+  });
+
+  it("parses rgb()/rgba() (comma- or space-separated, incl. %)", () => {
+    expect(parseBackdrop("rgb(255, 255, 255)")!.luminance).toBeCloseTo(1);
+    expect(parseBackdrop("rgb(20 24 37)")!.rgb.r).toBeCloseTo(20 / 255);
+    expect(parseBackdrop("rgba(0,0,0,0.5)")!.luminance).toBe(0);
+    expect(parseBackdrop("rgb(100% 0% 0%)")!.rgb).toEqual({ r: 1, g: 0, b: 0 });
+  });
+
+  it("ranks a light surface above a dark one (the shadow-strength knob)", () => {
+    expect(parseBackdrop("#ffffff")!.luminance).toBeGreaterThan(parseBackdrop("#070910")!.luminance);
+  });
+
+  it("returns null for an unparseable colour (no DOM fallback available)", () => {
+    expect(parseBackdrop("not-a-color")).toBeNull();
+  });
+});
 
 describe("wrapHue", () => {
   it("wraps into [0, 360)", () => {

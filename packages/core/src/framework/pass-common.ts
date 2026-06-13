@@ -15,8 +15,42 @@
  */
 
 import { shadowGeometry } from "../engine/shadow.js";
+import { GLSL_LIGHT_OUT } from "../engine/look/glsl.js";
 import type { RGB } from "../engine/color.js";
 import type { CachedProgram, GLContext } from "../engine/context.js";
+
+// Cache the (idempotent) source transform by input string so repeated fires of
+// the same effect don't re-run the regex; the GLContext program cache keys on
+// the transformed source, so a backdrop-mode fire links its own variant once.
+const compositeFragCache = new Map<string, string>();
+
+/**
+ * Rewrite a light fragment for the BACKDROP-aware (premultiplied source-over)
+ * path: swap the opaque `fragColor = vec4(col, 1.0)` / `vec4(max(col,0.0),1.0)`
+ * emit for `fragColor = dopLightOut(col)` (alpha = brightness) and inject the
+ * `dopLightOut` helper. This is the same emit swap the Android build applies
+ * (`tools/dopamine/src/android-shader.mjs`), so the web backdrop path and the
+ * native overlays share one premultiplied-light convention.
+ *
+ * The replace is global on purpose: a hybrid's shader has a SHADOW branch with
+ * its own opaque emit, but the light pass runs with `uShadow == 0` so that
+ * branch is dead code here — rewriting it is harmless, and it guarantees the
+ * LIVE light-path emit (wherever it sits in the source) is the premultiplied
+ * one. The shadow CONTEXT keeps the original, untouched fragment.
+ */
+export function compositeLightFragment(fragment: string): string {
+  const cached = compositeFragCache.get(fragment);
+  if (cached) return cached;
+  let out = fragment
+    .replace(/fragColor\s*=\s*vec4\(\s*max\(\s*(\w+)\s*,\s*0\.0\s*\)\s*,\s*1\.0\s*\)\s*;/g, "fragColor = dopLightOut($1);")
+    .replace(/fragColor\s*=\s*vec4\(\s*(\w+)\s*,\s*1\.0\s*\)\s*;/g, "fragColor = dopLightOut($1);");
+  // Only inject the helper if we actually swapped an emit (an effect that
+  // already emits premultiplied light — e.g. a `vec4(col, brightness)` — is
+  // left exactly as-is and needs no helper).
+  if (out !== fragment) out = out.replace(/\nvoid main\s*\(/, "\n" + GLSL_LIGHT_OUT + "\nvoid main(");
+  compositeFragCache.set(fragment, out);
+  return out;
+}
 
 /** A resolved uniform-location map (the output of `CachedProgram.uniforms`). */
 export type UniformMap = Record<string, WebGLUniformLocation | null>;

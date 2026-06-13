@@ -16,10 +16,12 @@
 import {
   play as conductorPlay,
   prepare as conductorPrepare,
+  type CompositeMode,
   type PlayHandle,
 } from "./framework/conductor.js";
 import { getEffect } from "./framework/registry.js";
 import type { Anchor, FeelingInput } from "./framework/effect.js";
+import { parseBackdrop } from "./engine/color.js";
 import { randomSeed } from "./engine/seed.js";
 import { isBrowser } from "./framework/runtime.js";
 import type { DopamineSuccessOptions } from "./types.js";
@@ -137,6 +139,7 @@ function resolveRequest(
   anchor: Anchor;
   targetSize: { width: number; height: number };
   feeling: FeelingInput;
+  composite: CompositeMode | null;
 } | null {
   const factory = getEffect(effect);
   if (!factory) throw new Error(`dopamine: unknown effect "${effect}"`);
@@ -161,7 +164,12 @@ function resolveRequest(
   // own rect, so the centrepiece matches whatever element was fired on; an explicit
   // `targetSize` lets a caller match a child element under a full-page overlay.
   const targetSize = options.targetSize ?? { width: rect.width, height: rect.height };
-  return { factory, target, anchor, targetSize, feeling };
+  // A `backdrop` colour opts into surface-aware compositing (visible on light /
+  // arbitrary surfaces); we keep only its luminance — the colour itself isn't a
+  // shader input (the light layer composites source-over against the live page).
+  const bd = options.backdrop ? parseBackdrop(options.backdrop) : null;
+  const composite: CompositeMode | null = bd ? { luminance: bd.luminance } : null;
+  return { factory, target, anchor, targetSize, feeling, composite };
 }
 
 /**
@@ -186,6 +194,7 @@ export function play(effect: string, options: DopamineSuccessOptions = {}): Play
     anchor: req.anchor,
     targetSize: req.targetSize,
     feeling: req.feeling,
+    composite: req.composite,
   });
 }
 
@@ -213,5 +222,6 @@ export function prepare(effect: string, options: DopamineSuccessOptions = {}): P
     anchor: req.anchor,
     targetSize: req.targetSize,
     feeling: req.feeling,
+    composite: req.composite,
   });
 }
