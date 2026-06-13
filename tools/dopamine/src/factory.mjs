@@ -107,8 +107,18 @@ const genHeader = (slug) =>
  * `buildFrameArraysSpec` wiring) emits the closure that calls the generated
  * renderer and binds its bundle through `binding.arrays`.
  */
-export function emitSwiftFactory(slug, frameArrays = null, panel = false) {
+export function emitSwiftFactory(slug, frameArrays = null, panelMode = "none") {
   const Name = pascal(slug);
+  // panelMode: "none" (pure pass), "panel" (panel-kind whole-content panel at
+  // texture(0) — the DopePanelPassConfig runner), or "sprite" (a PASS hybrid
+  // with a sprite panel at an arbitrary unit + optional baked-SDF aux — the
+  // DopeSpritePanelPassConfig runner: solarbloom's motes panel + ✓ SDF).
+  const hasPanel = panelMode === "panel" || panelMode === "sprite";
+  const ConfigName = panelMode === "panel"
+    ? "DopePanelPassConfig"
+    : panelMode === "sprite"
+      ? "DopeSpritePanelPassConfig"
+      : "DopePassConfig";
   let frameArraysArg = "";
   if (frameArrays) {
     const { entryName, params, arrays } = frameArrays;
@@ -134,26 +144,30 @@ ${buffers}
                 ]
             }`;
   }
-  const configType = panel ? `DopePanelPassConfig<${Name}Uniforms>` : `DopePassConfig<${Name}Uniforms>`;
-  const panelArg = panel
+  const configType = `${ConfigName}<${Name}Uniforms>`;
+  const panelArg = hasPanel
     ? `,
             // The hand-written per-effect panel draw (the panel-draw seam:
             // effects/${slug}/swift/${Name}Panel.swift) — the ONLY per-effect
             // Swift; the backbone redraws + uploads it every frame.
             drawPanel: draw${Name}Panel`
     : "";
-  const handNote = panel
-    ? `// shell. The ONLY hand-written Swift is the Core Graphics panel draw
+  const panelNote = panelMode === "sprite"
+    ? `// shell. The ONLY hand-written Swift is the Core Graphics SPRITE-PANEL draw
+// (${Name}Panel.swift — a PASS hybrid: the panel binds at its render.panel unit
+// ALONGSIDE the baked-SDF aux; panel geometry is code by design); everything else`
+    : panelMode === "panel"
+      ? `// shell. The ONLY hand-written Swift is the Core Graphics panel draw
 // (${Name}Panel.swift — panel geometry is code by design); everything that isn't the`
-    : `// shell. This effect ships NO hand-written Swift: everything that isn't the`;
+      : `// shell. This effect ships NO hand-written Swift: everything that isn't the`;
   return `${genHeader(slug)}
 //
 // ${Name} as a Dopamine effect on the Swift backbone — the DATA-DRIVEN factory
-${handNote}
+${panelNote}
 // shader lives in ${slug}.dope.json — the mood→params mapping + OKLCH palette
 // (the loader), the per-frame logic (\`tempo.frame\`), \`render.shadowHeightFrac\`,
 // \`render.consts\`, \`render.config\`, any \`tempo.loop\` contract and the uniform
-// \`binding\` contract. The generic \`${panel ? "DopePanelPassConfig" : "DopePassConfig"}\` interprets that data through
+// \`binding\` contract. The generic \`${ConfigName}\` interprets that data through
 // the shared Metal pass runner. (The MSL is transpiled from the canonical web
 // GLSL by the toolchain; \`${Name}Uniforms\` + \`pack${Name}Uniforms\` are generated
 // from the \`.dope\` binding contract.)
@@ -183,13 +197,13 @@ public final class ${Name}: EffectFactory {
 
 // MARK: - Metal drawable side (macOS/iOS only).
 
-${panel ? "#if canImport(Metal) && canImport(QuartzCore)" : "#if canImport(Metal)"}
+${hasPanel ? "#if canImport(Metal) && canImport(QuartzCore)" : "#if canImport(Metal)"}
 public extension ${Name} {
     /// The DATA-DRIVEN pass config: \`tempo.frame\`, \`render.shadowHeightFrac\`
     /// and \`render.config\` all come from the bundled \`.dope\`, evaluated by the
     /// shared backbone.
     static func passConfig() throws -> ${configType} {
-        try ${panel ? "DopePanelPassConfig" : "DopePassConfig"}(
+        try ${ConfigName}(
             doc: DopeResource.loadDope("${slug}.dope", bundle: .module),
             vertexFunction: "${slug}_vertex",
             fragmentFunction: "${slug}_fragment",
@@ -238,16 +252,31 @@ public enum ${Name}Resources {
  * renderer and binds its bundle through `binding.arrays` (by NAME — GL sets
  * uniform arrays like the web does).
  */
-export function emitKotlinFactory(slug, namespace, frameArrays = null, panel = false) {
+export function emitKotlinFactory(slug, namespace, frameArrays = null, panelMode = "none") {
   const Name = pascal(slug);
   const SLUG = slug.toUpperCase();
+  // panelMode: "none" (pure pass), "panel" (panel-kind whole-content panel via
+  // the Canvas panel runner — dopePanelConfig/createPanelInstance), or "sprite"
+  // (a PASS hybrid with a sprite panel at an arbitrary unit + baked-SDF aux —
+  // the PASS runner's panel seam: dopePassConfig(..., draw=) / createPassInstance).
+  const isPanelKind = panelMode === "panel";
+  const isSprite = panelMode === "sprite";
   let configDecl = `private val config: PassConfig = dopePassConfig(doc, ${SLUG}_VERTEX_SRC, ${SLUG}_FRAGMENT_SRC, plan)`;
-  if (panel) {
+  if (isPanelKind) {
     configDecl = `private val config: PanelConfig = dopePanelConfig(
         doc, ${SLUG}_VERTEX_SRC, ${SLUG}_FRAGMENT_SRC, plan,
         // The hand-written per-effect panel draw (the panel-draw seam:
         // effects/${slug}/android/${Name}Panel.kt) — the ONLY per-effect
         // Kotlin; the backbone redraws + uploads it every frame.
+        draw = ::draw${Name}Panel,
+    )`;
+  } else if (isSprite) {
+    configDecl = `private val config: PassConfig = dopePassConfig(
+        doc, ${SLUG}_VERTEX_SRC, ${SLUG}_FRAGMENT_SRC, plan,
+        // The hand-written per-effect SPRITE-PANEL draw (the panel-draw seam:
+        // effects/${slug}/android/${Name}Panel.kt) — the ONLY per-effect Kotlin;
+        // a PASS hybrid whose panel binds at its render.panel unit ALONGSIDE the
+        // baked-SDF aux. The backbone redraws + uploads it every frame.
         draw = ::draw${Name}Panel,
     )`;
   }
@@ -280,18 +309,25 @@ ${uniformArrays}
         },
     )`;
   }
+  const handNote = isSprite
+    ? `The ONLY hand-written Kotlin is the Canvas SPRITE-PANEL
+// draw (${Name}Panel.kt — a PASS hybrid whose panel binds at its render.panel
+// unit ALONGSIDE the baked-SDF aux; panel geometry is code by design); else`
+    : isPanelKind
+      ? `The ONLY hand-written Kotlin is the Canvas panel draw
+// (${Name}Panel.kt — panel geometry is code by design); everything else that`
+      : "This effect ships NO hand-written Kotlin: everything that";
+  const configFn = isPanelKind ? "dopePanelConfig" : "dopePassConfig";
+  const runnerKind = isPanelKind ? "panel" : "pass";
   return `${genHeader(slug)}
 //
 // ${Name} as a Dopamine effect on the Android backbone — the DATA-DRIVEN
-// registration shim. ${panel
-    ? `The ONLY hand-written Kotlin is the Canvas panel draw
-// (${Name}Panel.kt — panel geometry is code by design); everything else that`
-    : "This effect ships NO hand-written Kotlin: everything that"}
+// registration shim. ${handNote}
 // isn't the GLSL lives in ${slug}.dope.json — the mood→params mapping + palette
 // (the loader), the per-frame logic (\`tempo.frame\`), \`render.shadowHeightFrac\`,
 // \`render.consts\`, \`render.config\`, \`tempo.reducedMotion\`, any \`tempo.loop\`
-// contract and the uniform \`binding\` contract. \`dopePassPlan\` + \`${panel ? "dopePanelConfig" : "dopePassConfig"}\`
-// interpret that data through the generic ${panel ? "panel" : "pass"} runner. (The shader Kotlin is
+// contract and the uniform \`binding\` contract. \`dopePassPlan\` + \`${configFn}\`
+// interpret that data through the generic ${runnerKind} runner. (The shader Kotlin is
 // toolchain-generated from the same canonical web GLSL as the MSL.) The \`.dope\`
 // bytes are the SAME as the web's (byte-parity proven by the 192-case grid).
 
@@ -309,9 +345,9 @@ import ai.dopamine.core.resolveDopeParams
 import ai.dopamine.gl.DrawableEffect
 import ai.dopamine.gl.EffectContext
 import ai.dopamine.gl.EffectInstance
-import ai.dopamine.gl.${panel ? "PanelConfig" : "PassConfig"}
-${uniformArrayImport}import ai.dopamine.gl.${panel ? "createPanelInstance" : "createPassInstance"}
-import ai.dopamine.gl.${panel ? "dopePanelConfig" : "dopePassConfig"}
+import ai.dopamine.gl.${isPanelKind ? "PanelConfig" : "PassConfig"}
+${uniformArrayImport}import ai.dopamine.gl.${isPanelKind ? "createPanelInstance" : "createPassInstance"}
+import ai.dopamine.gl.${configFn}
 import android.content.Context
 
 class ${Name}(context: Context) : DrawableEffect {
@@ -335,7 +371,7 @@ class ${Name}(context: Context) : DrawableEffect {
         resolveDopeParams(doc, feeling, consts = plan.consts, scatterKey = scatterKey)
 
     override fun create(params: Map<String, DopeValue>, ctx: EffectContext): EffectInstance =
-        ${panel ? "createPanelInstance" : "createPassInstance"}(config, params, ctx)
+        ${isPanelKind ? "createPanelInstance" : "createPassInstance"}(config, params, ctx)
 
     override val reducedMotionPeakMs: Double? = plan.reducedMotionPeakMs
     override val reducedMotionHoldMs: Double? = plan.reducedMotionHoldMs

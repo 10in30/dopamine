@@ -127,17 +127,28 @@ export async function generateSwiftPackage({ root, eff, outDir, fonts = [], logi
   }
   if (!hand.includes(`${Name}.swift`)) {
     assertFactoryGeneratable(doc, slug, "swift");
-    const panel = !!doc.render?.panel;
-    if (panel && !hand.includes(`${Name}Panel.swift`)) {
+    // The panel MODE drives which generic config the factory wraps:
+    //   - "panel"  — a panel-KIND effect (kind:"panel"): the whole-content
+    //     Canvas panel runner (DopePanelPassConfig), panel pinned at texture(0).
+    //   - "sprite" — a PASS hybrid with a dynamic sprite panel at an ARBITRARY
+    //     unit ALONGSIDE the baked-SDF aux (DopeSpritePanelPassConfig:
+    //     solarbloom's motes panel at texture(3) + the ✓ SDF at texture(1)).
+    //   - "none"   — a pure pass effect (DopePassConfig).
+    const panelMode = !doc.render?.panel ? "none" : doc.kind === "panel" ? "panel" : "sprite";
+    if (panelMode !== "none" && !hand.includes(`${Name}Panel.swift`)) {
       throw new Error(
         `dopamine: effects/${slug} declares render.panel but has no swift/${Name}Panel.swift — ` +
           `the generated factory wires the hand-written draw${Name}Panel (the panel-draw seam).`,
       );
     }
-    if (panel && (doc.render.panel.texture ?? 0) !== 0) {
-      throw new Error(`dopamine: effects/${slug} render.panel.texture must be 0 (the Metal panel slot)`);
+    // A panel-KIND effect's panel MUST live at texture(0) (the Metal panel slot
+    // the panel runner binds); a SPRITE panel binds at an arbitrary unit (the
+    // generalized pass runner reads render.panel.texture), so it has no such
+    // constraint — texture(0) stays free for any aux the pass shader declares.
+    if (panelMode === "panel" && (doc.render.panel.texture ?? 0) !== 0) {
+      throw new Error(`dopamine: effects/${slug} render.panel.texture must be 0 for a panel-kind effect (the Metal panel slot)`);
     }
-    out.push({ path: join(srcRel, `${Name}.swift`), content: emitSwiftFactory(slug, buildFrameArraysSpec(doc, slug, logic), panel) });
+    out.push({ path: join(srcRel, `${Name}.swift`), content: emitSwiftFactory(slug, buildFrameArraysSpec(doc, slug, logic), panelMode) });
     if (!hand.includes(`${Name}Bundle.swift`)) {
       out.push({ path: join(srcRel, `${Name}Bundle.swift`), content: emitSwiftBundle(slug) });
     }
