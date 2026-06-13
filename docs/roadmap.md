@@ -78,6 +78,61 @@ open:
   piece; datafy its tempo/config alongside, but don't force the lettering into
   data.
 
+## Transpiler gates: exercise capabilities, not effects
+
+The transpiler gates today pin each effect's **whole transpiled output**
+byte-for-byte: `shader-msl.test.mjs` snapshots `golden-msl/<slug>.metal` +
+`golden-android/<Name>Shader.kt` for aurora/ripple/inkstroke/halo/fail/
+lightning/heartburst/comic, and `logic.test.mjs` snapshots
+`golden-logic/LightningRenderer.{swift,kt}` (+ the parity-test shells). The
+golden lives in the wrong place: it is keyed to a specific effect's evolving
+look, so **retuning aurora's shader — a look change with zero transpiler
+impact — still forces a `golden-msl/aurora.metal` regen**, and the reviewable
+diff is dominated by look noise instead of transpiler behaviour. The snapshots
+also overlap heavily (every `vecN→floatN`, every 2-arg `atan→atan2` is
+re-asserted in eight files), and a genuine transpiler regression can hide
+inside a large effect diff.
+
+Move the gate to the transpiler's **capabilities**, each pinned by a minimal
+synthetic fixture that exercises exactly one rule and changes only when that
+rule's contract changes — independent of any effect's look. This generalizes
+the pattern `logic.test.mjs` already uses for its `REJECTS` table and the
+"JS numeric semantics" test (small inline sources, not lightning's full
+output). Concretely:
+
+- **A GLSL→MSL capability suite.** One tiny fragment per transpiler rule, each
+  asserting the focused output token(s): `vecN→floatN`, `matN(scalars)`→
+  column-grouped `floatNxN`, 2-arg `atan→atan2`, `radians()` inlining, the
+  per-name-uniform → `constant <Name>Uniforms &u` rewrite **and the
+  `u`-injection fixpoint** (a uniform-reading helper deep in the call graph; a
+  GLSL param named `u` renamed `uu`), `paletteMix→dop_paletteMix` + the three
+  stops, `out T`→`thread T &`, the texture-sampler rewrite (`texture(uX,uv)`→
+  `<name>.sample(texSampler,uv)` + the `needsTex` fixpoint), the panel sampler
+  at `texture(0)` + the y-up `vUv` reconstruction (today only covered via
+  heartburst/comic), and the `binding.arrays` buffer-array seam (`uniform vecN
+  uX[…]`→`constant floatN *` at the declared index). The existing throw-path
+  probes (the `uCenter`→`uOrigin` unbindable-uniform guard; the
+  declared-array-not-flagged case; the array-contract size/missing-entry
+  throws) already follow this shape and stay.
+- **An Android-emit capability suite.** The few rules that differ from the web
+  GLSL — `${GLSL_*}` look-chunk refs kept verbatim, consts resolved, the
+  `+ ${GLSL_LIGHT_OUT}` / `dopLightOut(col)` premultiplied emit — pinned on a
+  synthetic shader, not on eight `<Name>Shader.kt`.
+- **logic.mjs:** keep the `REJECTS` table + numeric-semantics tests; add
+  positive capability fixtures (canonical `for`, `Math.*` whitelist, typed-array
+  WRITES, the bundle-return contract, the generated parity-shell shape) so the
+  one remaining effect-keyed golden (`LightningRenderer.*`) can retire.
+
+**What still guards real effects after the move:** byte-identity to a
+hand-port is no longer the contract (those hand-ports are long deleted), so
+nothing is lost by dropping the per-effect snapshots. Each effect's transpiled
+output is still **compiled and run**: the macOS Metal compile + the
+`scripts/shader-goldens.mjs` pixel gate (web vs Android-derived GLSL, RGB Δ0)
+for shaders, and the committed web-dumped parity fixtures replayed through the
+generated Swift/Kotlin (`swift test` / pure-JVM `:dopamine-core:test`) for
+logic. Those are the behavioural oracles; the capability suite replaces the
+byte-snapshot's *transpiler-correctness* role without coupling it to a look.
+
 ## Shared capability modules
 
 Lift the strongest mechanism of each effect into shared, composable modules,
