@@ -1,37 +1,38 @@
-// Solarbloom as a Dopamine effect on the Android backbone — mirror of the web
-// `effect-solarbloom/src/index.ts` + swift's `Solarbloom.swift`.
+// Solarbloom as a Dopamine effect on the Android backbone — the DATA-DRIVEN
+// registration shim (mirror of the web `effect-solarbloom/src/index.ts`).
 //
-// Per the generalization mandate, the ONLY per-effect code is {the GLSL shader +
-// the bespoke tempo + a tiny config naming its uniforms / bindings / shadow
-// height / per-frame timing}. Everything else — the `.dope` mapping, the OKLCH
-// golden-angle palette, the registry, the fullscreen-pass runner, the standard
-// uniforms, the shadow geometry — is shared backbone. The numeric/palette bag
-// comes verbatim from the bundled `.dope` (the SAME bytes as the web), resolved
-// by the shared loader (byte-parity proven by the 192-case grid).
-//
-// PURE-SHADER (not a hybrid): no Canvas panel, so it uses `createPassInstance` +
-// `PassConfig` (not the panel runner). The checkmark renders via the shader's
-// ANALYTIC two-segment SDF branch: the GL backbone has no aux-texture support, so
-// we keep uSdfOn / uCheckTexOn at 0 (the samplers uSdfTex / uCheckTex are then
-// never sampled, so leaving them unbound is fine).
+// Solarbloom is a PASS HYBRID on web (a procedural bloom + checkmark + a Canvas2D
+// mote SPRITE PANEL). On Android the GL backbone has no Canvas sprite-panel/aux
+// support for a PASS effect, so the SHADER stays a hand-written per-platform
+// source that renders the motes PROCEDURALLY (the per-pixel mote loop) and the
+// checkmark via the ANALYTIC two-segment SDF branch (uSdfOn / uCheckTexOn pinned
+// OFF — the fail precedent). But everything around that shader is now DATA:
+// `dopePassPlan` + `dopePassConfig` derive the uniforms / bindings / per-frame
+// logic (`tempo.frame`) / per-pass uniforms (`render.pass`) / shadow height /
+// reduced motion / MAX_MOTES const straight from solarbloom.dope.json — so there
+// is no hand-written SolarbloomTempo.kt and no hand frame()/passUniforms here.
+// The numeric/palette bag is the SAME bytes as the web (byte-parity proven by
+// the 192-case grid). The whimsy-picked check GLYPH band stays a code-shaped
+// compose (no rng, no parity effect).
 
 package ai.dopamine.effect.solarbloom
 
 import ai.dopamine.core.DopeDoc
+import ai.dopamine.core.DopePassPlan
 import ai.dopamine.core.DopeResolveInput
 import ai.dopamine.core.DopeValue
 import ai.dopamine.core.EffectRegistry
-import ai.dopamine.core.envelope
-import ai.dopamine.core.number
+import ai.dopamine.core.dopePassPlan
 import ai.dopamine.core.parseDope
+import ai.dopamine.core.pickBand
 import ai.dopamine.core.resolveDopeParams
 import ai.dopamine.gl.DrawableEffect
 import ai.dopamine.gl.EffectContext
 import ai.dopamine.gl.EffectInstance
 import ai.dopamine.gl.PassConfig
 import ai.dopamine.gl.createPassInstance
+import ai.dopamine.gl.dopePassConfig
 import android.content.Context
-import kotlin.math.min
 
 class Solarbloom(context: Context) : DrawableEffect {
     override val name: String = "solarbloom"
@@ -42,16 +43,35 @@ class Solarbloom(context: Context) : DrawableEffect {
         context.assets.open("solarbloom.dope.json").bufferedReader(Charsets.UTF_8).use { it.readText() },
     )
 
+    // The whole factory (resolve consts/scatter, uniforms/bindings, the per-frame
+    // logic, the per-pass uniforms, shadow height, reduced motion) is data:
+    // solarbloom.dope.json interpreted by the core backbone.
+    private val plan: DopePassPlan = dopePassPlan(doc)
+    private val scatterKey: String =
+        plan.scatterKey ?: throw IllegalStateException("dope: ${doc.id} has no binding.scatterKey")
+
+    // The whimsy→check-glyph fallback BANDS live in the `.dope` (content.glyphBands);
+    // composed onto the resolved bag as metadata (the canonical icon is the baked SDF).
+    private val glyphBands: List<Map<String, String>> =
+        doc.raw["content"]?.get("glyphBands")?.asArray?.mapNotNull { b ->
+            val fam = b["family"]?.asString
+            val ch = b["char"]?.asString
+            if (fam != null && ch != null) mapOf("family" to fam, "char" to ch) else null
+        } ?: listOf(mapOf("family" to "Dopamine Check Symbols", "char" to "✓"))
+
+    private val config: PassConfig = dopePassConfig(doc, SOLARBLOOM_VERTEX_SRC, SOLARBLOOM_FRAGMENT_SRC, plan)
+
     override fun resolve(feeling: DopeResolveInput): Map<String, DopeValue> =
-        // `MAX_MOTES` is the only const (= the GLSL `#define MAX_MOTES 80`);
-        // `moteSeed` is the scatter key — both byte-identical to the web call.
-        resolveDopeParams(doc, feeling, consts = mapOf("MAX_MOTES" to 80.0), scatterKey = "moteSeed")
+        resolveDopeParams(doc, feeling, consts = plan.consts, scatterKey = scatterKey)
+
+    /** The whimsy-picked check glyph (composed metadata for a host glyph-fallback). */
+    fun pickCheckGlyph(whimsy: Double): Map<String, String> = pickBand(glyphBands, whimsy)
 
     override fun create(params: Map<String, DopeValue>, ctx: EffectContext): EffectInstance =
-        createPassInstance(CONFIG, params, ctx)
+        createPassInstance(config, params, ctx)
 
-    override val reducedMotionPeakMs: Double = 260.0
-    override val reducedMotionHoldMs: Double = 360.0
+    override val reducedMotionPeakMs: Double? = plan.reducedMotionPeakMs
+    override val reducedMotionHoldMs: Double? = plan.reducedMotionHoldMs
 
     companion object {
         /** Construct + register the effect (needs a Context for the `.dope` asset). */
@@ -60,46 +80,5 @@ class Solarbloom(context: Context) : DrawableEffect {
             EffectRegistry.register(fx)
             return fx
         }
-
-        /** Half-size of the checkmark glyph box as a fraction of min viewport dim. */
-        private const val CHECK_BOX_FRAC: Double = 0.16
-
-        private val CONFIG = PassConfig(
-            vertex = SOLARBLOOM_VERTEX_SRC,
-            fragment = SOLARBLOOM_FRAGMENT_SRC,
-            uniforms = listOf(
-                "uCheck", "uExposure", "uBloomRadius", "uTurbulence", "uMoteSpeed",
-                "uMoteCount", "uMoteSeed", "uIridescence", "uDispersion",
-                "uCheckTex", "uCheckTexOn", "uCheckBox",
-                "uSdfTex", "uSdfOn", "uSdfRangePx", "uSdfStrokePx",
-            ),
-            usesOrigin = true,
-            // overshoot feeds the envelope, not a uniform; moteSeed drives uMoteSeed.
-            bindings = mapOf("overshoot" to null, "moteSeed" to "uMoteSeed"),
-            shadowHeightFrac = { p -> p.number("bloomRadius", 0.7) },
-            // The checkmark box + SDF stroke px (needed by the analytic checkmark
-            // path here, and the SDF path on platforms that bind it). Sized to the
-            // canvas exactly like the web `passUniforms` (Math.min(w, h)). With no
-            // aux-texture support we also pin uCheckTexOn / uSdfOn off so the shader
-            // takes its analytic two-segment SDF branch.
-            passUniforms = { widthPx, heightPx, _, _, _, _ ->
-                val box = CHECK_BOX_FRAC * min(widthPx, heightPx).toDouble()
-                mapOf(
-                    "uCheckBox" to box.toFloat(),
-                    "uSdfStrokePx" to (box * 0.11).toFloat(),
-                    "uCheckTexOn" to 0f,
-                    "uSdfOn" to 0f,
-                )
-            },
-            frame = { info, params ->
-                mapOf(
-                    "amp" to envelope(info.life, params.number("overshoot", 1.0)).toFloat(),
-                    // The check draws on its OWN ~240ms clock using the REAL elapsed
-                    // time (not the "animate on twos" stepped clock) so it stays smooth
-                    // even at high whimsy — matching swift's `checkProgress(info.elapsedMs)`.
-                    "uCheck" to checkProgress(info.elapsedMs).toFloat(),
-                )
-            },
-        )
     }
 }

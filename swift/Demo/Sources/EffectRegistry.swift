@@ -61,7 +61,8 @@ enum EffectRegistry {
     static let all: [DemoEffect] = [
         DemoEffect(name: "solarbloom") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: SolarbloomResources.bundle),
-                  let host = try? MetalOverlayHost(config: SolarbloomConfig(), device: device,
+                  let cfg = try? SolarbloomConfig(),
+                  let host = try? MetalOverlayHost(config: cfg, device: device,
                                                    library: lib, wantsShadow: false),
                   let fx = try? Solarbloom() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
