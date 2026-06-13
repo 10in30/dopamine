@@ -67,6 +67,13 @@ let rafQueue: ((t: number) => void)[] = [];
 let reduceMotion = false;
 let hidden = false;
 const appended: unknown[] = [];
+let visibilityListeners: Record<string, (() => void)[]> = {};
+
+/** Flip the tab's visibility + dispatch the visibilitychange listeners, as a browser would. */
+function setHidden(next: boolean) {
+  hidden = next;
+  for (const cb of visibilityListeners["visibilitychange"] ?? []) cb();
+}
 
 function installDom(): HTMLElement {
   const body = {
@@ -81,6 +88,10 @@ function installDom(): HTMLElement {
     documentElement: { dataset: {} },
     createElement: () => makeCanvasStub(),
     get visibilityState() { return hidden ? "hidden" : "visible"; },
+    addEventListener: (type: string, cb: () => void) => {
+      (visibilityListeners[type] ??= []).push(cb);
+    },
+    removeEventListener: () => {},
   };
   (globalThis as Record<string, unknown>).window = {
     devicePixelRatio: 2,
@@ -153,6 +164,7 @@ describe("conductor", () => {
     reduceMotion = false;
     hidden = false;
     appended.length = 0;
+    visibilityListeners = {};
     vi.resetModules();
   });
   afterEach(() => uninstallDom());
@@ -265,6 +277,92 @@ describe("conductor", () => {
     // Stopped means stopped: no further draws on later frames.
     pump(6000);
     expect(rafQueue.length).toBe(0);
+  });
+
+  it("pause() freezes a CONTINUOUS effect's timeline and resume() continues it drift-free", async () => {
+    const body = installDom();
+    const { play } = await import("../src/framework/conductor.js");
+    const base = await makeFakeFactory();
+    const seen: number[] = [];
+    const looping = {
+      ...base,
+      loop: { periodMs: 300 }, // durationMs 1200 = 4 periods
+      create: (params: Record<string, unknown>, ctx: unknown) => {
+        const inner = base.create(params, ctx);
+        return {
+          ...inner,
+          renderAt: (ms: number) => { seen.push(ms); inner.renderAt(ms); },
+        };
+      },
+    };
+    const handle = play({
+      factory: looping, target: body, anchor: { x: 0, y: 0 },
+      feeling: { mood: "celebratory", intensity: 0.7, whimsy: 0.5, seed: 4 },
+    });
+    pump(100);
+    pump(200);
+    const drawsBeforePause = seen.length;
+    expect(drawsBeforePause).toBeGreaterThan(0);
+
+    // Pause at t=200: the loop parks (no RAF re-armed) and no further draws land
+    // however far the clock advances while paused.
+    handle.pause();
+    pump(900); // also drains the in-flight RAF, which parks itself
+    pump(1500);
+    pump(5000);
+    expect(seen.length).toBe(drawsBeforePause); // frozen — nothing drawn while paused
+    expect(rafQueue.length).toBe(0); // parked: no idle RAF churn
+
+    // Resume at t=5000: startedAt is shifted forward by the 4800ms paused span,
+    // so the very next frame renders the SAME clock position it froze at (~200),
+    // NOT 5000 — drift-free.
+    handle.resume();
+    pump(5000);
+    const resumed = seen[seen.length - 1];
+    expect(resumed).toBeCloseTo(200, 0); // back exactly where it paused, not at 5000
+    handle.stop();
+    pump(5050);
+    await handle;
+  });
+
+  it("auto-pauses on a hidden tab and auto-resumes (drift-free) when shown again", async () => {
+    const body = installDom();
+    const { play } = await import("../src/framework/conductor.js");
+    const base = await makeFakeFactory();
+    const seen: number[] = [];
+    const looping = {
+      ...base,
+      loop: { periodMs: 300 },
+      create: (params: Record<string, unknown>, ctx: unknown) => {
+        const inner = base.create(params, ctx);
+        return { ...inner, renderAt: (ms: number) => { seen.push(ms); inner.renderAt(ms); } };
+      },
+    };
+    const handle = play({
+      factory: looping, target: body, anchor: { x: 0, y: 0 },
+      feeling: { mood: "serene", intensity: 0.5, whimsy: 0, seed: 9 },
+    });
+    pump(100);
+    expect(seen.length).toBeGreaterThan(0);
+    const drawsBeforeHide = seen.length;
+
+    // Hide the tab: the next frame auto-pauses, parks the loop, draws nothing.
+    setHidden(true);
+    pump(900);
+    pump(5000);
+    expect(seen.length).toBe(drawsBeforeHide); // hidden + paused: no draws
+    expect(rafQueue.length).toBe(0); // parked while hidden — no battery churn
+
+    // Show the tab: the visibilitychange listener auto-resumes drift-free and the
+    // loop re-arms. The clock froze at the frame hidden was DETECTED (t=900), so it
+    // resumes there — not at the wall-clock 5000s the tab spent backgrounded.
+    setHidden(false);
+    pump(5000);
+    expect(seen.length).toBeGreaterThan(drawsBeforeHide);
+    expect(seen[seen.length - 1]).toBeCloseTo(900, 0); // resumed where it froze
+    handle.stop();
+    pump(5050);
+    await handle;
   });
 
   it("prefers-reduced-motion renders one held frame and never starts a RAF loop", async () => {

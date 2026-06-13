@@ -168,14 +168,18 @@ function resolveRequest(
  * Generic real-time fire: play a registered effect by name. Resolves when the
  * animation has fully played out. A CONTINUOUS effect (one whose `.dope`
  * declares `tempo.loop`, e.g. halo) loops seamlessly until the host calls the
- * returned handle's `stop()`. SSR-safe (resolves immediately off-DOM). The
- * effect must already be registered (import `@dopaminefx/effect-<name>` or the
- * `@dopaminefx/effects` umbrella, or load one via `loadEffect`).
+ * returned handle's `stop()`. The handle's `pause()`/`resume()` freeze and
+ * resume the timeline drift-free (parking a perpetual loop so it costs no
+ * battery; the conductor also auto-pauses on a hidden tab). SSR-safe (resolves
+ * immediately off-DOM). The effect must already be registered (import
+ * `@dopaminefx/effect-<name>` or the `@dopaminefx/effects` umbrella, or load one
+ * via `loadEffect`).
  */
 export function play(effect: string, options: DopamineSuccessOptions = {}): PlayHandle {
-  if (!isBrowser()) return Object.assign(Promise.resolve(), { stop() {} });
+  const noop: PlayHandle = Object.assign(Promise.resolve(), { stop() {}, pause() {}, resume() {} });
+  if (!isBrowser()) return noop;
   const req = resolveRequest(effect, options);
-  if (!req || !req.factory) return Object.assign(Promise.resolve(), { stop() {} });
+  if (!req || !req.factory) return noop;
   return conductorPlay({
     factory: req.factory,
     target: req.target,
