@@ -21,7 +21,7 @@ const $ = <T extends HTMLElement>(sel: string): T => {
 
 type EffectName =
   | "solarbloom" | "inkstroke" | "comic" | "fail"
-  | "aurora" | "ripple" | "confetti" | "heartburst" | "lightning" | "halo";
+  | "aurora" | "ripple" | "confetti" | "heartburst" | "lightning" | "halo" | "dots";
 
 // Lazy per-effect chunks. Each module self-registers its effect on import; we
 // await them so the generic `play("name", …)` can find the registered factory.
@@ -36,6 +36,7 @@ const EFFECT_LOADERS: Record<EffectName, () => Promise<unknown>> = {
   heartburst: () => import("@dopaminefx/effect-heartburst"),
   lightning: () => import("@dopaminefx/effect-lightning"),
   halo: () => import("@dopaminefx/effect-halo"),
+  dots: () => import("@dopaminefx/effect-dots"),
 };
 
 // The fail effect speaks failure moods; map the shared success-mood toggle onto
@@ -115,10 +116,22 @@ function originTarget(): {
   };
 }
 
-// A CONTINUOUS effect (halo) loops until stopped — Fire becomes a toggle for it:
-// the first click starts the loading ring, the next click stops it (the way a
-// real host would stop it when its work completes).
+// A CONTINUOUS effect (halo, dots) loops until stopped — Fire becomes a toggle
+// for it: the first click starts the loading indicator, the next click stops it
+// (the way a real host would stop it when its work completes).
 let loopingHandle: PlayHandle | null = null;
+// Whether the running continuous effect is currently paused (the Pause button).
+let loopPaused = false;
+
+// The Pause/Resume button only does anything while a CONTINUOUS effect runs; keep
+// its label + enabled state in sync with the loop's lifecycle.
+const pauseBtn = $<HTMLButtonElement>("#pause");
+function syncPauseBtn(): void {
+  const active = loopingHandle !== null;
+  pauseBtn.disabled = !active;
+  pauseBtn.textContent = !active ? "Pause loop" : loopPaused ? "Resume loop ▶" : "Pause loop ⏸";
+  pauseBtn.setAttribute("aria-pressed", String(loopPaused));
+}
 
 function fire(overrides: Partial<typeof state> = {}): Promise<void> {
   const mood = overrides.mood ?? state.mood;
@@ -128,6 +141,8 @@ function fire(overrides: Partial<typeof state> = {}): Promise<void> {
   if (loopingHandle) {
     loopingHandle.stop();
     loopingHandle = null;
+    loopPaused = false;
+    syncPauseBtn();
     return Promise.resolve();
   }
   const handle = play(effect, {
@@ -138,13 +153,31 @@ function fire(overrides: Partial<typeof state> = {}): Promise<void> {
   });
   if (getEffect(effect)?.loop) {
     loopingHandle = handle;
+    loopPaused = false;
+    syncPauseBtn();
     void handle.then(() => {
-      if (loopingHandle === handle) loopingHandle = null;
+      if (loopingHandle === handle) {
+        loopingHandle = null;
+        loopPaused = false;
+        syncPauseBtn();
+      }
     });
   }
   return handle;
 }
 fireBtn.addEventListener("click", () => void fire());
+
+// Exercise the conductor's drift-free pause/resume on the RUNNING continuous
+// effect: the loop visibly freezes mid-breath and continues exactly where it
+// left off — the manual analog of the hidden-tab auto-pause (battery economics).
+pauseBtn.addEventListener("click", () => {
+  if (!loopingHandle) return;
+  loopPaused = !loopPaused;
+  if (loopPaused) loopingHandle.pause();
+  else loopingHandle.resume();
+  syncPauseBtn();
+});
+syncPauseBtn();
 
 // Prepare an effect for offline/fixed-timestep capture. An optional `seed` pins
 // the palette/word so capture scripts can isolate one variable.

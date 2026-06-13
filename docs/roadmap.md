@@ -12,14 +12,31 @@ for the genuinely platform-shaped parts.
 `docs/effect-format.md` §7.2): the parser validates the seam invariants, the
 runners derive the standard `uLoopS`/`uPhase` clocks (+ the `loopS`/`phase`
 frame-expr inputs), and the conductors re-arm at `durationMs` with a stop
-handle (halo rides it end to end). Still open:
+handle (halo + dots ride it end to end).
 
-- **Idle/visibility economics:** the web conductor already skips GPU work on
-  hidden tabs and the loop re-arm is drift-free across stalls, but a perpetual
-  loop in a long-lived background view (native hosts especially) should get an
-  explicit idle/visibility pause so it never costs battery.
-- **More continuous effects** (a pulsing "recording" dot, a breathing skeleton
-  placeholder) to exercise the contract beyond halo.
+- **Idle/visibility economics — LANDED.** The play handle now carries
+  drift-free `pause()`/`resume()` on all three conductors, and a perpetual loop
+  in a long-lived background view AUTO-PAUSES so it never costs battery:
+  - **Web** (`framework/conductor.ts`): a paused effect freezes its timeline
+    (the RAF parks when every live effect is paused — no idle churn); `resume()`
+    shifts `startedAt` by the paused span so the clock/loop-seam continues
+    exactly where it left off. A document-level `visibilitychange` listener
+    auto-pauses on a hidden tab and auto-resumes (drift-free) when shown — a
+    manual `pause()` survives a hide/show, and a manual `resume()` doesn't defeat
+    the idle policy. Gated by `packages/core/test/conductor.test.ts`.
+  - **Swift** (`MetalOverlayHost.pause/resume/isPaused`): a paused `tick` holds
+    the last frame and spends no GPU; `resume` shifts `startTime`.
+  - **Android** (`DopamineView` / `PlayHandle.pause/resume`): paused effects
+    freeze and the GL render mode parks (`RENDERMODE_WHEN_DIRTY`);
+    `onWindowVisibilityChanged` auto-pauses the perpetual loop off-screen and
+    auto-resumes it on return (the `dopamine-gl` module only — `dopamine-core`
+    stays pure-JVM). The interactive web demo's **Pause loop** button exercises
+    it on a running halo/dots loop.
+- **More continuous effects — IN PROGRESS.** `dots` (a calm "thinking" row of
+  breathing dots with a pulse traveling across them) is the second continuous
+  effect, fully declarative (no `swift/`/`android/` folder): `periodMs = 1000`
+  (12 on-twos steps), `durationMs = 4000` (4 periods). A pulsing "recording"
+  dot / breathing skeleton placeholder is still open.
 
 ## A transpiler for CPU-precomputed per-frame geometry — LANDED
 
