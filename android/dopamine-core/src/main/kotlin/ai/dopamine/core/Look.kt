@@ -160,10 +160,23 @@ float particleFade(float t, float tailPow){
  * screen blend), the Android shader ends with `fragColor = dopLightOut(col);`
  * instead — the ONLY change from the web GLSL. The RGB look stays byte-identical.
  */
+// `uBackdropLum` (0 dark .. 1 white) is the backdrop relative luminance the
+// overlay composites against; GlPassRunner sets it by name from the public
+// backdrop option (0 by default ⇒ no boost ⇒ the dark look is unchanged). On a
+// light surface the BOOST keeps soft glows reading as colour: saturate the light
+// away from its own luma + lift faint alphas so the colour covers more (darkening
+// the page toward it). This MIRRORS the web `dopLightOutGLSL`
+// (packages/core/src/engine/look/glsl.ts; SAT gain 0.6, LIFT gain 0.8) and the
+// Metal light-out tail, so the LOOK matches across platforms.
 const val GLSL_LIGHT_OUT: String = """
+uniform float uBackdropLum;
 vec4 dopLightOut(vec3 col){
   col = max(col, 0.0);
+  float bk = clamp(uBackdropLum, 0.0, 1.0);
+  float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  col = max(mix(vec3(luma), col, 1.0 + bk * 0.6), 0.0);
   float a = clamp(max(max(col.r, col.g), col.b), 0.0, 1.0);
+  a = clamp(a * (1.0 + bk * 0.8), 0.0, 1.0);
   return vec4(col, a);
 }
 """

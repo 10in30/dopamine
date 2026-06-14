@@ -471,21 +471,30 @@ function emitFragment(mainFn, { uniformMap, sigInfo, ctx }) {
   body = body.replace(/fragColor\s*=\s*([^;]+);\s*return\s*;/g, "return $1;");
   // Terminal light-out: the web returns opaque `fragColor = vec4(<rgb>, 1.0)` over a
   // black, `screen`-blended canvas; the self-contained Metal overlay encodes that
-  // brightness as PREMULTIPLIED alpha (alpha = the max channel). Two web spellings:
-  //   `vec4(max(col, 0.0), 1.0)` → pre-clamp col, then premultiply (aurora/ripple/…);
-  //   `vec4(col, 1.0)`           → premultiply directly (fail, which clamps earlier).
+  // brightness as PREMULTIPLIED alpha (alpha = the max channel) and composites
+  // source-over — so it stays visible on ANY surface, including white. On a light
+  // backdrop the BOOST (saturation + alpha presence, ramped by `u.backdropLum`)
+  // keeps soft glows reading as colour instead of pale wash. `u.backdropLum == 0`
+  // (dark / no backdrop) is byte-equivalent to the plain premultiply, so the dark
+  // look is unchanged. This math MIRRORS the web `dopLightOutGLSL`
+  // (packages/core/src/engine/look/glsl.ts; SAT gain 0.6, LIFT gain 0.8). Two web
+  // spellings reduce to the same boosted block:
+  //   `vec4(max(col, 0.0), 1.0)` (aurora/ripple/…) and `vec4(col, 1.0)` (fail).
+  const lightOut = (v) =>
+    `${v} = max(${v}, 0.0);\n` +
+    `    float bk = clamp(u.backdropLum, 0.0, 1.0);\n` +
+    `    float luma = dot(${v}, float3(0.2126, 0.7152, 0.0722));\n` +
+    `    ${v} = max(mix(float3(luma), ${v}, 1.0 + bk * 0.600), 0.0);\n` +
+    `    float outA = clamp(max(max(${v}.r, ${v}.g), ${v}.b), 0.0, 1.0);\n` +
+    `    outA = clamp(outA * (1.0 + bk * 0.800), 0.0, 1.0);\n` +
+    `    return float4(${v}, outA);`;
   body = body.replace(
     /fragColor\s*=\s*float4\(\s*max\(\s*(\w+)\s*,\s*0\.0\s*\)\s*,\s*1\.0\s*\)\s*;/,
-    (_m, v) =>
-      `${v} = max(${v}, 0.0);\n` +
-      `    float outA = clamp(max(max(${v}.r, ${v}.g), ${v}.b), 0.0, 1.0);\n` +
-      `    return float4(${v}, outA);`,
+    (_m, v) => lightOut(v),
   );
   body = body.replace(
     /fragColor\s*=\s*float4\(\s*(\w+)\s*,\s*1\.0\s*\)\s*;/,
-    (_m, v) =>
-      `float outA = clamp(max(max(${v}.r, ${v}.g), ${v}.b), 0.0, 1.0);\n` +
-      `    return float4(${v}, outA);`,
+    (_m, v) => lightOut(v),
   );
   return body;
 }

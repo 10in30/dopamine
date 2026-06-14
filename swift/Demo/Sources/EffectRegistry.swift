@@ -32,6 +32,9 @@ import DopamineEffectDots
 public protocol AnyEffectHost: AnyObject {
     var lightLayer: CAMetalLayer { get }
     var timeScale: Double { get set }
+    /// Backdrop luminance (0 dark .. 1 white) for the light-out boost; 0 ⇒ the
+    /// classic dark look. The Swift mirror of the web `backdrop` option.
+    var backdropLuminance: Double { get set }
     /// Heavy, ahead-of-time: compile pipelines + build/upload the panel texture.
     func prepare(params: [String: DopeValue]) throws
     /// Cheap: start the prepared effect's clock.

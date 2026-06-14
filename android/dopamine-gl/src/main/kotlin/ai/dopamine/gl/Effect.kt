@@ -34,6 +34,13 @@ data class EffectContext(
      * `document.fonts`/embedded faces. General; effects that need no assets ignore it.
      */
     val assets: android.content.res.AssetManager? = null,
+    /**
+     * Backdrop relative luminance (0 dark .. 1 white) the overlay composites
+     * against, driving the light-out saturation/presence boost (`uBackdropLum`)
+     * so effects stay vivid on a light surface. 0 (the default) ⇒ no boost ⇒ the
+     * dark look is unchanged. The Android mirror of the web `backdrop` option.
+     */
+    val backdropLum: Float = 0f,
 )
 
 /** A live, drawable effect. Pure function of time: same `elapsedMs` → same frame. */

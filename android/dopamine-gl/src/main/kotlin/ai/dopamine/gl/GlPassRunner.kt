@@ -225,6 +225,9 @@ fun createPassInstance(config: PassConfig, params: Map<String, DopeValue>, ctx: 
             setF(prog, "uPhase", (loopMs / p).toFloat())
         }
         setF(prog, "uStyle", style.toFloat())
+        // Backdrop luminance drives the light-out boost (no-op at 0 ⇒ dark look
+        // unchanged); a no-op uniform-set if the shader optimised it out.
+        setF(prog, "uBackdropLum", ctx.backdropLum)
         bindPalette(prog, pal)
         bindScalars(prog, params, scalarBinds)
         bindFrameUniforms(prog, frameUniforms)

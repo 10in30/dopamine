@@ -131,6 +131,8 @@ fun createPanelInstance(config: PanelConfig, params: Map<String, DopeValue>, ctx
             setF(prog, "uLife", life.toFloat())
             setF(prog, "uTimeS", (elapsedMs / 1000.0).toFloat()) // panels don't step "on twos"
             setF(prog, "uStyle", style.toFloat())
+            // Backdrop luminance drives the light-out boost (no-op at 0).
+            setF(prog, "uBackdropLum", ctx.backdropLum)
             bindPalette(prog, pal)
             bindScalars(prog, params, scalarBinds)
             bindFrameUniforms(prog, frameUniforms)

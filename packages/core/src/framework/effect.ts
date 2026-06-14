@@ -68,10 +68,12 @@ export interface EffectContext {
    * Present when the host composites against a known backdrop colour rather than
    * the default `mix-blend-mode: screen`. The runners then emit PREMULTIPLIED
    * light (alpha = brightness) on the light pass so the effect stays visible on
-   * any surface — white included — composited source-over. Absent ⇒ the classic
-   * screen/opaque path (byte-identical to before).
+   * any surface — white included — composited source-over. `luminance` is the
+   * backdrop's relative luminance (0 black .. 1 white), which drives the
+   * saturation + presence boost so the light reads as colour on a light surface.
+   * Absent ⇒ the classic screen/opaque path (byte-identical to before).
    */
-  readonly composite?: { premultiplied: boolean };
+  readonly composite?: { premultiplied: boolean; luminance: number };
 }
 
 /** A live, drawable effect. Pure function of time: same `elapsedMs` → same frame. */

@@ -418,7 +418,7 @@ function buildEffectContext(
     get dpr() {
       return host.dpr;
     },
-    composite: host.composite ? { premultiplied: true } : undefined,
+    composite: host.composite ? { premultiplied: true, luminance: host.composite.luminance } : undefined,
   };
 }
 

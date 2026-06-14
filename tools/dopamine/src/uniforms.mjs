@@ -40,6 +40,12 @@ export const STANDARD = [
   { name: "shadowOffset", type: "float2", web: "uShadowOffset" },
   { name: "shadowSoft", type: "float", web: "uShadowSoft" },
   { name: "shadowStrength", type: "float", web: "uShadowStrength" },
+  // Backdrop relative luminance (0 dark .. 1 white) the overlay composites
+  // against, driving the light-out saturation/presence boost (dopLightOut). 0 by
+  // default ⇒ no boost ⇒ the dark/legacy look is unchanged. Set by the host
+  // runner from the public backdrop option; the web bakes it as a literal, the
+  // native stacks read it from this uniform.
+  { name: "backdropLum", type: "float", web: "uBackdropLum" },
 ];
 
 const MSL_TYPE = { float: "float", float2: "float2", float3: "float3" };
