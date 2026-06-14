@@ -71,6 +71,32 @@ jobs:
           python3 -m pip install --quiet --break-system-packages fonttools brotli \
             || python3 -m pip install --quiet fonttools brotli
 
+      # Preflight the npm auth so a bad token fails HERE with an actionable
+      # message instead of mid-publish as a cryptic `ENEEDAUTH` (which aborts the
+      # release part-way, leaving some packages bumped-but-unpublished). It also
+      # hardens the token: setup-node's userconfig references `${NODE_AUTH_TOKEN}`,
+      # but `changeset publish` spawns `npm publish` per package and some npm
+      # versions don't substitute that placeholder for the nested calls — so we
+      # write the RESOLVED token line into that same userconfig. No-op when the
+      # secret and token are already good.
+      - name: Verify npm authentication
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "::error::NPM_TOKEN secret is empty. Add a granular npm AUTOMATION token for the @dopaminefx org (read+write to its packages, 2FA-exempt) as the repo secret NPM_TOKEN — see RELEASING.md."
+            exit 1
+          fi
+          npmrc="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
+          # Append the resolved auth line (the token is masked in logs); the last
+          # matching line wins, so this overrides setup-node's `${NODE_AUTH_TOKEN}`.
+          printf '//registry.npmjs.org/:_authToken=%s\n' "${NODE_AUTH_TOKEN}" >> "$npmrc"
+          echo "npm userconfig: ${npmrc}"
+          if ! npm whoami --registry https://registry.npmjs.org/; then
+            echo "::error::npm authentication failed — NPM_TOKEN is invalid, expired, or lacks publish scope for @dopaminefx. Regenerate a granular automation token and update the NPM_TOKEN secret."
+            exit 1
+          fi
+
       - name: Create Release PR or publish to npm
         uses: changesets/action@v1
         with:
