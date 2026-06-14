@@ -32,6 +32,7 @@ import { HEARTBURST_FRAGMENT_SRC } from "../../../effects/heartburst/web/src/hea
 import { COMIC_FRAGMENT_SRC } from "../../../effects/comic/web/src/comic-shader.ts";
 import { CONFETTI_FRAGMENT_SRC } from "../../../effects/confetti/web/src/confetti-shader.ts";
 import { FRAGMENT_SRC as SOLARBLOOM_FRAGMENT_SRC } from "../../../effects/solarbloom/web/src/solarbloom-shader.ts";
+import { CHECKMATE_FRAGMENT_SRC } from "../../../effects/checkmate/web/src/checkmate-shader.ts";
 
 const root = new URL("../../../", import.meta.url);
 const readDope = (slug) =>
@@ -66,6 +67,10 @@ const SNAPSHOT = [
   // SPRITE PANEL at texture(3) — all threaded through the call graph (the
   // shadowColor ring-blur samples the panel; checkOcc/sdfCoverage sample the SDF).
   { slug: "solarbloom", fragment: SOLARBLOOM_FRAGMENT_SRC },
+  // checkmate: an analytic SDF-composited chess queen (no sampler) + a procedural
+  // pride rainbow / sparkle-bling pass — exercises the trapezoid/box SDF helpers,
+  // ternaries, early-return colour ramps, and a hash-scattered sparkle loop.
+  { slug: "checkmate", fragment: CHECKMATE_FRAGMENT_SRC },
 ];
 
 const transpile = (slug, fragment) => {

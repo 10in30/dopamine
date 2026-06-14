@@ -21,7 +21,8 @@
     "@dopaminefx/effect-heartburst": "^0.1.0",
     "@dopaminefx/effect-lightning": "^0.1.0",
     "@dopaminefx/effect-halo": "^0.1.0",
-    "@dopaminefx/effect-dots": "^0.1.0"
+    "@dopaminefx/effect-dots": "^0.1.0",
+    "@dopaminefx/effect-checkmate": "^0.1.0"
   },
   "devDependencies": {
     "vite": "^5.4.10"

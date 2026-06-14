@@ -32,6 +32,7 @@ import heartburstDoc from "../../../effects/heartburst/heartburst.dope.json";
 import lightningDoc from "../../../effects/lightning/lightning.dope.json";
 import haloDoc from "../../../effects/halo/halo.dope.json";
 import dotsDoc from "../../../effects/dots/dots.dope.json";
+import checkmateDoc from "../../../effects/checkmate/checkmate.dope.json";
 
 const DOCS: Record<string, { controls?: { mood?: { options?: string[] } } }> = {
   solarbloom: solarbloomDoc as never,
@@ -45,6 +46,7 @@ const DOCS: Record<string, { controls?: { mood?: { options?: string[] } } }> = {
   lightning: lightningDoc as never,
   halo: haloDoc as never,
   dots: dotsDoc as never,
+  checkmate: checkmateDoc as never,
 };
 
 const SUCCESS_MOODS = ["serene", "celebratory", "electric"];
