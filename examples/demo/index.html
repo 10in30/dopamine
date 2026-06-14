@@ -277,6 +277,12 @@
             <button data-theme="light">Light</button>
           </div>
         </div>
+        <!-- The action buttons sit ABOVE the other controls so they stay near the
+             receipt card: on a phone you can fire (and pause) with the targeted
+             card still in view, instead of scrolling past every control — which
+             would push the card off-screen and the effect would fire off-screen. -->
+        <button class="fire" id="fire">Complete order ✨</button>
+        <button class="fire" id="pause" disabled>Pause loop</button>
         <div class="control">
           <label>Effect</label>
           <div class="effect-grid" id="effect">
@@ -309,8 +315,6 @@
           <label>Whimsy <b id="whimsy-val">0.50</b></label>
           <input id="whimsy" type="range" min="0" max="1" step="0.01" value="0.5" />
         </div>
-        <button class="fire" id="fire">Complete order ✨</button>
-        <button class="fire" id="pause" disabled>Pause loop</button>
         <p class="hint">Each fire seeds a unique palette — watch the cards catch the light and throw shadow. Toggle <b>Light/Dark</b> to compare how an effect reads on each stage. For a CONTINUOUS effect (Halo, Dots — marked ∞), Fire toggles the loop and <b>Pause loop</b> freezes it mid-breath, then resumes it drift-free.</p>
       </section>
     </main>
