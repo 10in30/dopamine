@@ -181,3 +181,40 @@ vec4 dopLightOut(vec3 col){
   return vec4(col, a);
 }
 `;
+
+/**
+ * BACKDROP-BOOSTED premultiplied light out.
+ *
+ * Plain `dopLightOut` (above) composites source-over, which is vivid on a dark
+ * surface but PALE on a light one: a soft glow has low brightness → low alpha →
+ * it blends mostly toward the (light) page and washes out. On a light surface we
+ * therefore push the light to read as COLOUR, not pale wash:
+ *   - SATURATION boost — pull the colour away from its own luma so it stays
+ *     chromatic instead of greying toward white, and
+ *   - PRESENCE (alpha) boost — lift faint alphas so the colour covers more and
+ *     thereby DARKENS the light page toward the colour (bright cores, already at
+ *     alpha 1, are untouched by the clamp).
+ *
+ * Both ramp with `backdropExpr` — a GLSL float expression for the backdrop
+ * relative luminance, 0 (black) .. 1 (white). At 0 this is byte-FOR-byte
+ * equivalent to plain `dopLightOut` (`sat = 1`, `lift = 1`), so a dark backdrop —
+ * or no backdrop — is unchanged. The web path bakes the luminance in as a
+ * literal (`dopLightOutGLSL("0.81")`); the native stacks pass a uniform
+ * (`dopLightOutGLSL("uBackdropLum")`), so the LOOK matches across platforms from
+ * one math definition.
+ */
+export const DOP_LIGHT_SAT_GAIN = 0.6;
+export const DOP_LIGHT_LIFT_GAIN = 0.8;
+export function dopLightOutGLSL(backdropExpr: string): string {
+  return /* glsl */ `
+vec4 dopLightOut(vec3 col){
+  col = max(col, 0.0);
+  float backdrop = clamp(${backdropExpr}, 0.0, 1.0);
+  float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  col = max(mix(vec3(luma), col, 1.0 + backdrop * ${DOP_LIGHT_SAT_GAIN.toFixed(3)}), 0.0);
+  float a = clamp(max(max(col.r, col.g), col.b), 0.0, 1.0);
+  a = clamp(a * (1.0 + backdrop * ${DOP_LIGHT_LIFT_GAIN.toFixed(3)}), 0.0, 1.0);
+  return vec4(col, a);
+}
+`;
+}

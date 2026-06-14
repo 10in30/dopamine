@@ -17,6 +17,7 @@ package ai.dopamine.gl
 
 import ai.dopamine.core.DopeResolveInput
 import ai.dopamine.core.EffectRegistry
+import ai.dopamine.core.backdropLuminance
 import ai.dopamine.core.randomSeed
 import android.content.Context
 import android.graphics.PixelFormat
@@ -38,6 +39,13 @@ data class PlayOptions(
     /** Targeted element box in device px. Null ⇒ full surface. */
     val targetWidthPx: Float = 0f,
     val targetHeightPx: Float = 0f,
+    /**
+     * The surface colour the effect composites against, as a CSS colour string
+     * (e.g. "#ffffff"). Null ⇒ the classic dark look (no light-out boost). Pass
+     * the actual surface colour and the effect's premultiplied light is boosted
+     * to stay vivid on a light surface. The Android mirror of the web `backdrop`.
+     */
+    val backdrop: String? = null,
 )
 
 /**
@@ -203,6 +211,7 @@ class DopamineView @JvmOverloads constructor(
                 targetWidthPx = options.targetWidthPx,
                 targetHeightPx = options.targetHeightPx,
                 density = density,
+                backdropLum = options.backdrop?.let { backdropLuminance(it) }?.toFloat() ?: 0f,
                 // Hand the panel draw the APK AssetManager so it can load bundled
                 // binary assets (comic's display-face ttf); ignored by effects
                 // that need none.

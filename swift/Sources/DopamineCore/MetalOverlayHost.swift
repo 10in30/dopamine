@@ -215,6 +215,16 @@ public final class MetalOverlayHost<Config: PassConfig> {
     /// clock", so a prepared effect begins instantly (the demo prepares the next
     /// effect during the current one's dwell). The layer's `drawableSize` must be
     /// set before calling this (the panel is sized from it).
+    /// Backdrop luminance (0 dark .. 1 white) the overlay composites against; it
+    /// drives the light-out saturation/presence boost so effects stay vivid on a
+    /// light surface. 0 (the default) ⇒ no boost ⇒ the dark look is unchanged.
+    /// The Swift mirror of the web `backdrop` option — set it (compute it from
+    /// your surface colour) before `prepare`/`play`. Applied to the runner on the
+    /// next `prepare`.
+    public var backdropLuminance: Double = 0 {
+        didSet { runner?.backdropLuminance = backdropLuminance }
+    }
+
     public func prepare(params: [String: DopeValue]) throws {
         // Build the pipelines ONCE per host (first prepare = at effect load /
         // selection). A re-fire only swaps params — rebuilding the runner every
@@ -231,6 +241,7 @@ public final class MetalOverlayHost<Config: PassConfig> {
             )
             builtNewRunner = true
         }
+        runner?.backdropLuminance = backdropLuminance
         // The backbone retains the draw state and builds the first panel; `tick`
         // re-draws it every frame (so the panel geometry animates, mirroring the
         // web). Pure-shader effects clear it.
