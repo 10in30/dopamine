@@ -159,6 +159,12 @@ jobs:
       - name: Ensure ffmpeg
         run: ffmpeg -version >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y ffmpeg)
 
+      # Every effect registry (the umbrella, the demo picker, the README gallery,
+      # the native demos) is generated from the one folder-discovered list — fail
+      # if any is stale (this is what keeps a new effect from going missing here).
+      - name: effect-registries staleness check
+        run: node scripts/gen-registries.mjs --check
+
       - name: Install Chromium (+ OS deps)
         run: npx playwright install --with-deps chromium
 

@@ -26,6 +26,8 @@
     "reel": "node scripts/render-clips.mjs && node scripts/stitch.mjs",
     "shader-goldens": "node scripts/shader-goldens.mjs",
     "media": "node scripts/media.mjs",
+    "gen": "node scripts/gen-registries.mjs",
+    "gen:check": "node scripts/gen-registries.mjs --check",
     "bake-sdf": "node scripts/bake-sdf.mjs",
     "pack-dope": "node scripts/pack-dope.mjs",
     "dopamine": "node tools/dopamine/src/cli.mjs",

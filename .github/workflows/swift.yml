@@ -151,6 +151,12 @@ jobs:
         working-directory: .
         run: node tools/dopamine/src/cli.mjs build --check
 
+      # Every effect registry (incl. this demo's EffectRegistry.swift + project.yml)
+      # is generated from the one folder-discovered list — fail if any is stale.
+      - name: effect-registries staleness check
+        working-directory: .
+        run: node scripts/gen-registries.mjs --check
+
       # --- MUST-PASS: the generated per-frame-geometry parity gates. Effects with
       # `x-build.logic` carry a GENERATED XCTest target in their dist package that
       # replays the committed web-dumped fixture against the TRANSPILED Swift

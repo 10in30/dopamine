@@ -20,24 +20,27 @@ const $ = <T extends HTMLElement>(sel: string): T => {
 };
 
 type EffectName =
-  | "solarbloom" | "inkstroke" | "comic" | "fail"
-  | "aurora" | "ripple" | "confetti" | "heartburst" | "lightning" | "halo" | "dots" | "checkmate";
+  // dopamine:effects:names — generated from effects/ by scripts/gen-registries.mjs; do not edit
+  | "aurora" | "checkmate" | "comic" | "confetti" | "dots" | "fail" | "halo" | "heartburst" | "inkstroke" | "lightning" | "ripple" | "solarbloom";
+  // dopamine:effects:names:end
 
 // Lazy per-effect chunks. Each module self-registers its effect on import; we
 // await them so the generic `play("name", …)` can find the registered factory.
 const EFFECT_LOADERS: Record<EffectName, () => Promise<unknown>> = {
-  solarbloom: () => import("@dopaminefx/effect-solarbloom"),
-  inkstroke: () => import("@dopaminefx/effect-inkstroke"),
-  comic: () => import("@dopaminefx/effect-comic"),
-  fail: () => import("@dopaminefx/effect-fail"),
+  // dopamine:effects:loaders — generated from effects/ by scripts/gen-registries.mjs; do not edit
   aurora: () => import("@dopaminefx/effect-aurora"),
-  ripple: () => import("@dopaminefx/effect-ripple"),
-  confetti: () => import("@dopaminefx/effect-confetti"),
-  heartburst: () => import("@dopaminefx/effect-heartburst"),
-  lightning: () => import("@dopaminefx/effect-lightning"),
-  halo: () => import("@dopaminefx/effect-halo"),
-  dots: () => import("@dopaminefx/effect-dots"),
   checkmate: () => import("@dopaminefx/effect-checkmate"),
+  comic: () => import("@dopaminefx/effect-comic"),
+  confetti: () => import("@dopaminefx/effect-confetti"),
+  dots: () => import("@dopaminefx/effect-dots"),
+  fail: () => import("@dopaminefx/effect-fail"),
+  halo: () => import("@dopaminefx/effect-halo"),
+  heartburst: () => import("@dopaminefx/effect-heartburst"),
+  inkstroke: () => import("@dopaminefx/effect-inkstroke"),
+  lightning: () => import("@dopaminefx/effect-lightning"),
+  ripple: () => import("@dopaminefx/effect-ripple"),
+  solarbloom: () => import("@dopaminefx/effect-solarbloom"),
+  // dopamine:effects:loaders:end
 };
 
 // The fail effect speaks failure moods; map the shared success-mood toggle onto
@@ -110,15 +113,20 @@ const bind = (id: string, key: "intensity" | "whimsy") => {
 bind("intensity", "intensity");
 bind("whimsy", "whimsy");
 
-// Effect segmented control.
+// Effect segmented control. The buttons are generated from the canonical effect
+// list (scripts/gen-registries.mjs); reflect the initial selection here so the
+// default highlights without a hardcoded aria-pressed in the markup.
 const effectGroup = document.querySelector("#effect");
+const pressEffect = (name: string) =>
+  effectGroup
+    ?.querySelectorAll("button")
+    .forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.effect === name)));
+pressEffect(state.effect);
 effectGroup?.addEventListener("click", (e) => {
   const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-effect]");
   if (!btn) return;
   state.effect = btn.dataset.effect as EffectName;
-  effectGroup
-    .querySelectorAll("button")
-    .forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+  pressEffect(state.effect);
 });
 
 const fireBtn = $<HTMLButtonElement>("#fire");

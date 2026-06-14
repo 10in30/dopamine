@@ -7,25 +7,29 @@
 // OWN resource bundle / compiled metallib) plus a feeling→`.dope` resolver.
 //
 // The CI "sequence" autoplay (`-autoplay all`) walks `EffectRegistry.all` in
-// order and the screen recording captures the whole run. Each of the eight
-// in-flight effect ports adds ONE entry here once merged.
+// order and the screen recording captures the whole run. The `all` array + the
+// imports are GENERATED from the one folder-discovered effect list by
+// scripts/gen-registries.mjs — adding effects/<name>/ + re-running wires it here.
 
 #if canImport(Metal)
 import Metal
 import QuartzCore
 import simd
 import DopamineCore
-import DopamineEffectSolarbloom
+// dopamine:effects:imports — generated from effects/ by scripts/gen-registries.mjs; do not edit
 import DopamineEffectAurora
+import DopamineEffectCheckmate
 import DopamineEffectComic
 import DopamineEffectConfetti
+import DopamineEffectDots
 import DopamineEffectFail
+import DopamineEffectHalo
 import DopamineEffectHeartburst
 import DopamineEffectInkstroke
 import DopamineEffectLightning
 import DopamineEffectRipple
-import DopamineEffectHalo
-import DopamineEffectDots
+import DopamineEffectSolarbloom
+// dopamine:effects:imports:end
 
 /// Type-erased overlay host. All members below are already public on
 /// `MetalOverlayHost<Config>`, so the conformance is empty.
@@ -62,25 +66,22 @@ struct DemoEffect {
 }
 
 enum EffectRegistry {
-    /// Every effect the demo can play, in sequence order. ONE entry per ported
-    /// effect — the eight in-flight Swift ports each append a line here on merge.
+    /// Every effect the demo can play, in sequence order. GENERATED from the one
+    /// folder-discovered effect list (scripts/gen-registries.mjs) — do not edit by hand.
     static let all: [DemoEffect] = [
-        DemoEffect(name: "solarbloom") { device in
-            // solarbloom is the PASS-HYBRID prover: the generated factory wraps
-            // DopeSpritePanelPassConfig (the sprite-panel mote layer at texture(3)
-            // ALONGSIDE the baked-✓ SDF at texture(1)); the host draws + uploads
-            // the panel each tick via its PanelDrawing conformance.
-            guard let lib = try? device.makeDefaultLibrary(bundle: SolarbloomResources.bundle),
-                  let host = try? MetalOverlayHost(config: Solarbloom.passConfig(), device: device,
-                                                   library: lib, wantsShadow: false),
-                  let fx = try? Solarbloom() else { return nil }
-            return (host, { (try? fx.resolve($0)) ?? [:] })
-        },
+        // dopamine:effects:all — generated from effects/ by scripts/gen-registries.mjs; do not edit
         DemoEffect(name: "aurora") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: AuroraResources.bundle),
                   let host = try? MetalOverlayHost(config: Aurora.passConfig(), device: device,
                                                    library: lib, wantsShadow: false),
                   let fx = try? Aurora() else { return nil }
+            return (host, { (try? fx.resolve($0)) ?? [:] })
+        },
+        DemoEffect(name: "checkmate") { device in
+            guard let lib = try? device.makeDefaultLibrary(bundle: CheckmateResources.bundle),
+                  let host = try? MetalOverlayHost(config: Checkmate.passConfig(), device: device,
+                                                   library: lib, wantsShadow: false),
+                  let fx = try? Checkmate() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
         DemoEffect(name: "comic") { device in
@@ -97,11 +98,25 @@ enum EffectRegistry {
                   let fx = try? Confetti() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
+        DemoEffect(name: "dots") { device in
+            guard let lib = try? device.makeDefaultLibrary(bundle: DotsResources.bundle),
+                  let host = try? MetalOverlayHost(config: Dots.passConfig(), device: device,
+                                                   library: lib, wantsShadow: false),
+                  let fx = try? Dots() else { return nil }
+            return (host, { (try? fx.resolve($0)) ?? [:] })
+        },
         DemoEffect(name: "fail") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: FailResources.bundle),
                   let host = try? MetalOverlayHost(config: Fail.passConfig(), device: device,
                                                    library: lib, wantsShadow: false),
                   let fx = try? Fail() else { return nil }
+            return (host, { (try? fx.resolve($0)) ?? [:] })
+        },
+        DemoEffect(name: "halo") { device in
+            guard let lib = try? device.makeDefaultLibrary(bundle: HaloResources.bundle),
+                  let host = try? MetalOverlayHost(config: Halo.passConfig(), device: device,
+                                                   library: lib, wantsShadow: false),
+                  let fx = try? Halo() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
         DemoEffect(name: "heartburst") { device in
@@ -132,20 +147,14 @@ enum EffectRegistry {
                   let fx = try? Ripple() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
-        DemoEffect(name: "halo") { device in
-            guard let lib = try? device.makeDefaultLibrary(bundle: HaloResources.bundle),
-                  let host = try? MetalOverlayHost(config: Halo.passConfig(), device: device,
+        DemoEffect(name: "solarbloom") { device in
+            guard let lib = try? device.makeDefaultLibrary(bundle: SolarbloomResources.bundle),
+                  let host = try? MetalOverlayHost(config: Solarbloom.passConfig(), device: device,
                                                    library: lib, wantsShadow: false),
-                  let fx = try? Halo() else { return nil }
+                  let fx = try? Solarbloom() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
-        DemoEffect(name: "dots") { device in
-            guard let lib = try? device.makeDefaultLibrary(bundle: DotsResources.bundle),
-                  let host = try? MetalOverlayHost(config: Dots.passConfig(), device: device,
-                                                   library: lib, wantsShadow: false),
-                  let fx = try? Dots() else { return nil }
-            return (host, { (try? fx.resolve($0)) ?? [:] })
-        },
+        // dopamine:effects:all:end
     ]
 
     /// Effect names in registry order — the data source for the demo's effect

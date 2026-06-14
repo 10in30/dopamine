@@ -17,6 +17,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
+import { discoverEffects } from "./effects.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -41,29 +42,21 @@ export const GIF_WIDTH = 400;  // downscaled GIF width
 export const PNG_WIDTH = 600;  // downscaled still PNG width
 
 /**
- * THE EFFECT MANIFEST — the single source of truth, one entry per effect.
- *
- * `mood`/`intensity`/`whimsy` drive the capture (the demo maps the success-mood
- * toggle onto each effect's own registers, e.g. fail: electric → denied).
- * `still` is the life FRACTION (0..1) for the README PNG, tuned to each effect's
- * most photogenic moment. `loop: true` marks a CONTINUOUS effect (halo, dots):
- * it still gets a gif/png (one period) but is left OUT of the stitched suite reel
- * (a looper has no natural end to sequence). ADD NEW EFFECTS HERE — once.
+ * THE capture segments — derived from the canonical folder-discovered manifest
+ * (scripts/lib/effects.mjs), so the reel/media list can never drift from the set
+ * of effects on disk. `mood`/`intensity`/`whimsy` drive the capture; `still` is
+ * the life FRACTION (0..1) for the README PNG; `loop` marks a CONTINUOUS effect
+ * (halo, dots) — it still gets a gif/png (one period) but is left OUT of the
+ * stitched suite reel (a looper has no natural end to sequence).
  */
-export const EFFECTS = [
-  { name: "solarbloom", mood: "celebratory", intensity: 0.85, whimsy: 0.35, still: 0.32 },
-  { name: "inkstroke", mood: "celebratory", intensity: 0.85, whimsy: 0.45, still: 0.6 },
-  { name: "comic", mood: "celebratory", intensity: 0.85, whimsy: 0.5, still: 0.3 },
-  { name: "fail", mood: "electric", intensity: 0.9, whimsy: 0.4, still: 0.45 },
-  { name: "aurora", mood: "serene", intensity: 0.85, whimsy: 0.4, still: 0.5 },
-  { name: "ripple", mood: "celebratory", intensity: 0.85, whimsy: 0.4, still: 0.4 },
-  { name: "confetti", mood: "celebratory", intensity: 0.9, whimsy: 0.4, still: 0.4 },
-  { name: "heartburst", mood: "celebratory", intensity: 0.85, whimsy: 0.4, still: 0.32 },
-  { name: "lightning", mood: "electric", intensity: 0.95, whimsy: 0.4, still: 0.3 },
-  { name: "checkmate", mood: "celebratory", intensity: 0.9, whimsy: 0.55, still: 0.3 },
-  { name: "halo", mood: "serene", intensity: 0.8, whimsy: 0.45, still: 0.5, loop: true },
-  { name: "dots", mood: "celebratory", intensity: 0.8, whimsy: 0.4, still: 0.5, loop: true },
-];
+export const EFFECTS = discoverEffects(ROOT).map((e) => ({
+  name: e.slug,
+  mood: e.mood,
+  intensity: e.intensity,
+  whimsy: e.whimsy,
+  still: e.still,
+  loop: e.loop,
+}));
 
 /** Look up an effect's capture config by name. */
 export const effectByName = (name) => EFFECTS.find((e) => e.name === name);

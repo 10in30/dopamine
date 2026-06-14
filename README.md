@@ -39,35 +39,39 @@ empty.)
 
 | Effect | Web (WebGL2) | iOS (Metal) | Android (GL ES 3.0) |
 |---|:---:|:---:|:---:|
-| **solarbloom**<br>success | <img src="docs/media/solarbloom.gif" width="380" alt="solarbloom — web"> | <img src="docs/media/ios/solarbloom.gif" width="380" alt="solarbloom — iOS"> | <img src="docs/media/android/solarbloom.gif" width="380" alt="solarbloom — Android"> |
+<!-- dopamine:effects:gallery — generated from effects/ by scripts/gen-registries.mjs; do not edit -->
 | **aurora**<br>success | <img src="docs/media/aurora.gif" width="380" alt="aurora — web"> | <img src="docs/media/ios/aurora.gif" width="380" alt="aurora — iOS"> | <img src="docs/media/android/aurora.gif" width="380" alt="aurora — Android"> |
+| **checkmate**<br>celebration (pride) | <img src="docs/media/checkmate.gif" width="380" alt="checkmate — web"> | _pending_ | _pending_ |
 | **comic**<br>success | <img src="docs/media/comic.gif" width="380" alt="comic — web"> | <img src="docs/media/ios/comic.gif" width="380" alt="comic — iOS"> | <img src="docs/media/android/comic.gif" width="380" alt="comic — Android"> |
 | **confetti**<br>celebration | <img src="docs/media/confetti.gif" width="380" alt="confetti — web"> | <img src="docs/media/ios/confetti.gif" width="380" alt="confetti — iOS"> | <img src="docs/media/android/confetti.gif" width="380" alt="confetti — Android"> |
+| **dots**<br>loading (continuous) | <img src="docs/media/dots.gif" width="380" alt="dots — web"> | _pending_ | _pending_ |
 | **fail**<br>error | <img src="docs/media/fail.gif" width="380" alt="fail — web"> | <img src="docs/media/ios/fail.gif" width="380" alt="fail — iOS"> | <img src="docs/media/android/fail.gif" width="380" alt="fail — Android"> |
+| **halo**<br>loading (continuous) | <img src="docs/media/halo.gif" width="380" alt="halo — web"> | <img src="docs/media/ios/halo.gif" width="380" alt="halo — iOS"> | <img src="docs/media/android/halo.gif" width="380" alt="halo — Android"> |
 | **heartburst**<br>love | <img src="docs/media/heartburst.gif" width="380" alt="heartburst — web"> | <img src="docs/media/ios/heartburst.gif" width="380" alt="heartburst — iOS"> | <img src="docs/media/android/heartburst.gif" width="380" alt="heartburst — Android"> |
 | **inkstroke**<br>success | <img src="docs/media/inkstroke.gif" width="380" alt="inkstroke — web"> | <img src="docs/media/ios/inkstroke.gif" width="380" alt="inkstroke — iOS"> | <img src="docs/media/android/inkstroke.gif" width="380" alt="inkstroke — Android"> |
 | **lightning**<br>power-up | <img src="docs/media/lightning.gif" width="380" alt="lightning — web"> | <img src="docs/media/ios/lightning.gif" width="380" alt="lightning — iOS"> | <img src="docs/media/android/lightning.gif" width="380" alt="lightning — Android"> |
 | **ripple**<br>success | <img src="docs/media/ripple.gif" width="380" alt="ripple — web"> | <img src="docs/media/ios/ripple.gif" width="380" alt="ripple — iOS"> | <img src="docs/media/android/ripple.gif" width="380" alt="ripple — Android"> |
-| **halo**<br>loading (continuous) | <img src="docs/media/halo.gif" width="380" alt="halo — web"> | <img src="docs/media/ios/halo.gif" width="380" alt="halo — iOS"> | <img src="docs/media/android/halo.gif" width="380" alt="halo — Android"> |
-| **dots**<br>loading (continuous) | <img src="docs/media/dots.gif" width="380" alt="dots — web"> | _pending_ | _pending_ |
-| **checkmate**<br>celebration (pride) | <img src="docs/media/checkmate.gif" width="380" alt="checkmate — web"> | _pending_ | _pending_ |
+| **solarbloom**<br>success | <img src="docs/media/solarbloom.gif" width="380" alt="solarbloom — web"> | <img src="docs/media/ios/solarbloom.gif" width="380" alt="solarbloom — iOS"> | <img src="docs/media/android/solarbloom.gif" width="380" alt="solarbloom — Android"> |
+<!-- dopamine:effects:gallery:end -->
 
 <details>
 <summary>📸 Still frames</summary>
 
 <p>
-<img src="docs/media/solarbloom.png" width="240" alt="solarbloom">
+<!-- dopamine:effects:stills — generated from effects/ by scripts/gen-registries.mjs; do not edit -->
 <img src="docs/media/aurora.png" width="240" alt="aurora">
+<img src="docs/media/checkmate.png" width="240" alt="checkmate">
 <img src="docs/media/comic.png" width="240" alt="comic">
 <img src="docs/media/confetti.png" width="240" alt="confetti">
+<img src="docs/media/dots.png" width="240" alt="dots">
 <img src="docs/media/fail.png" width="240" alt="fail">
+<img src="docs/media/halo.png" width="240" alt="halo">
 <img src="docs/media/heartburst.png" width="240" alt="heartburst">
 <img src="docs/media/inkstroke.png" width="240" alt="inkstroke">
 <img src="docs/media/lightning.png" width="240" alt="lightning">
 <img src="docs/media/ripple.png" width="240" alt="ripple">
-<img src="docs/media/halo.png" width="240" alt="halo">
-<img src="docs/media/dots.png" width="240" alt="dots">
-<img src="docs/media/checkmate.png" width="240" alt="checkmate">
+<img src="docs/media/solarbloom.png" width="240" alt="solarbloom">
+<!-- dopamine:effects:stills:end -->
 </p>
 </details>
 

@@ -21,18 +21,20 @@ export * from "@dopaminefx/core";
 // import time; we import the factory VALUES (not bare side-effect imports) and
 // reference them in `BUILTINS` so a bundler can't tree-shake the registration
 // away. Each package also re-exports its factory.
-import { solarbloom } from "@dopaminefx/effect-solarbloom";
-import { inkstroke } from "@dopaminefx/effect-inkstroke";
-import { comic } from "@dopaminefx/effect-comic";
+// dopamine:effects:imports — generated from effects/ by scripts/gen-registries.mjs; do not edit
+import { aurora as auroraEffect } from "@dopaminefx/effect-aurora";
+import { checkmate as checkmateEffect } from "@dopaminefx/effect-checkmate";
+import { comic as comicEffect } from "@dopaminefx/effect-comic";
+import { confetti as confettiEffect } from "@dopaminefx/effect-confetti";
+import { dots as dotsEffect } from "@dopaminefx/effect-dots";
 import { fail as failEffect } from "@dopaminefx/effect-fail";
-import { aurora } from "@dopaminefx/effect-aurora";
-import { ripple } from "@dopaminefx/effect-ripple";
-import { confetti } from "@dopaminefx/effect-confetti";
-import { heartburst } from "@dopaminefx/effect-heartburst";
-import { lightning } from "@dopaminefx/effect-lightning";
-import { halo } from "@dopaminefx/effect-halo";
-import { dots } from "@dopaminefx/effect-dots";
-import { checkmate } from "@dopaminefx/effect-checkmate";
+import { halo as haloEffect } from "@dopaminefx/effect-halo";
+import { heartburst as heartburstEffect } from "@dopaminefx/effect-heartburst";
+import { inkstroke as inkstrokeEffect } from "@dopaminefx/effect-inkstroke";
+import { lightning as lightningEffect } from "@dopaminefx/effect-lightning";
+import { ripple as rippleEffect } from "@dopaminefx/effect-ripple";
+import { solarbloom as solarbloomEffect } from "@dopaminefx/effect-solarbloom";
+// dopamine:effects:imports:end
 
 // The bundled-face preloaders live with their effects; re-export for convenience.
 export { ensureComicFonts } from "@dopaminefx/effect-comic";
@@ -43,14 +45,27 @@ export { registerElement, DopamineSuccessElement } from "./element.js";
 
 /** Force-retain the registrations against tree-shaking; also the built-in set. */
 const BUILTINS = [
-  solarbloom, inkstroke, comic, failEffect,
-  aurora, ripple, confetti, heartburst, lightning, halo, dots, checkmate,
+  // dopamine:effects:builtins — generated from effects/ by scripts/gen-registries.mjs; do not edit
+  auroraEffect,
+  checkmateEffect,
+  comicEffect,
+  confettiEffect,
+  dotsEffect,
+  failEffect,
+  haloEffect,
+  heartburstEffect,
+  inkstrokeEffect,
+  lightningEffect,
+  rippleEffect,
+  solarbloomEffect,
+  // dopamine:effects:builtins:end
 ] as const;
 
 /** Built-in effect names usable with the convenience API + the demo/scripts. */
 export type EffectName =
-  | "solarbloom" | "inkstroke" | "comic" | "fail"
-  | "aurora" | "ripple" | "confetti" | "heartburst" | "lightning" | "halo" | "dots" | "checkmate";
+  // dopamine:effects:names — generated from effects/ by scripts/gen-registries.mjs; do not edit
+  | "aurora" | "checkmate" | "comic" | "confetti" | "dots" | "fail" | "halo" | "heartburst" | "inkstroke" | "lightning" | "ripple" | "solarbloom";
+  // dopamine:effects:names:end
 
 /** The names of every effect registered by `@dopaminefx/effects` on import. */
 export const builtinEffectNames: readonly EffectName[] = BUILTINS.map(

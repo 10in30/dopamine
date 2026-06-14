@@ -18,43 +18,22 @@
 
 import { describe, expect, it } from "vitest";
 
-// Importing the umbrella registers all ten built-in effects + their moods.
+// Importing the umbrella registers every built-in effect + their moods.
 import { builtinEffectNames, getEffect, resolveMood, type FeelingInput } from "../src/index.js";
+// The declared moods come from the ONE folder-discovered effect list — not a
+// hand-maintained map here — so this test can't drift from the effects on disk.
+import { discoverEffects } from "../../../scripts/lib/effects.mjs";
 
-import solarbloomDoc from "../../../effects/solarbloom/solarbloom.dope.json";
-import inkstrokeDoc from "../../../effects/inkstroke/inkstroke.dope.json";
-import comicDoc from "../../../effects/comic/comic.dope.json";
-import failDoc from "../../../effects/fail/fail.dope.json";
-import auroraDoc from "../../../effects/aurora/aurora.dope.json";
-import rippleDoc from "../../../effects/ripple/ripple.dope.json";
-import confettiDoc from "../../../effects/confetti/confetti.dope.json";
-import heartburstDoc from "../../../effects/heartburst/heartburst.dope.json";
-import lightningDoc from "../../../effects/lightning/lightning.dope.json";
-import haloDoc from "../../../effects/halo/halo.dope.json";
-import dotsDoc from "../../../effects/dots/dots.dope.json";
-import checkmateDoc from "../../../effects/checkmate/checkmate.dope.json";
-
-const DOCS: Record<string, { controls?: { mood?: { options?: string[] } } }> = {
-  solarbloom: solarbloomDoc as never,
-  inkstroke: inkstrokeDoc as never,
-  comic: comicDoc as never,
-  fail: failDoc as never,
-  aurora: auroraDoc as never,
-  ripple: rippleDoc as never,
-  confetti: confettiDoc as never,
-  heartburst: heartburstDoc as never,
-  lightning: lightningDoc as never,
-  halo: haloDoc as never,
-  dots: dotsDoc as never,
-  checkmate: checkmateDoc as never,
-};
+const DECLARED_MOODS: Record<string, string[]> = Object.fromEntries(
+  discoverEffects().map((e) => [e.slug, e.moods]),
+);
 
 const SUCCESS_MOODS = ["serene", "celebratory", "electric"];
 
 describe("every effect resolves for every mood it declares (+ the success moods)", () => {
   for (const name of builtinEffectNames) {
     const factory = getEffect(name)!;
-    const declared = DOCS[name].controls?.mood?.options ?? [];
+    const declared = DECLARED_MOODS[name] ?? [];
     // Each effect's own declared moods, plus the 3 success moods (which the fail
     // effect does NOT declare — this is exactly the path the bug broke), plus a
     // bogus mood to prove unknown moods degrade rather than throw.

@@ -9,7 +9,9 @@
 package ai.dopamine.effects
 
 import ai.dopamine.core.EffectRegistry
+// dopamine:effects:imports — generated from effects/ by scripts/gen-registries.mjs; do not edit
 import ai.dopamine.effect.aurora.Aurora
+import ai.dopamine.effect.checkmate.Checkmate
 import ai.dopamine.effect.comic.Comic
 import ai.dopamine.effect.confetti.Confetti
 import ai.dopamine.effect.dots.Dots
@@ -20,23 +22,27 @@ import ai.dopamine.effect.inkstroke.Inkstroke
 import ai.dopamine.effect.lightning.Lightning
 import ai.dopamine.effect.ripple.Ripple
 import ai.dopamine.effect.solarbloom.Solarbloom
+// dopamine:effects:imports:end
 import android.content.Context
 
 object Dopamine {
-    /** Register all eleven built-in effects. Returns the registered effect names. */
+    /** Register every built-in effect. Returns the registered effect names. */
     fun registerAll(context: Context): List<String> {
         val app = context.applicationContext
-        Solarbloom.register(app)
+        // dopamine:effects:register — generated from effects/ by scripts/gen-registries.mjs; do not edit
         Aurora.register(app)
+        Checkmate.register(app)
         Comic.register(app)
         Confetti.register(app)
+        Dots.register(app)
         Fail.register(app)
+        Halo.register(app)
         Heartburst.register(app)
         Inkstroke.register(app)
         Lightning.register(app)
         Ripple.register(app)
-        Halo.register(app)
-        Dots.register(app)
+        Solarbloom.register(app)
+        // dopamine:effects:register:end
         return EffectRegistry.names()
     }
 }
