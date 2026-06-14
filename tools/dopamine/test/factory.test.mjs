@@ -150,6 +150,7 @@ const GENERATED = [
   { slug: "halo" },
   { slug: "dots" },
   { slug: "fail" },
+  { slug: "checkmate" },
   {
     slug: "lightning",
     extraSwift: ["LightningLogicParityTests.swift", "LightningRenderer.swift"],

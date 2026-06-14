@@ -1,7 +1,7 @@
 /**
  * @dopaminefx/effects — the batteries-included UMBRELLA.
  *
- * Importing this registers ALL eleven built-in effects (each `@dopaminefx/effect-*`
+ * Importing this registers ALL twelve built-in effects (each `@dopaminefx/effect-*`
  * package self-registers on import) and re-exports the whole `@dopaminefx/core`
  * runtime/API surface, plus the `celebrate*` convenience wrappers and the
  * `<dopamine-success>` custom element.
@@ -32,6 +32,7 @@ import { heartburst } from "@dopaminefx/effect-heartburst";
 import { lightning } from "@dopaminefx/effect-lightning";
 import { halo } from "@dopaminefx/effect-halo";
 import { dots } from "@dopaminefx/effect-dots";
+import { checkmate } from "@dopaminefx/effect-checkmate";
 
 // The bundled-face preloaders live with their effects; re-export for convenience.
 export { ensureComicFonts } from "@dopaminefx/effect-comic";
@@ -43,13 +44,13 @@ export { registerElement, DopamineSuccessElement } from "./element.js";
 /** Force-retain the registrations against tree-shaking; also the built-in set. */
 const BUILTINS = [
   solarbloom, inkstroke, comic, failEffect,
-  aurora, ripple, confetti, heartburst, lightning, halo, dots,
+  aurora, ripple, confetti, heartburst, lightning, halo, dots, checkmate,
 ] as const;
 
 /** Built-in effect names usable with the convenience API + the demo/scripts. */
 export type EffectName =
   | "solarbloom" | "inkstroke" | "comic" | "fail"
-  | "aurora" | "ripple" | "confetti" | "heartburst" | "lightning" | "halo" | "dots";
+  | "aurora" | "ripple" | "confetti" | "heartburst" | "lightning" | "halo" | "dots" | "checkmate";
 
 /** The names of every effect registered by `@dopaminefx/effects` on import. */
 export const builtinEffectNames: readonly EffectName[] = BUILTINS.map(
@@ -107,4 +108,18 @@ export function fail(options: DopamineSuccessOptions = {}): Promise<void> {
 /** Mount the fail effect and return a manually-driven renderer. `null` off-DOM. */
 export function prepareFail(options: DopamineSuccessOptions = {}): PreparedEffect | null {
   return prepare("fail", { mood: "error", ...options });
+}
+
+/**
+ * Fire a Checkmate celebration — a chess QUEEN pops in and the frame erupts in
+ * LGBTQ+ pride (rainbow swoosh + spinning sunburst + sparkle bling). Resolves
+ * when the animation has fully played out.
+ */
+export function celebrateCheckmate(options: DopamineSuccessOptions = {}): Promise<void> {
+  return play("checkmate", options);
+}
+
+/** Mount Checkmate and return a manually-driven renderer. `null` off-DOM. */
+export function prepareCheckmate(options: DopamineSuccessOptions = {}): PreparedEffect | null {
+  return prepare("checkmate", options);
 }
