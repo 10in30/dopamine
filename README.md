@@ -49,6 +49,8 @@ empty.)
 | **lightning**<br>power-up | <img src="docs/media/lightning.gif" width="380" alt="lightning — web"> | <img src="docs/media/ios/lightning.gif" width="380" alt="lightning — iOS"> | <img src="docs/media/android/lightning.gif" width="380" alt="lightning — Android"> |
 | **ripple**<br>success | <img src="docs/media/ripple.gif" width="380" alt="ripple — web"> | <img src="docs/media/ios/ripple.gif" width="380" alt="ripple — iOS"> | <img src="docs/media/android/ripple.gif" width="380" alt="ripple — Android"> |
 | **halo**<br>loading (continuous) | <img src="docs/media/halo.gif" width="380" alt="halo — web"> | <img src="docs/media/ios/halo.gif" width="380" alt="halo — iOS"> | <img src="docs/media/android/halo.gif" width="380" alt="halo — Android"> |
+| **dots**<br>loading (continuous) | <img src="docs/media/dots.gif" width="380" alt="dots — web"> | _pending_ | _pending_ |
+| **checkmate**<br>celebration (pride) | <img src="docs/media/checkmate.gif" width="380" alt="checkmate — web"> | _pending_ | _pending_ |
 
 <details>
 <summary>📸 Still frames</summary>
@@ -64,6 +66,8 @@ empty.)
 <img src="docs/media/lightning.png" width="240" alt="lightning">
 <img src="docs/media/ripple.png" width="240" alt="ripple">
 <img src="docs/media/halo.png" width="240" alt="halo">
+<img src="docs/media/dots.png" width="240" alt="dots">
+<img src="docs/media/checkmate.png" width="240" alt="checkmate">
 </p>
 </details>
 
@@ -218,17 +222,23 @@ an effect.
 ## Reels, recordings & media
 
 Every effect is rendered headlessly so the previews stay honest and reproducible.
+One UNIFIED capture pass per effect (headless Chromium, WebGL via SwiftShader, no
+GPU needed) emits all three formats from the same frames, driven by a single
+effect manifest (`scripts/lib/reel.mjs`) so the list never drifts:
 
-- **README media** — the gallery GIFs + still frames above are rendered in
-  headless Chromium (WebGL via SwiftShader, no GPU needed) and committed under
+- **README media** — the gallery GIFs + still frames above, committed under
   [`docs/media/`](docs/media):
   ```bash
-  npm run media        # → docs/media/<effect>.gif + <effect>.png
+  npm run media        # → docs/media/<effect>.gif + <effect>.png (gif/png only)
   ```
-- **Web reel** — the same capture stitched into one continuous video:
+- **Web reel** — the per-effect mp4 clips + the stitched continuous video. The
+  same pass also refreshes the gif/png above:
   ```bash
-  npm run build && npm run reel    # → e2e/output/dopamine-suite.mp4
+  npm run build && npm run reel    # → e2e/output/clips/<effect>.mp4 + e2e/output/dopamine-suite.mp4 (+ docs/media gif/png)
   ```
+  In CI the capture is INCREMENTAL: only effects whose `effects/<name>/**`
+  changed (or all, on a core/umbrella/demo/pipeline change) re-render; the rest
+  are reused from the cached clips + gif/png (`scripts/reel-changed.mjs`).
 - **iOS / Android recordings** — the Metal effects on a booted Simulator and the
   GLSL effects on an emulator, screen-recorded in CI (see below).
 

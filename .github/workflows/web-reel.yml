@@ -181,19 +181,27 @@ jobs:
       - name: Web↔Android shader parity gate
         run: npm run shader-goldens
 
-      # Restore previously-rendered per-effect clips. The key is unique per commit
-      # (so a fresh cache is always saved); restore-keys pulls the most recent prior
-      # cache (incl. main's) as the baseline of reusable clips.
-      - name: Restore reel clips cache
+      # Restore previously-rendered media — the per-effect mp4 clips (NOT committed)
+      # AND the rendered gif/png (committed as a baseline, re-cached so a PR's
+      # freshly-rendered assets persist across its runs). One render pass emits all
+      # three formats (scripts/lib/capture.mjs), so they cache together. The key is
+      # unique per commit (a fresh cache is always saved); restore-keys pulls the
+      # most recent prior cache (incl. main's) as the baseline of reusable media.
+      - name: Restore reel media cache
         uses: actions/cache@v4
         with:
-          path: e2e/output/clips
-          key: reel-clips-${{ github.sha }}
+          path: |
+            e2e/output/clips
+            docs/media/*.gif
+            docs/media/*.png
+          key: reel-media-${{ github.sha }}
           restore-keys: |
-            reel-clips-
+            reel-media-
 
-      # Which effects must (re)render: changed effects ∪ any clip missing from the
-      # restored cache (ALL when a shared input changed). Empty ⇒ reuse all cached.
+      # Which effects must (re)render: changed effects ∪ any effect missing an
+      # expected output (mp4 / gif / png) from the restored cache (ALL when a shared
+      # input changed). Empty ⇒ reuse all cached media. This is the per-effect path
+      # filter — an unrelated effect's change re-renders only that effect.
       - name: Plan which effects to render
         id: plan
         env:
@@ -203,7 +211,8 @@ jobs:
               || '' }}
         run: echo "effects=$(node scripts/reel-changed.mjs)" >> "$GITHUB_OUTPUT"
 
-      - name: Render changed effect clips
+      # One unified capture pass per changed effect → mp4 (clips/) + gif + png (docs/media/).
+      - name: Render changed effect media (mp4 + gif + png)
         if: steps.plan.outputs.effects != ''
         run: node scripts/render-clips.mjs ${{ steps.plan.outputs.effects }}
 
@@ -212,9 +221,9 @@ jobs:
 
       - name: List output
         if: always()
-        run: ls -laR e2e/output || echo "no output"
+        run: ls -laR e2e/output docs/media || echo "no output"
 
-      - name: Upload web reel
+      - name: Upload web reel + media
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -222,4 +231,6 @@ jobs:
           path: |
             e2e/output/dopamine-suite.mp4
             e2e/output/clips
+            docs/media/*.gif
+            docs/media/*.png
           if-no-files-found: warn

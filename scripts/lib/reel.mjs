@@ -1,10 +1,13 @@
 /**
- * Shared config + helpers for the per-effect render → stitch pipeline.
+ * Shared config + helpers for the UNIFIED capture pipeline (mp4 reel clips +
+ * README gif/png), so there is ONE source of truth for the effect list and the
+ * encoders — no more drifting lists where a new effect (e.g. checkmate) is added
+ * to the demo but forgotten in the reel or the README media.
  *
- * Each effect renders to its OWN cached clip (`e2e/output/clips/<name>.mp4`) via
- * `render-clips.mjs`; `stitch.mjs` concatenates the clips (in REEL order) into
- * `e2e/output/dopamine-suite.mp4`. Decoupling them means adding/changing one
- * effect only re-renders that one clip — the rest are reused — then re-stitch.
+ * One render pass per effect (see scripts/lib/capture.mjs → captureEffect)
+ * produces every format: a smooth per-effect mp4 clip (`e2e/output/clips/<name>.mp4`,
+ * concatenated by stitch.mjs into the suite reel), a downscaled palette-optimized
+ * looping GIF and a still PNG (`docs/media/<name>.{gif,png}`, the README gallery).
  *
  * Frame-perfect fixed-timestep capture (see the offline renderer): each frame is
  * computed at an explicit time and screenshotted, so the result is smooth
@@ -14,7 +17,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdir, rm } from "node:fs/promises";
 
 const require = createRequire(import.meta.url);
 
@@ -23,38 +25,62 @@ export const ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 export const DEMO_DIR = join(ROOT, "examples", "demo");
 export const OUT_DIR = join(ROOT, "e2e", "output");
 export const CLIPS_DIR = join(OUT_DIR, "clips");
+export const MEDIA_DIR = join(ROOT, "docs", "media");
 
 export const FPS = 30;
-export const TAIL = 16; // hold frames so the fade resolves
+export const TAIL = 16; // hold frames so the fade resolves (one-shot clips)
 export const VIEWPORT = { width: 1100, height: 720 };
 export const CHROMIUM_ARGS = [
   "--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader",
   "--ignore-gpu-blocklist", "--enable-webgl",
 ];
 
+// README gif/png derivation (downscaled from the captured frames; small files).
+export const GIF_FPS = 11;     // playback rate of the looping GIF
+export const GIF_WIDTH = 400;  // downscaled GIF width
+export const PNG_WIDTH = 600;  // downscaled still PNG width
+
 /**
- * The reel: ordered segments, one per effect. `mood` uses the demo's
- * success-mood toggle names (the demo maps them onto each effect's own
- * registers, e.g. fail: electric → denied). ADD NEW EFFECTS HERE as they land.
+ * THE EFFECT MANIFEST — the single source of truth, one entry per effect.
+ *
+ * `mood`/`intensity`/`whimsy` drive the capture (the demo maps the success-mood
+ * toggle onto each effect's own registers, e.g. fail: electric → denied).
+ * `still` is the life FRACTION (0..1) for the README PNG, tuned to each effect's
+ * most photogenic moment. `loop: true` marks a CONTINUOUS effect (halo, dots):
+ * it still gets a gif/png (one period) but is left OUT of the stitched suite reel
+ * (a looper has no natural end to sequence). ADD NEW EFFECTS HERE — once.
  */
-export const REEL = [
-  { name: "solarbloom", mood: "celebratory", intensity: 0.85, whimsy: 0.35 },
-  { name: "inkstroke", mood: "celebratory", intensity: 0.85, whimsy: 0.45 },
-  { name: "comic", mood: "celebratory", intensity: 0.85, whimsy: 0.5 },
-  { name: "fail", mood: "electric", intensity: 0.9, whimsy: 0.4 },
-  { name: "aurora", mood: "serene", intensity: 0.85, whimsy: 0.4 },
-  { name: "ripple", mood: "celebratory", intensity: 0.85, whimsy: 0.4 },
-  { name: "confetti", mood: "celebratory", intensity: 0.9, whimsy: 0.4 },
-  { name: "heartburst", mood: "celebratory", intensity: 0.85, whimsy: 0.4 },
-  { name: "lightning", mood: "electric", intensity: 0.95, whimsy: 0.4 },
+export const EFFECTS = [
+  { name: "solarbloom", mood: "celebratory", intensity: 0.85, whimsy: 0.35, still: 0.32 },
+  { name: "inkstroke", mood: "celebratory", intensity: 0.85, whimsy: 0.45, still: 0.6 },
+  { name: "comic", mood: "celebratory", intensity: 0.85, whimsy: 0.5, still: 0.3 },
+  { name: "fail", mood: "electric", intensity: 0.9, whimsy: 0.4, still: 0.45 },
+  { name: "aurora", mood: "serene", intensity: 0.85, whimsy: 0.4, still: 0.5 },
+  { name: "ripple", mood: "celebratory", intensity: 0.85, whimsy: 0.4, still: 0.4 },
+  { name: "confetti", mood: "celebratory", intensity: 0.9, whimsy: 0.4, still: 0.4 },
+  { name: "heartburst", mood: "celebratory", intensity: 0.85, whimsy: 0.4, still: 0.32 },
+  { name: "lightning", mood: "electric", intensity: 0.95, whimsy: 0.4, still: 0.3 },
+  { name: "checkmate", mood: "celebratory", intensity: 0.9, whimsy: 0.55, still: 0.3 },
+  { name: "halo", mood: "serene", intensity: 0.8, whimsy: 0.45, still: 0.5, loop: true },
+  { name: "dots", mood: "celebratory", intensity: 0.8, whimsy: 0.4, still: 0.5, loop: true },
 ];
+
+/** Look up an effect's capture config by name. */
+export const effectByName = (name) => EFFECTS.find((e) => e.name === name);
+
+/**
+ * The stitched suite reel: the one-shot effects in manifest order (loopers have
+ * no natural end to sequence, so they're excluded from the concatenated reel —
+ * they still get a gif/png from the same manifest).
+ */
+export const REEL = EFFECTS.filter((e) => !e.loop);
 
 /**
  * Resolve the ffmpeg binary. Prefer `$FFMPEG_PATH`, then the bundled
  * `ffmpeg-static` (an OPTIONAL dep — its install downloads a binary from GitHub
  * releases, which sometimes 504s), then the system `ffmpeg` on PATH (present on
  * the CI runners). So a flaky/unavailable ffmpeg-static download no longer blocks
- * the reel.
+ * the capture.
  */
 function ffmpegBin() {
   if (process.env.FFMPEG_PATH) return process.env.FFMPEG_PATH;
@@ -74,7 +100,7 @@ export function ffmpeg(args) {
   });
 }
 
-/** Encode a frame dir → an h264 mp4. */
+/** Encode a frame dir → an h264 mp4 (the smooth per-effect clip). */
 export async function encodeClip(framesDir, outPath) {
   await ffmpeg([
     "-y", "-framerate", String(FPS), "-i", join(framesDir, "f_%05d.png"),
@@ -83,52 +109,21 @@ export async function encodeClip(framesDir, outPath) {
 }
 
 /**
- * Render one segment to `clips/<name>.mp4` using an already-open Playwright page
- * with the demo loaded + ready. Returns the clip path.
+ * Encode a frame dir → a downscaled, palette-optimized, infinitely-looping GIF.
+ * The `fps` filter resamples the FPS-rate frames down to GIF_FPS, so the GIF is
+ * derived from the SAME frames as the mp4 (one render pass, two formats).
  */
-export async function renderClip(page, seg) {
-  await mkdir(CLIPS_DIR, { recursive: true });
-  const framesDir = join(CLIPS_DIR, `_frames-${seg.name}`);
-  await rm(framesDir, { recursive: true, force: true });
-  await mkdir(framesDir, { recursive: true });
+export async function encodeGif(framesDir, outPath) {
+  await ffmpeg([
+    "-y", "-framerate", String(FPS), "-i", join(framesDir, "f_%05d.png"),
+    "-vf",
+    `fps=${GIF_FPS},scale=${GIF_WIDTH}:-1:flags=lanczos,split[s0][s1];`
+      + `[s0]palettegen=stats_mode=full[p];[s1][p]paletteuse=dither=bayer:bayer_scale=3`,
+    "-loop", "0", outPath,
+  ]);
+}
 
-  const durationMs = await page.evaluate((s) => {
-    const set = (sel, v) => {
-      const el = document.querySelector(sel);
-      if (el) { el.value = String(v); el.dispatchEvent(new Event("input", { bubbles: true })); }
-    };
-    set("#whimsy", s.whimsy);
-    set("#intensity", s.intensity);
-    document.querySelector(`button[data-mood="${s.mood}"]`)?.click();
-    document.querySelector(`button[data-effect="${s.name}"]`)?.click();
-    window.__cap = window.__dopamine.prepare({
-      effect: s.name, mood: s.mood, intensity: s.intensity, whimsy: s.whimsy,
-    });
-    if (!window.__cap) throw new Error(`prepare returned null for effect "${s.name}" (registered + in the demo?)`);
-    return window.__cap.durationMs;
-  }, seg);
-
-  // FAST TEST MODE: `REEL_FRAMES=N` renders just N frames evenly spaced across
-  // the effect's life — enough to validate that each effect renders correctly
-  // without producing the full ~FPS×duration frame count (much quicker). Unset =
-  // the real reel (real-time FPS sampling for a smooth clip).
-  const fast = Number(process.env.REEL_FRAMES) || 0;
-  const fullN = Math.ceil((durationMs / 1000) * FPS) + TAIL;
-  const n = fast > 0 ? Math.min(fast, fullN) : fullN;
-  for (let i = 0; i < n; i++) {
-    const t = fast > 0 ? (i / Math.max(n - 1, 1)) * durationMs : (i / FPS) * 1000;
-    await page.evaluate(
-      (ms) => new Promise((r) => {
-        requestAnimationFrame(() => { window.__cap.renderAt(ms); requestAnimationFrame(() => r()); });
-      }),
-      t,
-    );
-    await page.screenshot({ path: join(framesDir, `f_${String(i).padStart(5, "0")}.png`) });
-  }
-  await page.evaluate(() => { window.__cap.dispose(); window.__cap = null; });
-
-  const clip = join(CLIPS_DIR, `${seg.name}.mp4`);
-  await encodeClip(framesDir, clip);
-  await rm(framesDir, { recursive: true, force: true });
-  return clip;
+/** Downscale a single captured frame → the still PNG (the gallery screenshot). */
+export async function encodeStill(framePath, outPath) {
+  await ffmpeg(["-y", "-i", framePath, "-vf", `scale=${PNG_WIDTH}:-1:flags=lanczos`, outPath]);
 }
