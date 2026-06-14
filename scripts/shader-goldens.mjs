@@ -25,6 +25,7 @@ import { loadShaderSources } from "./lib/shader-src.mjs";
 // its fullest), the most representative single frame.
 const FIXTURES = {
   aurora: { mood: "serene", intensity: 0.85, whimsy: 0.4, seed: 12345, lifeFrac: 0.45 },
+  checkmate: { mood: "celebratory", intensity: 0.9, whimsy: 0.55, seed: 12345, lifeFrac: 0.2 },
   ripple: { mood: "celebratory", intensity: 0.85, whimsy: 0.4, seed: 12345, lifeFrac: 0.45 },
   inkstroke: { mood: "celebratory", intensity: 0.85, whimsy: 0.45, seed: 12345, lifeFrac: 0.45 },
   halo: { mood: "serene", intensity: 0.85, whimsy: 0.4, seed: 12345, lifeFrac: 0.45 },

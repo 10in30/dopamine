@@ -71,6 +71,9 @@ export function discoverEffects(root = ROOT) {
       loop: Boolean(doc.tempo?.loop),     // a CONTINUOUS effect (halo, dots)
       category: pres.category,
       label: slug,                        // demo-button label = the actual effect name
+      // The single-source shader block (x-build.shader): { web, vertexExport,
+      // fragmentExport, generateMSL } — present for every pure-shader effect.
+      shader: doc["x-build"]?.shader ?? null,
       // Capture knobs: the demo success-mood toggle name (mapped per-effect by the
       // demo onto the effect's own register), intensity/whimsy, and the photogenic
       // still fraction for the README PNG.

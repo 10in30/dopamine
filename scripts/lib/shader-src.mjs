@@ -10,19 +10,25 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtempSync } from "node:fs";
+import { discoverEffects } from "./effects.mjs";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
-/** effect slug → { file (shader .ts), vertex (export), fragment (export) }. */
-export const SHADER_EXPORTS = {
-  aurora: { file: "effects/aurora/web/src/aurora-shader.ts", vertex: "AURORA_VERTEX_SRC", fragment: "AURORA_FRAGMENT_SRC" },
-  ripple: { file: "effects/ripple/web/src/ripple-shader.ts", vertex: "RIPPLE_VERTEX_SRC", fragment: "RIPPLE_FRAGMENT_SRC" },
-  inkstroke: { file: "effects/inkstroke/web/src/inkstroke-shader.ts", vertex: "INK_VERTEX_SRC", fragment: "INK_FRAGMENT_SRC" },
-  halo: { file: "effects/halo/web/src/halo-shader.ts", vertex: "HALO_VERTEX_SRC", fragment: "HALO_FRAGMENT_SRC" },
-  lightning: { file: "effects/lightning/web/src/lightning-shader.ts", vertex: "LIGHTNING_VERTEX_SRC", fragment: "LIGHTNING_FRAGMENT_SRC" },
-  // fail/solarbloom/confetti sample textures the harness can't bind standalone — they're
-  // gated by the MSL/Android snapshots + CI's macOS sim / android emulator instead.
-};
+/**
+ * effect slug → { file (shader .ts), vertex (export), fragment (export) } — DERIVED
+ * from the one folder-discovered list + each effect's `x-build.shader` block, so a
+ * new pure-shader effect is covered with no edit here. (Which effects actually get a
+ * pixel gate is decided by the FIXTURES map in shader-goldens.mjs — texture-sampling
+ * effects the standalone harness can't bind are left out there.)
+ */
+export const SHADER_EXPORTS = Object.fromEntries(
+  discoverEffects(ROOT)
+    .filter((e) => e.shader?.web && e.shader.vertexExport && e.shader.fragmentExport)
+    .map((e) => [
+      e.slug,
+      { file: `effects/${e.slug}/${e.shader.web}`, vertex: e.shader.vertexExport, fragment: e.shader.fragmentExport },
+    ]),
+);
 
 /**
  * @param {string[]} slugs
