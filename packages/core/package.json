@@ -1,6 +1,6 @@
 {
   "name": "@dopaminefx/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Framework-agnostic slim runtime + shared engine for Dopamine visual effects (vanilla TS + WebGL2). Effects ship as separate @dopaminefx/effect-* packages.",
   "type": "module",
   "main": "./dist/index.js",

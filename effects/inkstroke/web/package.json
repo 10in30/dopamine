@@ -1,6 +1,6 @@
 {
   "name": "@dopaminefx/effect-inkstroke",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Inkstroke — a calligraphic ink/light signature-stroke success effect for Dopamine.",
   "keywords": [
     "dopamine-effect"
@@ -27,7 +27,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@dopaminefx/core": "^0.1.0"
+    "@dopaminefx/core": "^0.2.0"
   },
   "license": "MIT",
   "author": "10in30",
