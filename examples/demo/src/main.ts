@@ -144,6 +144,22 @@ function originTarget(): {
   };
 }
 
+// MOBILE TARGETING FIX. The overlay is `position: fixed`, so an effect is drawn
+// at the target card's VIEWPORT coordinates. If the card has been scrolled
+// off-screen (e.g. on a phone, where you'd scroll to reach a control), firing
+// would draw the effect where the card *is* — above the viewport — and a fixed
+// canvas never scrolls it back into view. So before an INTERACTIVE fire, if the
+// card's centre is outside the viewport, scroll it into view (instantly) so the
+// effect lands on the visible card. `prepare()` deliberately doesn't scroll, to
+// keep offline capture deterministic.
+function ensureTargetVisible(): void {
+  const r = targetEl.getBoundingClientRect();
+  const centreY = r.top + r.height / 2;
+  if (centreY < 0 || centreY > window.innerHeight) {
+    targetEl.scrollIntoView({ block: "center", behavior: "auto" });
+  }
+}
+
 // The surface the effect composites against. In DARK mode we omit `backdrop`,
 // keeping the classic `mix-blend-mode: screen` light (rich cast light over the
 // dark UI — and unchanged for the headless reels). In LIGHT mode we pass the
@@ -184,6 +200,9 @@ function fire(overrides: Partial<typeof state> = {}): Promise<void> {
     syncPauseBtn();
     return Promise.resolve();
   }
+  // Bring the targeted card into view first, so the effect (drawn at the card's
+  // viewport position on the fixed overlay) is actually visible when it fires.
+  ensureTargetVisible();
   const handle = play(effect, {
     mood: moodFor(effect, mood),
     intensity,
