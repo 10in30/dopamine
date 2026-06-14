@@ -63,6 +63,11 @@ jobs:
       - name: Install toolchain deps (esbuild for dopamine build)
         run: npm ci --ignore-scripts
 
+      # Every effect registry (incl. this demo's Dopamine.kt umbrella + its build
+      # deps) is generated from the one folder-discovered list — fail if stale.
+      - name: effect-registries staleness check
+        run: node scripts/gen-registries.mjs --check
+
       # The headline data-spine invariant. Every effect now lives in the
       # single-folder model (effects/<name>/) and the @dopaminefx/build toolchain
       # emits the .dope into each platform package under dist/. Assert, for EVERY

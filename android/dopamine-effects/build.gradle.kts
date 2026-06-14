@@ -27,15 +27,18 @@ kotlin {
 
 dependencies {
     api(project(":dopamine-gl"))
-    api(project(":dopamine-effect-solarbloom"))
+    // dopamine:effects:deps — generated from effects/ by scripts/gen-registries.mjs; do not edit
     api(project(":dopamine-effect-aurora"))
+    api(project(":dopamine-effect-checkmate"))
     api(project(":dopamine-effect-comic"))
     api(project(":dopamine-effect-confetti"))
+    api(project(":dopamine-effect-dots"))
     api(project(":dopamine-effect-fail"))
+    api(project(":dopamine-effect-halo"))
     api(project(":dopamine-effect-heartburst"))
     api(project(":dopamine-effect-inkstroke"))
     api(project(":dopamine-effect-lightning"))
     api(project(":dopamine-effect-ripple"))
-    api(project(":dopamine-effect-halo"))
-    api(project(":dopamine-effect-dots"))
+    api(project(":dopamine-effect-solarbloom"))
+    // dopamine:effects:deps:end
 }

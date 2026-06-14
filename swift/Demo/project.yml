@@ -30,16 +30,21 @@ packages:
   # Every effect now ships from the toolchain's dist/ output: the demo consumes the
   # GENERATED standalone SwiftPM packages, exactly like an external app would. Run
   # `npm run dopamine -- build` before `xcodegen generate` so these paths exist.
-  DopamineEffectSolarbloom:
-    path: "../../dist/swift/DopamineEffectSolarbloom"
+  # dopamine:effects:packages — generated from effects/ by scripts/gen-registries.mjs; do not edit
   DopamineEffectAurora:
     path: "../../dist/swift/DopamineEffectAurora"
+  DopamineEffectCheckmate:
+    path: "../../dist/swift/DopamineEffectCheckmate"
   DopamineEffectComic:
     path: "../../dist/swift/DopamineEffectComic"
   DopamineEffectConfetti:
     path: "../../dist/swift/DopamineEffectConfetti"
+  DopamineEffectDots:
+    path: "../../dist/swift/DopamineEffectDots"
   DopamineEffectFail:
     path: "../../dist/swift/DopamineEffectFail"
+  DopamineEffectHalo:
+    path: "../../dist/swift/DopamineEffectHalo"
   DopamineEffectHeartburst:
     path: "../../dist/swift/DopamineEffectHeartburst"
   DopamineEffectInkstroke:
@@ -48,10 +53,9 @@ packages:
     path: "../../dist/swift/DopamineEffectLightning"
   DopamineEffectRipple:
     path: "../../dist/swift/DopamineEffectRipple"
-  DopamineEffectHalo:
-    path: "../../dist/swift/DopamineEffectHalo"
-  DopamineEffectDots:
-    path: "../../dist/swift/DopamineEffectDots"
+  DopamineEffectSolarbloom:
+    path: "../../dist/swift/DopamineEffectSolarbloom"
+  # dopamine:effects:packages:end
 
 targets:
   DopamineDemo:
@@ -96,16 +100,21 @@ targets:
     dependencies:
       - package: Dopamine
         product: DopamineCore
-      - package: DopamineEffectSolarbloom
-        product: DopamineEffectSolarbloom
+      # dopamine:effects:deps — generated from effects/ by scripts/gen-registries.mjs; do not edit
       - package: DopamineEffectAurora
         product: DopamineEffectAurora
+      - package: DopamineEffectCheckmate
+        product: DopamineEffectCheckmate
       - package: DopamineEffectComic
         product: DopamineEffectComic
       - package: DopamineEffectConfetti
         product: DopamineEffectConfetti
+      - package: DopamineEffectDots
+        product: DopamineEffectDots
       - package: DopamineEffectFail
         product: DopamineEffectFail
+      - package: DopamineEffectHalo
+        product: DopamineEffectHalo
       - package: DopamineEffectHeartburst
         product: DopamineEffectHeartburst
       - package: DopamineEffectInkstroke
@@ -114,10 +123,9 @@ targets:
         product: DopamineEffectLightning
       - package: DopamineEffectRipple
         product: DopamineEffectRipple
-      - package: DopamineEffectHalo
-        product: DopamineEffectHalo
-      - package: DopamineEffectDots
-        product: DopamineEffectDots
+      - package: DopamineEffectSolarbloom
+        product: DopamineEffectSolarbloom
+      # dopamine:effects:deps:end
 
 schemes:
   DopamineDemo:
