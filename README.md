@@ -37,9 +37,9 @@ the `swift` / `android` workflow with `refresh_media: true`, or push with
 `[media]` in the commit message. (Until the first refresh run those cells are
 empty.)
 
+<!-- dopamine:effects:gallery — generated from effects/ by scripts/gen-registries.mjs; do not edit -->
 | Effect | Web (WebGL2) | iOS (Metal) | Android (GL ES 3.0) |
 |---|---|---|---|
-<!-- dopamine:effects:gallery — generated from effects/ by scripts/gen-registries.mjs; do not edit -->
 | **aurora**<br>success | <img src="docs/media/aurora.gif" width="380" alt="aurora — web"> | <img src="docs/media/ios/aurora.gif" width="380" alt="aurora — iOS"> | <img src="docs/media/android/aurora.gif" width="380" alt="aurora — Android"> |
 | **checkmate**<br>celebration (pride) | <img src="docs/media/checkmate.gif" width="380" alt="checkmate — web"> | _pending_ | _pending_ |
 | **comic**<br>success | <img src="docs/media/comic.gif" width="380" alt="comic — web"> | <img src="docs/media/ios/comic.gif" width="380" alt="comic — iOS"> | <img src="docs/media/android/comic.gif" width="380" alt="comic — Android"> |
