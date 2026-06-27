@@ -284,8 +284,17 @@ fun createPassInstance(config: PassConfig, params: Map<String, DopeValue>, ctx: 
                 panelCfg.draw(canvas, gl.width, gl.height, params, panelInfo)
                 canvas.restore()
             }
-            // Self-contained overlay: light pass only (the shadow pass needs a
-            // backdrop the GL surface can't read — see Look.kt / MetalOverlayHost).
+            // Drop-shadow (single-surface, like MetalOverlayHost): render the shadow
+            // pass into an off-screen FBO and composite it as premultiplied black
+            // BEHIND the glow. Then re-arm the additive light blend and draw the glow
+            // ON TOP. (No backdrop read needed — the shadow is encoded as source-over
+            // black-alpha that darkens the live backdrop when the surface composites.)
+            ctx.gl.withShadowComposite {
+                drawPass(isShadow = true, info = info, frameUniforms = frameUniforms, frameArrs = frameArrs)
+            }
+            GLES30.glEnable(GLES30.GL_BLEND)
+            GLES30.glBlendEquation(GLES30.GL_FUNC_ADD)
+            GLES30.glBlendFunc(GLES30.GL_ONE, GLES30.GL_ONE)
             drawPass(isShadow = false, info = info, frameUniforms = frameUniforms, frameArrs = frameArrs)
         }
 

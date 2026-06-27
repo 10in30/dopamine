@@ -110,34 +110,50 @@ fun createPanelInstance(config: PanelConfig, params: Map<String, DopeValue>, ctx
             config.draw(canvas, w, h, params, info)
             canvas.restore()
 
-            // Upload + light pass.
-            val prog = gl.program(config.vertex, config.fragment)
-            prog.resolve(STANDARD_PANEL)
-            prog.resolve(config.uniforms)
-            GLES30.glUseProgram(prog.id)
+            // Draw the panel pass (light or shadow). The panel bitmap is already drawn
+            // + (for the shadow pass) re-uploaded; only `uShadow` + the shadow geometry
+            // differ between the two.
+            fun drawPanelPass(isShadow: Boolean) {
+                val prog = gl.program(config.vertex, config.fragment)
+                prog.resolve(STANDARD_PANEL)
+                prog.resolve(config.uniforms)
+                GLES30.glUseProgram(prog.id)
 
-            GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
-            uploadBitmap(panelTex, bmp)
-            prog.uniform(config.panelSampler).let { if (it >= 0) GLES30.glUniform1i(it, 0) }
+                GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+                uploadBitmap(panelTex, bmp)
+                prog.uniform(config.panelSampler).let { if (it >= 0) GLES30.glUniform1i(it, 0) }
 
-            applyFloatMap(prog, config.passUniforms?.invoke(w, h, params, ctx.density, targetW, targetH))
+                applyFloatMap(prog, config.passUniforms?.invoke(w, h, params, ctx.density, targetW, targetH))
 
-            prog.uniform("uResolution").let { if (it >= 0) GLES30.glUniform2f(it, w.toFloat(), h.toFloat()) }
-            bindTarget(prog, w, h, ctx.targetWidthPx, ctx.targetHeightPx)
-            // uCenter: the impact/heart centre the procedural parts radiate from —
-            // matches the anchor, y-flipped to the y-up frag space (web parity).
-            prog.uniform("uCenter").let { if (it >= 0) GLES30.glUniform2f(it, ctx.anchorX, h - ctx.anchorY) }
-            prog.uniform("uOrigin").let { if (it >= 0) GLES30.glUniform2f(it, ctx.anchorX, h - ctx.anchorY) }
-            setF(prog, "uLife", life.toFloat())
-            setF(prog, "uTimeS", (elapsedMs / 1000.0).toFloat()) // panels don't step "on twos"
-            setF(prog, "uStyle", style.toFloat())
-            // Backdrop luminance drives the light-out boost (no-op at 0).
-            setF(prog, "uBackdropLum", ctx.backdropLum)
-            bindPalette(prog, pal)
-            bindScalars(prog, params, scalarBinds)
-            bindFrameUniforms(prog, frameUniforms)
-            setF(prog, "uShadow", 0f)
-            drawFullscreenTriangle(gl)
+                prog.uniform("uResolution").let { if (it >= 0) GLES30.glUniform2f(it, w.toFloat(), h.toFloat()) }
+                bindTarget(prog, w, h, ctx.targetWidthPx, ctx.targetHeightPx)
+                // uCenter: the impact/heart centre the procedural parts radiate from —
+                // matches the anchor, y-flipped to the y-up frag space (web parity).
+                prog.uniform("uCenter").let { if (it >= 0) GLES30.glUniform2f(it, ctx.anchorX, h - ctx.anchorY) }
+                prog.uniform("uOrigin").let { if (it >= 0) GLES30.glUniform2f(it, ctx.anchorX, h - ctx.anchorY) }
+                setF(prog, "uLife", life.toFloat())
+                setF(prog, "uTimeS", (elapsedMs / 1000.0).toFloat()) // panels don't step "on twos"
+                setF(prog, "uStyle", style.toFloat())
+                // Backdrop luminance drives the light-out boost (no-op at 0).
+                setF(prog, "uBackdropLum", ctx.backdropLum)
+                bindPalette(prog, pal)
+                bindScalars(prog, params, scalarBinds)
+                bindFrameUniforms(prog, frameUniforms)
+                setF(prog, "uShadow", if (isShadow) 1f else 0f)
+                if (isShadow) {
+                    val amp = frameUniforms["amp"]?.toDouble() ?: 0.0
+                    bindShadowGeometry(prog, w, h, config.shadowHeightFrac(params), amp, style)
+                }
+                drawFullscreenTriangle(gl)
+            }
+
+            // Drop-shadow BEHIND the glow (single-surface, like MetalOverlayHost), then
+            // the LIGHT pass additively on top.
+            ctx.gl.withShadowComposite { drawPanelPass(isShadow = true) }
+            GLES30.glEnable(GLES30.GL_BLEND)
+            GLES30.glBlendEquation(GLES30.GL_FUNC_ADD)
+            GLES30.glBlendFunc(GLES30.GL_ONE, GLES30.GL_ONE)
+            drawPanelPass(isShadow = false)
         }
 
         override fun dispose() {

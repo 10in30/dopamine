@@ -38,9 +38,23 @@ class GlContext {
     var vao: Int = 0
         private set
 
+    // --- Host-side drop-shadow composite ---------------------------------------
+    // The web draws the drop-shadow on a separate `multiply` canvas; a GLSurfaceView
+    // (like a CAMetalLayer) can't multiply against the backdrop. So — mirroring
+    // MetalOverlayHost — we render the shadow pass into an off-screen FBO, then a
+    // conversion pass writes premultiplied black (0,0,0, 1-luma) onto the surface
+    // with source-over blend, BEHIND the glow: one self-contained surface that
+    // darkens the live backdrop. Lazily sized to the drawable; freed on resize/loss.
+    private var shadowFbo = 0
+    private var shadowTex = 0
+    private var shadowSize = 0L   // (width << 32) | height, to detect a resize
+
     /** (Re)initialize the GL-thread state. Programs do NOT survive a context loss. */
     fun onSurfaceCreated() {
         programs.clear()
+        // The FBO/texture names belonged to the lost context; drop them so the next
+        // composite re-creates against the fresh context.
+        shadowFbo = 0; shadowTex = 0; shadowSize = 0L
         val ids = IntArray(1)
         GLES30.glGenVertexArrays(1, ids, 0)
         vao = ids[0]
@@ -54,7 +68,85 @@ class GlContext {
     /** Compile + link (cached by source) and return the program. */
     fun program(vertex: String, fragment: String): GlProgram =
         programs.getOrPut(vertex + " " + fragment) { GlProgram(linkProgram(vertex, fragment)) }
+
+    private fun ensureShadowTarget() {
+        val key = (width.toLong() shl 32) or height.toLong()
+        if (shadowFbo != 0 && shadowSize == key) return
+        if (shadowFbo != 0) {
+            GLES30.glDeleteFramebuffers(1, intArrayOf(shadowFbo), 0)
+            GLES30.glDeleteTextures(1, intArrayOf(shadowTex), 0)
+        }
+        shadowTex = allocTexture()
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, shadowTex)
+        GLES30.glTexImage2D(
+            GLES30.GL_TEXTURE_2D, 0, GLES30.GL_RGBA8, width, height, 0,
+            GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, null,
+        )
+        val fb = IntArray(1)
+        GLES30.glGenFramebuffers(1, fb, 0)
+        shadowFbo = fb[0]
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, shadowFbo)
+        GLES30.glFramebufferTexture2D(
+            GLES30.GL_FRAMEBUFFER, GLES30.GL_COLOR_ATTACHMENT0, GLES30.GL_TEXTURE_2D, shadowTex, 0,
+        )
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+        shadowSize = key
+    }
+
+    /**
+     * Render an effect's SHADOW pass into an off-screen target and composite it as a
+     * premultiplied-black drop-shadow onto the current surface, BEHIND the glow.
+     * `drawShadow` must draw the shadow pass (`uShadow = 1`) as a full-screen pass.
+     * Leaves the surface blend as premultiplied source-over — the caller re-arms the
+     * additive light blend for its glow pass. Mirrors MetalOverlayHost.tick.
+     */
+    fun withShadowComposite(drawShadow: () -> Unit) {
+        ensureShadowTarget()
+        // 1. Shadow pass → off-screen FBO, cleared WHITE (1 = no shadow), blend OFF so
+        //    the shader's `mul` output is copied verbatim.
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, shadowFbo)
+        GLES30.glViewport(0, 0, width, height)
+        GLES30.glDisable(GLES30.GL_BLEND)
+        GLES30.glClearColor(1f, 1f, 1f, 1f)
+        GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
+        drawShadow()
+        // 2. Conversion → surface: premultiplied black (0,0,0, 1-luma(mul)), source-over.
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+        GLES30.glViewport(0, 0, width, height)
+        GLES30.glEnable(GLES30.GL_BLEND)
+        GLES30.glBlendEquation(GLES30.GL_FUNC_ADD)
+        GLES30.glBlendFunc(GLES30.GL_ONE, GLES30.GL_ONE_MINUS_SRC_ALPHA)
+        val prog = program(SHADOW_CONVERT_VERT, SHADOW_CONVERT_FRAG)
+        GLES30.glUseProgram(prog.id)
+        GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, shadowTex)
+        prog.uniform("uShadowRaw").let { if (it >= 0) GLES30.glUniform1i(it, 0) }
+        drawFullscreenTriangle(this)
+    }
 }
+
+/** Full-screen-triangle vertex for the host shadow-conversion pass (gl_VertexID). */
+private const val SHADOW_CONVERT_VERT = """#version 300 es
+out vec2 vUv;
+void main() {
+  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  vUv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+"""
+
+/** Multiply-colour (1 = no shadow) → premultiplied black with alpha = 1 - luma. */
+private const val SHADOW_CONVERT_FRAG = """#version 300 es
+precision highp float;
+in vec2 vUv;
+uniform sampler2D uShadowRaw;
+out vec4 frag;
+void main() {
+  vec3 c = texture(uShadowRaw, vUv).rgb;
+  float dark = clamp(1.0 - dot(c, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
+  frag = vec4(0.0, 0.0, 0.0, dark);
+}
+"""
 
 /** Compile one shader stage; throws with the driver log on failure. */
 fun compileShader(type: Int, src: String): Int {
