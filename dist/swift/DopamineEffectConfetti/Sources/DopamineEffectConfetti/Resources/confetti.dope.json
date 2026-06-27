@@ -1,0 +1,456 @@
+{
+  "fmt": "dopamine-effect",
+  "v": "1.0.0",
+  "id": "dopamine.celebrate.confetti",
+  "meta": {
+    "name": "Confetti",
+    "description": "A burst of paper confetti launches upward from the action then tumbles down under gravity with air-drag flutter — spinning rectangles and petals in many OKLCH hues that sway, settle, and fade. The signature is the downward, physical, fluttering fall (deliberately distinct from Solarbloom's upward drifting motes).",
+    "tags": [
+      "celebrate",
+      "success",
+      "particles"
+    ]
+  },
+  "controls": {
+    "mood": {
+      "type": "enum",
+      "default": "celebratory",
+      "options": [
+        "serene",
+        "celebratory",
+        "electric"
+      ],
+      "ui": "segmented"
+    },
+    "intensity": {
+      "type": "scalar",
+      "default": 0.75,
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "ui": "slider"
+    },
+    "whimsy": {
+      "type": "scalar",
+      "default": 0.5,
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "ui": "slider"
+    },
+    "seed": {
+      "type": "int",
+      "default": null,
+      "nullable": true
+    },
+    "origin": {
+      "type": "point",
+      "default": "center"
+    }
+  },
+  "baselines": {
+    "serene": {
+      "durationMs": 3000,
+      "lightness": 0.86,
+      "chroma": 0.07,
+      "hueCenter": 210,
+      "hueRange": 150,
+      "pieceCount": 34,
+      "spread": 0.42,
+      "launchSpeed": 0.78,
+      "gravity": 0.62,
+      "flutter": 0.55,
+      "pieceSize": 1.12,
+      "spin": 0.7
+    },
+    "celebratory": {
+      "durationMs": 2300,
+      "lightness": 0.82,
+      "chroma": 0.16,
+      "hueCenter": 45,
+      "hueRange": 340,
+      "pieceCount": 70,
+      "spread": 0.62,
+      "launchSpeed": 1,
+      "gravity": 0.9,
+      "flutter": 0.85,
+      "pieceSize": 1,
+      "spin": 1
+    },
+    "electric": {
+      "durationMs": 1900,
+      "lightness": 0.8,
+      "chroma": 0.23,
+      "hueCenter": 320,
+      "hueRange": 300,
+      "pieceCount": 100,
+      "spread": 0.82,
+      "launchSpeed": 1.28,
+      "gravity": 1.05,
+      "flutter": 1.15,
+      "pieceSize": 0.9,
+      "spin": 1.35
+    }
+  },
+  "palette": {
+    "model": "oklch",
+    "space": "linear-srgb",
+    "generator": "golden-angle",
+    "goldenAngleDeg": 137.50776405003785,
+    "stops": 3,
+    "hueSpread": 0.85,
+    "lightness": {
+      "baseline": "lightness",
+      "perStop": [
+        0,
+        0.05,
+        -0.06
+      ]
+    },
+    "chroma": {
+      "from": {
+        "mul": [
+          {
+            "baseline": "chroma"
+          },
+          {
+            "lerp": [
+              "intensity",
+              0.7,
+              1.6
+            ]
+          }
+        ]
+      },
+      "perStop": [
+        0,
+        0.03,
+        -0.01
+      ]
+    },
+    "seed": {
+      "deterministic": true,
+      "source": "controls.seed",
+      "prng": "mulberry32"
+    },
+    "perMood": {
+      "serene": {
+        "hueCenter": 210,
+        "hueRange": 150,
+        "lightness": 0.86,
+        "chroma": 0.07
+      },
+      "celebratory": {
+        "hueCenter": 45,
+        "hueRange": 340,
+        "lightness": 0.82,
+        "chroma": 0.16
+      },
+      "electric": {
+        "hueCenter": 320,
+        "hueRange": 300,
+        "lightness": 0.8,
+        "chroma": 0.23
+      }
+    }
+  },
+  "tempo": {
+    "durationMs": {
+      "from": {
+        "round": {
+          "mul": [
+            {
+              "baseline": "durationMs"
+            },
+            {
+              "lerp": [
+                "intensity",
+                1.15,
+                0.85
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "frame": {
+      "amp": {
+        "lt": [
+          0,
+          {
+            "input": "life"
+          },
+          {
+            "lt": [
+              {
+                "input": "life"
+              },
+              1,
+              {
+                "lt": [
+                  {
+                    "input": "life"
+                  },
+                  0.12,
+                  {
+                    "easeOutBack": [
+                      {
+                        "div": [
+                          {
+                            "input": "life"
+                          },
+                          0.12
+                        ]
+                      },
+                      {
+                        "param": "overshoot"
+                      }
+                    ]
+                  },
+                  {
+                    "lt": [
+                      {
+                        "input": "life"
+                      },
+                      0.7,
+                      1,
+                      {
+                        "sub": [
+                          1,
+                          {
+                            "mul": [
+                              {
+                                "easeOutCubic": {
+                                  "div": [
+                                    {
+                                      "sub": [
+                                        {
+                                          "input": "life"
+                                        },
+                                        0.7
+                                      ]
+                                    },
+                                    0.3
+                                  ]
+                                }
+                              },
+                              0.85
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              0
+            ]
+          },
+          0
+        ]
+      },
+      "extras": {}
+    },
+    "reducedMotion": {
+      "peakMs": 320,
+      "holdMs": 420
+    },
+    "note": "Datafied per-frame logic (the web/Swift/Kotlin confettiAmp envelope, delta-0). amp = the launch-then-fall brightness: a sharp easeOutBack POP over the first 12% of life (overshoot at launch), a luminous full sustain to 70%, then a soft easeOutCubic fade over the last 30% as the last pieces settle (per-piece dimming rides the panel draw). The pieces' poses (ballistic arc + flutter sway + spin) are panel GEOMETRY — code by design (the per-platform ConfettiPanel draw)."
+  },
+  "geometry": {
+    "kind": "radial",
+    "viewBox": [
+      0,
+      0,
+      100,
+      100
+    ],
+    "outlines": {
+      "piece": {
+        "role": "confetti-piece",
+        "note": "Procedural paper pieces (rounded rectangles + a few petals) traced in the panel from pieceCount + pieceSeed; rotated by the per-piece spin."
+      }
+    }
+  },
+  "render": {
+    "params": {
+      "exposure": {
+        "type": "float",
+        "from": {
+          "lerp": [
+            "intensity",
+            0.95,
+            1.45
+          ]
+        }
+      },
+      "pieceCount": {
+        "type": "float",
+        "from": {
+          "round": {
+            "mul": [
+              {
+                "baseline": "pieceCount"
+              },
+              {
+                "lerp": [
+                  "intensity",
+                  0.45,
+                  1
+                ]
+              }
+            ]
+          }
+        },
+        "clampMax": "MAX_PIECES"
+      },
+      "spread": {
+        "type": "float",
+        "from": {
+          "mul": [
+            {
+              "baseline": "spread"
+            },
+            {
+              "lerp": [
+                "intensity",
+                0.75,
+                1.15
+              ]
+            }
+          ]
+        }
+      },
+      "launchSpeed": {
+        "type": "float",
+        "from": {
+          "mul": [
+            {
+              "baseline": "launchSpeed"
+            },
+            {
+              "lerp": [
+                "intensity",
+                0.8,
+                1.3
+              ]
+            }
+          ]
+        }
+      },
+      "gravity": {
+        "type": "float",
+        "from": {
+          "baseline": "gravity"
+        }
+      },
+      "flutter": {
+        "type": "float",
+        "from": {
+          "mul": [
+            {
+              "baseline": "flutter"
+            },
+            {
+              "lerp": [
+                "intensity",
+                0.85,
+                1.15
+              ]
+            }
+          ]
+        }
+      },
+      "pieceSize": {
+        "type": "float",
+        "from": {
+          "mul": [
+            {
+              "baseline": "pieceSize"
+            },
+            {
+              "lerp": [
+                "intensity",
+                1.1,
+                0.85
+              ]
+            }
+          ]
+        }
+      },
+      "spin": {
+        "type": "float",
+        "from": {
+          "baseline": "spin"
+        }
+      },
+      "overshoot": {
+        "type": "float",
+        "from": {
+          "lerp": [
+            "intensity",
+            0.6,
+            1.2
+          ]
+        }
+      },
+      "style": {
+        "type": "float",
+        "from": {
+          "control": "whimsy"
+        }
+      }
+    },
+    "shadowHeightFrac": 0.5,
+    "panel": {
+      "sampler": "uPanel",
+      "texture": 0,
+      "note": "The Canvas2D/CoreGraphics/android.graphics panel (the spinning paper pieces rasterized once per piece per frame, RGB = Σ per-piece lit colour × fade) the host redraws every frame; the draw itself — the ballistic launch-then-fall poses + per-piece paper/cel shading — is the per-platform panel-draw seam (web panelDraw hook / ConfettiPanel files). The shader samples it and applies the global gain (amp · exposure), ACES tonemap, the cel posterize toward the whimsy end, an ordered dither, and the soft cast shadow."
+    },
+    "consts": {
+      "MAX_PIECES": 120
+    },
+    "config": {
+      "usesOrigin": true,
+      "stepping": "none"
+    },
+    "backends": {
+      "webgl2": {
+        "stage": "fullscreen-triangle",
+        "blend": "screen",
+        "shader": {
+          "program": "confetti"
+        },
+        "note": "Hybrid: a Canvas2D panel (the paper pieces) is uploaded as a texture; the shader adds the global gain, filmic tonemap, cel posterize, dither and the cast shadow."
+      }
+    },
+    "fallbackOrder": [
+      "webgl2"
+    ]
+  },
+  "binding": {
+    "note": "CROSS-PLATFORM uniform-binding contract. Which render.params are NOT shader uniforms, the seed-keyed scatter field, the per-frame/host extras, and the texture samplers — one source of truth for the web u<Name> list, the Swift struct + packer, and the MSL struct. SHIPS in the portable .dope (the runtime derives its uniform bindings from it); the toolchain consumes it too for the Metal struct codegen. Only `x-build`, `slug` and `kind` stay toolchain-only.",
+    "excludeParams": [
+      "style",
+      "overshoot",
+      "durationMs",
+      "pieceCount",
+      "spread",
+      "launchSpeed",
+      "gravity",
+      "flutter",
+      "pieceSize",
+      "spin"
+    ],
+    "scatterKey": "pieceSeed",
+    "extras": [],
+    "samplers": [
+      {
+        "web": "uPanel",
+        "name": "panelTex",
+        "texture": 0,
+        "note": "the per-frame panel texture (render.panel)"
+      }
+    ]
+  }
+}
