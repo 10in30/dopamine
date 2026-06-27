@@ -37,6 +37,7 @@ node -e '
 mkdir -p "$STAGE/engine" "$STAGE/framework"
 sed 's/\.js"/.ts"/g' "$WEB_SRC/engine/seed.ts"  > "$STAGE/engine/seed.ts"
 sed 's/\.js"/.ts"/g' "$WEB_SRC/engine/color.ts" > "$STAGE/engine/color.ts"
+sed 's/\.js"/.ts"/g' "$WEB_SRC/engine/tempo.ts" > "$STAGE/engine/tempo.ts"
 sed 's/\.js"/.ts"/g' "$WEB_SRC/framework/loader.ts" > "$STAGE/framework/loader.ts"
 printf 'export interface BakedSdf { size: number; range: number; viewBox: [number,number,number,number]; data: string; }\n' \
   > "$STAGE/engine/sdf.ts"

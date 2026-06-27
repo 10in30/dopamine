@@ -170,20 +170,7 @@
   "tempo": {
     "durationMs": {
       "from": {
-        "round": {
-          "mul": [
-            {
-              "baseline": "durationMs"
-            },
-            {
-              "lerp": [
-                "intensity",
-                1.1,
-                0.9
-              ]
-            }
-          ]
-        }
+        "baseline": "durationMs"
       }
     },
     "frame": {
@@ -283,8 +270,8 @@
             {
               "lerp": [
                 "intensity",
-                0.8,
-                1.15
+                0.4,
+                1
               ]
             }
           ]
@@ -295,15 +282,25 @@
         "clampMax": "MAX_MOTES",
         "from": {
           "round": {
-            "mul": [
+            "add": [
               {
-                "baseline": "moteCount"
+                "const": 6
               },
               {
-                "lerp": [
-                  "intensity",
-                  0.85,
-                  1.25
+                "mul": [
+                  {
+                    "sub": [
+                      {
+                        "baseline": "moteCount"
+                      },
+                      {
+                        "const": 6
+                      }
+                    ]
+                  },
+                  {
+                    "control": "intensity"
+                  }
                 ]
               }
             ]

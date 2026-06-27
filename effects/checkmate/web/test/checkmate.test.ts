@@ -49,14 +49,38 @@ describe("checkmate resolve (pride chess-queen win)", () => {
     }
   });
 
-  it("intensity drives the bling, swoosh reach, spin and pop overshoot", () => {
+  it("intensity drives the bling, swoosh reach and pop overshoot (look/extent, not speed)", () => {
     const lo = resolve("celebratory", 0.05, 0.6, 5);
     const hi = resolve("celebratory", 0.98, 0.6, 5);
     expect(hi.bling).toBeGreaterThan(lo.bling);
     expect(hi.swoosh).toBeGreaterThan(lo.swoosh);
-    expect(hi.spin).toBeGreaterThan(lo.spin);
     expect(hi.overshoot).toBeGreaterThan(lo.overshoot);
     expect(hi.exposure).toBeGreaterThan(lo.exposure);
+  });
+
+  it("intensity scales icon size 40%→100% of the baseline (extent, not speed)", () => {
+    const baseline = 0.3; // celebratory sizeFrac baseline
+    const lo = resolve("celebratory", 0.0, 0.6, 5);
+    const hi = resolve("celebratory", 1.0, 0.6, 5);
+    expect(lo.sizeFrac).toBeCloseTo(baseline * 0.4, 5);
+    expect(hi.sizeFrac).toBeCloseTo(baseline, 5);
+    expect(hi.sizeFrac).toBeGreaterThan(lo.sizeFrac);
+  });
+
+  it("intensity grows ray count from a floor of 4 up to the mood baseline", () => {
+    const baseline = 10; // celebratory rays baseline
+    const lo = resolve("celebratory", 0.0, 0.6, 5);
+    const hi = resolve("celebratory", 1.0, 0.6, 5);
+    expect(lo.rays).toBe(4);
+    expect(hi.rays).toBe(baseline);
+    expect(hi.rays).toBeGreaterThan(lo.rays);
+  });
+
+  it("intensity does NOT affect speed/timing (spin + durationMs are baseline-only)", () => {
+    const lo = resolve("celebratory", 0.05, 0.6, 5);
+    const hi = resolve("celebratory", 0.98, 0.6, 5);
+    expect(hi.spin).toBe(lo.spin);
+    expect(hi.durationMs).toBe(lo.durationMs);
   });
 
   it("whimsy is the stylization axis (style == raw whimsy)", () => {

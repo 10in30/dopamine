@@ -270,6 +270,15 @@ final class OverlayView: PlatformView {
     /// `layer` is optional (it's layer-backed via `wantsLayer`); UIView's is not.
     private func addOverlayLayer(_ l: CALayer) {
         #if os(macOS)
+        // This NSView is `isFlipped` (top-left origin, for the anchor/target math), so
+        // its layer-backed geometry is flipped vertically — which composites a hosted
+        // CAMetalLayer's contents (Metal renders into a top-left-origin drawable)
+        // UPSIDE DOWN. Most effects read fine mirrored (bloom/rings/sparkles are ~y-
+        // symmetric, fired centred), so only an asymmetric GLYPH / icon / word reveals
+        // it. Counter-flip THIS layer's geometry so its contents present upright again
+        // (and land at the right anchor). iOS (UIView, not flipped) needs none of this;
+        // the rendering pipeline itself is identical across platforms.
+        l.isGeometryFlipped = true
         layer?.addSublayer(l)
         #else
         layer.addSublayer(l)

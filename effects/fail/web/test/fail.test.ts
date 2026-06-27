@@ -60,6 +60,17 @@ describe("fail .dope", () => {
     expect(harsh.durationMs as number).toBeLessThan(gentle.durationMs as number);
   });
 
+  it("intensity does NOT affect timing — durationMs is the per-mood baseline at every intensity", () => {
+    const baselines: Record<string, number> = { "try-again": 900, error: 760, denied: 640 };
+    for (const mood of ["try-again", "error", "denied"]) {
+      const low = resolveDopeParams(doc, { mood, intensity: 0, whimsy: 0.5, seed: 1 }, {}, "failSeed");
+      const high = resolveDopeParams(doc, { mood, intensity: 1, whimsy: 0.5, seed: 1 }, {}, "failSeed");
+      expect(low.durationMs as number).toBe(baselines[mood]); // pinned to the per-mood baseline
+      expect(high.durationMs as number).toBe(low.durationMs as number); // identical across intensities
+      expect(low.durationMs as number).toBeGreaterThan(0);
+    }
+  });
+
   it("ships a baked ✗ SDF driven by the svgPath (geometry seam)", () => {
     const cross = getOutline(doc, "cross");
     expect(cross?.svgPath).toContain("M");

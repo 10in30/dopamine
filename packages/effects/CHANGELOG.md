@@ -1,5 +1,23 @@
 # @dopaminefx/effects
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @dopaminefx/effect-aurora@0.2.0
+  - @dopaminefx/effect-checkmate@0.3.0
+  - @dopaminefx/effect-comic@0.2.0
+  - @dopaminefx/effect-confetti@0.2.0
+  - @dopaminefx/effect-dots@0.2.0
+  - @dopaminefx/effect-fail@0.2.0
+  - @dopaminefx/effect-halo@0.2.0
+  - @dopaminefx/effect-heartburst@0.2.0
+  - @dopaminefx/effect-inkstroke@0.2.0
+  - @dopaminefx/effect-lightning@0.2.0
+  - @dopaminefx/effect-ripple@0.2.0
+  - @dopaminefx/effect-solarbloom@0.2.0
+
 ## 0.2.0
 
 ### Minor Changes

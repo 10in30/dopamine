@@ -51,6 +51,43 @@ describe("solarbloom resolve", () => {
     expect(hi.overshoot).toBeGreaterThan(lo.overshoot);
   });
 
+  it("intensity scales bloom size: ~40% of baseline at low → full baseline at 1.0", () => {
+    // bloomRadius = baseline * lerp(intensity, 0.4, 1.0); baseline is the max.
+    const baseline = (solarbloomDoc as { baselines: Record<string, { bloomRadius: number }> })
+      .baselines.celebratory.bloomRadius;
+    const lo = resolve("celebratory", 0, 0.5, 5);
+    const hi = resolve("celebratory", 1, 0.5, 5);
+    const mid = resolve("celebratory", 0.5, 0.5, 5);
+    expect(lo.bloomRadius).toBeCloseTo(baseline * 0.4);
+    expect(hi.bloomRadius).toBeCloseTo(baseline);
+    // Monotonic growth, never above baseline.
+    expect(mid.bloomRadius).toBeGreaterThan(lo.bloomRadius);
+    expect(mid.bloomRadius).toBeLessThan(hi.bloomRadius);
+    expect(hi.bloomRadius).toBeGreaterThanOrEqual(mid.bloomRadius);
+  });
+
+  it("intensity scales mote count: floor of MIN(6) at low → baseline at 1.0", () => {
+    // moteCount = round(6 + (baseline - 6) * intensity); baseline is the max (≤ MAX_MOTES).
+    const baseline = (solarbloomDoc as { baselines: Record<string, { moteCount: number }> })
+      .baselines.celebratory.moteCount;
+    const lo = resolve("celebratory", 0, 0.5, 5);
+    const hi = resolve("celebratory", 1, 0.5, 5);
+    const mid = resolve("celebratory", 0.5, 0.5, 5);
+    expect(lo.moteCount).toBe(6);
+    expect(hi.moteCount).toBe(baseline);
+    expect(mid.moteCount).toBeGreaterThan(lo.moteCount);
+    expect(mid.moteCount).toBeLessThan(hi.moteCount);
+    expect(hi.moteCount).toBeLessThanOrEqual(MAX_MOTES);
+  });
+
+  it("intensity does NOT affect timing: durationMs is identical across intensities", () => {
+    const lo = resolve("celebratory", 0.0, 0.5, 5);
+    const mid = resolve("celebratory", 0.5, 0.5, 5);
+    const hi = resolve("celebratory", 1.0, 0.5, 5);
+    expect(mid.durationMs).toBe(lo.durationMs);
+    expect(hi.durationMs).toBe(lo.durationMs);
+  });
+
   it("whimsy is the stylization axis: higher whimsy raises style and flattens photoreal light", () => {
     const lo = resolve("celebratory", 0.7, 0.0, 5);
     const hi = resolve("celebratory", 0.7, 1.0, 5);

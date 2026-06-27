@@ -156,20 +156,7 @@
   "tempo": {
     "durationMs": {
       "from": {
-        "round": {
-          "mul": [
-            {
-              "baseline": "durationMs"
-            },
-            {
-              "lerp": [
-                "intensity",
-                1.15,
-                0.85
-              ]
-            }
-          ]
-        }
+        "baseline": "durationMs"
       }
     },
     "frame": {

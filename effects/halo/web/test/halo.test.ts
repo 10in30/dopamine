@@ -54,14 +54,22 @@ describe("halo resolve (calm looping loader)", () => {
     }
   });
 
-  it("intensity drives brightness, glow and sweep presence", () => {
+  it("intensity drives brightness, glow and the ring's size/extent", () => {
     const lo = resolve("celebratory", 0.05, 0.5, 5);
     const hi = resolve("celebratory", 0.98, 0.5, 5);
     expect(hi.exposure).toBeGreaterThan(lo.exposure);
     expect(hi.glow).toBeGreaterThan(lo.glow);
+    // size/extent params grow with intensity (≈0.4×baseline at low → baseline at 1.0)
     expect(hi.sweepArc).toBeGreaterThan(lo.sweepArc);
-    // higher intensity tightens the ring wall (brighter, tighter loop)
-    expect(hi.ringWidth).toBeLessThan(lo.ringWidth);
+    expect(hi.ringWidth).toBeGreaterThan(lo.ringWidth);
+  });
+
+  it("size/extent params scale ≈0.4×baseline at low intensity → baseline at 1.0", () => {
+    const base = resolve("celebratory", 1.0, 0.5, 5);
+    const lo = resolve("celebratory", 0.0, 0.5, 5);
+    // lerp(0.4, 1.0, 0) == 0.4 of baseline at intensity 0; full baseline at intensity 1
+    expect(lo.ringWidth).toBeCloseTo(base.ringWidth * 0.4, 9);
+    expect(lo.sweepArc).toBeCloseTo(base.sweepArc * 0.4, 9);
   });
 
   it("whimsy is the stylization axis (style == raw whimsy)", () => {
@@ -73,7 +81,7 @@ describe("halo resolve (calm looping loader)", () => {
     const electric = resolve("electric", 0.7, 0.5, 1);
     const serene = resolve("serene", 0.7, 0.5, 1);
     expect(electric.sweepTurns).toBeGreaterThan(serene.sweepTurns);
-    expect(electric.ringWidth).toBeLessThan(serene.ringWidth); // tighter bright ring
+    expect(electric.ringWidth).toBeLessThan(serene.ringWidth); // tighter baseline ring wall
     expect(electric.glow).toBeGreaterThan(serene.glow);
   });
 

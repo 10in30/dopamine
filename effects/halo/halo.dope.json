@@ -97,12 +97,12 @@
       "ringRadius": { "type": "float", "from": { "baseline": "ringRadius" } },
       "ringWidth": {
         "type": "float",
-        "from": { "mul": [{ "baseline": "ringWidth" }, { "lerp": ["intensity", 1.25, 0.78] }] }
+        "from": { "mul": [{ "baseline": "ringWidth" }, { "lerp": ["intensity", 0.4, 1.0] }] }
       },
       "breathe": { "type": "float", "from": { "baseline": "breathe" } },
       "sweepArc": {
         "type": "float",
-        "from": { "mul": [{ "baseline": "sweepArc" }, { "lerp": ["intensity", 0.8, 1.2] }] }
+        "from": { "mul": [{ "baseline": "sweepArc" }, { "lerp": ["intensity", 0.4, 1.0] }] }
       },
       "sweepTurns": { "type": "int", "from": { "round": { "baseline": "sweepTurns" } } },
       "glow": {

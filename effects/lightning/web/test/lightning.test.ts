@@ -68,6 +68,32 @@ describe("lightning.resolve", () => {
     expect(hi.overshoot).toBeGreaterThan(lo.overshoot);
   });
 
+  it("intensity scales thickness/extent ~0.4x baseline (low) -> baseline (1.0), not timing", () => {
+    const base = 0.02; // electric baseline thickness
+    const lo = resolve({ mood: "electric", intensity: 0, seed: 5 });
+    const hi = resolve({ mood: "electric", intensity: 1, seed: 5 });
+    expect(lo.thickness).toBeCloseTo(base * 0.4, 6);
+    expect(hi.thickness).toBeCloseTo(base, 6);
+  });
+
+  it("intensity floors branch count at MIN=1 and reaches the mood baseline at intensity 1", () => {
+    // electric baseline = 6 forks; MIN floor = 1.
+    const lo = resolve({ mood: "electric", intensity: 0, seed: 5 });
+    const hi = resolve({ mood: "electric", intensity: 1, seed: 5 });
+    expect(lo.branches).toBe(1); // floored at MIN, never 0 for a forking mood
+    expect(hi.branches).toBe(6); // baseline at full intensity
+    // serene has 0 forks at baseline; the floor formula yields 0 at intensity 1.
+    expect(resolve({ mood: "serene", intensity: 1, seed: 5 }).branches).toBe(0);
+  });
+
+  it("intensity does NOT affect timing: durationMs is identical across intensities", () => {
+    const dur = (intensity: number) =>
+      resolve({ mood: "electric", intensity, seed: 5 }).durationMs;
+    expect(dur(0)).toBe(dur(1));
+    expect(dur(0.1)).toBe(dur(0.95));
+    expect(dur(0.5)).toBe(850); // electric baseline durationMs, unscaled
+  });
+
   it("mood is the register: electric forks + flashes hardest, serene is a calm single arc", () => {
     const serene = resolve({ mood: "serene", seed: 9 });
     const electric = resolve({ mood: "electric", seed: 9 });
