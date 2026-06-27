@@ -43,14 +43,21 @@ function render(path, blocks) {
 const slugs = EFFECTS.map((e) => e.slug);
 
 const targets = {
-  // The README gallery table + still-frame strip.
+  // The README gallery table + still-frame strip. The table HEADER + separator are
+  // part of the generated body (not hand-maintained above the marker) so the
+  // `<!-- …gallery -->` comment stays ABOVE the table — a comment line in the
+  // middle of a Markdown table breaks its rendering on GitHub.
   "README.md": render(join(ROOT, "README.md"), {
-    gallery: EFFECTS.map((e) => {
-      const web = `<img src="docs/media/${e.slug}.gif" width="380" alt="${e.slug} — web">`;
-      const ios = hasMedia("ios", e.slug) ? `<img src="docs/media/ios/${e.slug}.gif" width="380" alt="${e.slug} — iOS">` : "_pending_";
-      const and = hasMedia("android", e.slug) ? `<img src="docs/media/android/${e.slug}.gif" width="380" alt="${e.slug} — Android">` : "_pending_";
-      return `| **${e.slug}**<br>${e.category} | ${web} | ${ios} | ${and} |`;
-    }),
+    gallery: [
+      "| Effect | Web (WebGL2) | iOS (Metal) | Android (GL ES 3.0) |",
+      "|---|---|---|---|",
+      ...EFFECTS.map((e) => {
+        const web = `<img src="docs/media/${e.slug}.gif" width="380" alt="${e.slug} — web">`;
+        const ios = hasMedia("ios", e.slug) ? `<img src="docs/media/ios/${e.slug}.gif" width="380" alt="${e.slug} — iOS">` : "_pending_";
+        const and = hasMedia("android", e.slug) ? `<img src="docs/media/android/${e.slug}.gif" width="380" alt="${e.slug} — Android">` : "_pending_";
+        return `| **${e.slug}**<br>${e.category} | ${web} | ${ios} | ${and} |`;
+      }),
+    ],
     stills: EFFECTS.map((e) => `<img src="docs/media/${e.slug}.png" width="240" alt="${e.slug}">`),
   }),
 
