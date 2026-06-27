@@ -266,32 +266,17 @@ final class OverlayView: PlatformView {
         return Prepared(name: e.name, host: built.host, resolve: built.resolve, params: params)
     }
 
-    /// Add a prepared effect's Metal layer to this view's backing layer. NSView's
-    /// `layer` is optional (it's layer-backed via `wantsLayer`); UIView's is not.
-    private func addOverlayLayer(_ l: CALayer) {
-        #if os(macOS)
-        // This NSView is `isFlipped` (top-left origin, for the anchor/target math), so
-        // its layer-backed geometry is flipped vertically — which composites a hosted
-        // CAMetalLayer's contents (Metal renders into a top-left-origin drawable)
-        // UPSIDE DOWN. Most effects read fine mirrored (bloom/rings/sparkles are ~y-
-        // symmetric, fired centred), so only an asymmetric GLYPH / icon / word reveals
-        // it. Counter-flip THIS layer's geometry so its contents present upright again
-        // (and land at the right anchor). iOS (UIView, not flipped) needs none of this;
-        // the rendering pipeline itself is identical across platforms.
-        l.isGeometryFlipped = true
-        layer?.addSublayer(l)
-        #else
-        layer.addSublayer(l)
-        #endif
-    }
-
-    /// Attach a prepared effect's layer (sized to the view).
+    /// Attach a prepared effect's layer (sized to the view). `host.attach(to:)` adds
+    /// the layer AND orients it for this view's coordinate space — on a flipped NSView
+    /// (which this is) it sets `isGeometryFlipped` so the Metal drawable presents
+    /// upright. (Don't `addSublayer` the layer directly — see the AGENT NOTE on
+    /// `MetalOverlayHost.attach(to:)`.)
     private func attach(_ p: Prepared) {
         let l = p.host.lightLayer
         l.frame = bounds
         l.contentsScale = renderScale
         l.drawableSize = canvasPx()
-        addOverlayLayer(l)
+        p.host.attach(to: self)
     }
 
     /// Resize the current effect's layer to the view bounds (shared by the UIKit
