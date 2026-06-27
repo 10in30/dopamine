@@ -200,6 +200,22 @@ jobs:
           echo "--- .app contents ---"
           find build/Build/Products -name 'DopamineDemo.app' -type d -exec ls -lR {} \;
 
+      # --- MUST-PASS: build the NATIVE macOS demo from the same sources. This is
+      # the compile gate for the cross-platform overlay bridge (EffectOverlay.swift:
+      # NSViewRepresentable + NSView.displayLink). Builds for the host arch only. ---
+      - name: xcodebuild (macOS)
+        working-directory: swift/Demo
+        run: |
+          set -xo pipefail
+          xcodebuild \
+            -project DopamineDemo.xcodeproj \
+            -scheme DopamineDemoMac \
+            -destination "platform=macOS" \
+            -derivedDataPath build-mac \
+            build CODE_SIGNING_ALLOWED=NO | tee xcodebuild-mac.log
+          echo "--- built products ---"
+          find build-mac/Build/Products -name 'DopamineDemoMac.app' -type d -print
+
       # --- BEST-EFFORT: boot a sim, autoplay, screen-record, upload the clip ---
       - name: Boot simulator + install + launch (autoplay) + record
         id: record

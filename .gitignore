@@ -1,6 +1,11 @@
 node_modules/
 dist/
 .build/
+# The AGGREGATE root SwiftPM manifest (scripts/swift-aggregate.mjs): its effect
+# target paths point into the gitignored dist/swift/ trees, so it is valid only
+# next to a fresh `dopamine build`. The release workflow generates it and commits
+# it onto the tagged release tree — it never lives on `main`.
+/Package.swift
 # Toolchain-generated portable .dope synced into a web workspace's src. The single
 # source is effects/<id>/<slug>.dope.json; `dopamine build` regenerates these.
 effects/*/web/src/*.dope.json

@@ -1,4 +1,5 @@
-# XcodeGen spec for the Solarbloom iOS demo.
+# XcodeGen spec for the Dopamine demo — an iOS app AND a macOS app from the SAME
+# SwiftUI sources (the overlay bridge in EffectOverlay.swift is cross-platform).
 #
 # SwiftPM cannot emit an `.app`, so this generates `DopamineDemo.xcodeproj`
 # around the SwiftUI sources in `Sources/`, depending on the local SwiftPM
@@ -6,13 +7,17 @@
 #
 #   brew install xcodegen
 #   cd swift/Demo && xcodegen generate
+#   # iOS Simulator:
 #   xcodebuild -project DopamineDemo.xcodeproj -scheme DopamineDemo \
 #     -destination 'platform=iOS Simulator,name=iPhone 15' build
+#   # native macOS:
+#   xcodebuild -project DopamineDemo.xcodeproj -scheme DopamineDemoMac \
+#     -destination 'platform=macOS' build
 #
 # Then boot a simulator, install, and launch with the autoplay arg:
 #   xcrun simctl launch booted ai.polyguard.DopamineDemo -autoplay solarbloom
 #
-# UNVERIFIED ON LINUX: XcodeGen + xcodebuild + the iOS SDK exist only on macOS.
+# UNVERIFIED ON LINUX: XcodeGen + xcodebuild + the Apple SDKs exist only on macOS.
 
 name: DopamineDemo
 
@@ -20,6 +25,10 @@ options:
   bundleIdPrefix: ai.polyguard
   deploymentTarget:
     iOS: "15.0"
+    # macOS 14: the overlay's per-frame tick is vended by NSView.displayLink,
+    # added in Sonoma — so the demo's macOS target floors there. The LIBRARY
+    # (DopamineCore) stays macOS 12; this floor is the demo app's alone.
+    macOS: "14.0"
   createIntermediateGroups: true
 
 # The local SwiftPM packages (DopamineCore + DopamineEffectSolarbloom) live one
@@ -127,6 +136,61 @@ targets:
         product: DopamineEffectSolarbloom
       # dopamine:effects:deps:end
 
+  # Native macOS app from the SAME sources. The Metal overlay host is already
+  # cross-platform; EffectOverlay.swift bridges it via NSViewRepresentable +
+  # NSView.displayLink (the iOS UIView/CADisplayLink path is compiled out here).
+  # MediaRecorder.swift is `#if targetEnvironment(simulator)`, so it's excluded.
+  DopamineDemoMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+    info:
+      path: Info-macOS.plist
+      properties:
+        CFBundleVersion: "1"
+        CFBundleShortVersionString: "1.0"
+        # A plain (non-sandboxed) windowed Metal app — no iOS-only keys.
+        LSMinimumSystemVersion: "14.0"
+        NSHighResolutionCapable: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.polyguard.DopamineDemoMac
+        # Match the iOS target's automatic signing (see its note); CI overrides
+        # with CODE_SIGNING_ALLOWED=NO so it never needs an identity.
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: HY6Z2F5595
+        SWIFT_VERSION: "5.9"
+    dependencies:
+      - package: Dopamine
+        product: DopamineCore
+      # dopamine:effects:deps-mac — generated from effects/ by scripts/gen-registries.mjs; do not edit
+      - package: DopamineEffectAurora
+        product: DopamineEffectAurora
+      - package: DopamineEffectCheckmate
+        product: DopamineEffectCheckmate
+      - package: DopamineEffectComic
+        product: DopamineEffectComic
+      - package: DopamineEffectConfetti
+        product: DopamineEffectConfetti
+      - package: DopamineEffectDots
+        product: DopamineEffectDots
+      - package: DopamineEffectFail
+        product: DopamineEffectFail
+      - package: DopamineEffectHalo
+        product: DopamineEffectHalo
+      - package: DopamineEffectHeartburst
+        product: DopamineEffectHeartburst
+      - package: DopamineEffectInkstroke
+        product: DopamineEffectInkstroke
+      - package: DopamineEffectLightning
+        product: DopamineEffectLightning
+      - package: DopamineEffectRipple
+        product: DopamineEffectRipple
+      - package: DopamineEffectSolarbloom
+        product: DopamineEffectSolarbloom
+      # dopamine:effects:deps-mac:end
+
 schemes:
   DopamineDemo:
     build:
@@ -134,5 +198,12 @@ schemes:
         DopamineDemo: all
     run:
       # Convenience: running from Xcode autoplay-fires the effect.
+      commandLineArguments:
+        "-autoplay solarbloom": false
+  DopamineDemoMac:
+    build:
+      targets:
+        DopamineDemoMac: all
+    run:
       commandLineArguments:
         "-autoplay solarbloom": false

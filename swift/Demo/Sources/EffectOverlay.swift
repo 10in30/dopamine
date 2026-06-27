@@ -1,7 +1,11 @@
-// SwiftUI bridge to the Metal overlay, generalized to ALL effects.
+// SwiftUI bridge to the Metal overlay, generalized to ALL effects — iOS AND macOS.
 //
-// Wraps a UIView that owns the CURRENT effect's type-erased `AnyEffectHost`
-// (its light CAMetalLayer) + a CADisplayLink tick. Drives autoplay itself:
+// Wraps a platform view (UIView on iOS, NSView on macOS) that owns the CURRENT
+// effect's type-erased `AnyEffectHost` (its light CAMetalLayer) + a CADisplayLink
+// tick. The shared `MetalOverlayHost` is already cross-platform (it's behind
+// `canImport(Metal) && canImport(QuartzCore)`, both present on macOS); the ONLY
+// platform-specific glue is here — the view class, how the display link is
+// created, and the backing-scale / layer-attach calls. Drives autoplay itself:
 //   • `-autoplay all`        → cycle every EffectRegistry.all effect in sequence
 //                              (each plays its full, slow-mo-scaled duration),
 //                              which the CI screen recording captures end-to-end.
@@ -9,18 +13,29 @@
 //   • no autoplay            → first registered effect, fired by the Fire button.
 //
 // The integration seam the recording captures: SwiftUI state → DopamineCore
-// resolve → MetalPassRunner → CAMetalLayer, rendered live on the GPU-accelerated
-// simulator.
+// resolve → MetalPassRunner → CAMetalLayer, rendered live on the GPU.
 
 import SwiftUI
 import Metal
+import QuartzCore
 import simd
 import os
 import DopamineCore
 
+#if os(macOS)
+import AppKit
+typealias PlatformView = NSView
+#else
+import UIKit
+typealias PlatformView = UIView
+#endif
+
 private let demoLog = Logger(subsystem: "ai.polyguard.DopamineDemo", category: "overlay")
 
-struct EffectOverlay: UIViewRepresentable {
+/// A SwiftUI representable hosting the Metal overlay. The shared fields + the
+/// `configure` body live once; only the protocol conformance (UIKit vs AppKit)
+/// differs, so it's split into per-platform extensions below.
+struct EffectOverlay {
     var effectName: String
     var fireToken: Int
     var mood: String
@@ -35,9 +50,9 @@ struct EffectOverlay: UIViewRepresentable {
     /// element's content out while the effect plays over it, then back in.
     var onActiveChange: (Bool) -> Void = { _ in }
 
-    func makeUIView(context: Context) -> OverlayUIView { OverlayUIView() }
-
-    func updateUIView(_ view: OverlayUIView, context: Context) {
+    /// Push the current SwiftUI state into the live overlay view (shared by both
+    /// the UIKit `updateUIView` and the AppKit `updateNSView` seams).
+    func configure(_ view: OverlayView) {
         view.anchorPoint2D = anchor
         view.targets = targets
         view.mood = mood
@@ -55,11 +70,23 @@ struct EffectOverlay: UIViewRepresentable {
     }
 }
 
+#if os(macOS)
+extension EffectOverlay: NSViewRepresentable {
+    func makeNSView(context: Context) -> OverlayView { OverlayView(frame: .zero) }
+    func updateNSView(_ view: OverlayView, context: Context) { configure(view) }
+}
+#else
+extension EffectOverlay: UIViewRepresentable {
+    func makeUIView(context: Context) -> OverlayView { OverlayView(frame: .zero) }
+    func updateUIView(_ view: OverlayView, context: Context) { configure(view) }
+}
+#endif
+
 /// Hosts the current effect's Metal layer + drives the per-frame tick and the
 /// autoplay sequence. Builds + prepares each effect (pipeline + panel texture)
 /// AHEAD of time — the next effect is prepared during the current one's dwell, so
 /// switching is just `play()` (start the clock), with no hitch.
-final class OverlayUIView: UIView {
+final class OverlayView: PlatformView {
     /// A fully built + prepared effect, ready to `play()` instantly.
     private struct Prepared {
         let name: String
@@ -69,7 +96,9 @@ final class OverlayUIView: UIView {
     }
 
     private var device: MTLDevice?
-    private var displayLink: CADisplayLink?
+    // Named `vsync` (not `displayLink`) so it never shadows the macOS
+    // `NSView.displayLink(target:selector:)` factory method called below.
+    private var vsync: CADisplayLink?
     private var current: Prepared?    // attached + (once started) playing
     private var pending: Prepared?    // prebuilt next, layer not yet attached
     private var pendingIdx = 0
@@ -100,23 +129,48 @@ final class OverlayUIView: UIView {
     /// display link is paused (idle ⇒ zero GPU/CPU).
     static let idleTailSeconds: CFTimeInterval = 0.4
 
+    /// The window/screen backing scale (Retina factor), platform-abstracted.
+    private var backingScale: CGFloat {
+        #if os(macOS)
+        return window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        #else
+        return window?.screen.scale ?? UIScreen.main.scale
+        #endif
+    }
+
     /// Effective render scale = native scale clamped to `maxRenderScale`. Used for
     /// BOTH the layer `drawableSize` AND the `dpr` handed to the host, so the
     /// anchor/target device-px math stays consistent with the (capped) drawable.
-    private var renderScale: CGFloat {
-        min(window?.screen.scale ?? UIScreen.main.scale, Self.maxRenderScale)
-    }
+    private var renderScale: CGFloat { min(backingScale, Self.maxRenderScale) }
     /// Manual mode only: host-clock time after which the current effect has played
     /// and faded — `tick` pauses the link past this. Pushed forward on each play.
     private var activeUntil: CFTimeInterval = 0
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        #if os(macOS)
+        // NSView is not layer-backed by default; the overlay composites its Metal
+        // layers as sublayers, so it must own a backing layer. A flipped coordinate
+        // system (top-left origin, y-down) matches UIKit + SwiftUI's space so the
+        // anchor/target math is identical across platforms.
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+        #else
         backgroundColor = .clear
         isUserInteractionEnabled = false
+        #endif
         setup()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) unused") }
+
+    #if os(macOS)
+    /// macOS only: a top-left origin so SwiftUI `.global` points (which the overlay
+    /// receives as anchors/targets) map straight to this view's coordinate space.
+    override var isFlipped: Bool { true }
+    /// Pointer-transparent: the overlay never intercepts clicks (SwiftUI also wraps
+    /// it in `.allowsHitTesting(false)`, but this guards a bare AppKit hit-test).
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    #endif
 
     private func setup() {
         guard let dev = MTLCreateSystemDefaultDevice() else {
@@ -128,25 +182,58 @@ final class OverlayUIView: UIView {
         idx = 0
         current = buildAndPrepare(0)
         if let current { attach(current) }
-        let link = CADisplayLink(target: self, selector: #selector(tick))
-        // Cap to 60fps: on a ProMotion device CADisplayLink targets up to 120Hz,
-        // doubling GPU cost for no perceptible benefit on these effects.
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
-        link.add(to: .main, forMode: .common)
-        displayLink = link
+        // On iOS a CADisplayLink works without a window, so start it here. On macOS
+        // the display link is vended by the NSView once it has a window/screen — see
+        // `viewDidMoveToWindow`.
         // Manual mode starts idle (nothing playing ⇒ nothing to draw); Fire resumes
-        // it. Autoplay (CI) renders continuously, so it stays unpaused.
-        link.isPaused = (Autoplay.requestedEffect == nil)
+        // it. Autoplay (CI) renders continuously, so it stays unpaused — see
+        // `startDisplayLink`, which sets the initial paused state.
+        #if !os(macOS)
+        startDisplayLink()
+        #endif
         if Autoplay.requestedEffect != nil {
             // Let the layer size + (in CI) the recorder warm up before the first play.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.startAutoplay() }
         }
     }
 
+    /// Create the per-frame display link and add it to the main run loop. On macOS
+    /// the link is vended by the view (`NSView.displayLink`, macOS 14+) and tracks
+    /// the screen it's on; on iOS it's constructed directly.
+    private func startDisplayLink() {
+        guard vsync == nil else { return }
+        #if os(macOS)
+        let link = displayLink(target: self, selector: #selector(tick))
+        #else
+        let link = CADisplayLink(target: self, selector: #selector(tick))
+        #endif
+        // Cap to 60fps: on a ProMotion device CADisplayLink targets up to 120Hz,
+        // doubling GPU cost for no perceptible benefit on these effects.
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+        link.add(to: .main, forMode: .common)
+        vsync = link
+        link.isPaused = (Autoplay.requestedEffect == nil)
+    }
+
+    #if os(macOS)
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // The NSView display link needs a window/screen; start it once attached.
+        if window != nil { startDisplayLink() }
+    }
+    #endif
+
     private func canvasPx() -> CGSize {
         let scale = renderScale
         var w = bounds.width, h = bounds.height
-        if w < 1 || h < 1 { let s = UIScreen.main.bounds.size; w = s.width; h = s.height }
+        if w < 1 || h < 1 {
+            #if os(macOS)
+            let s = NSScreen.main?.frame.size ?? CGSize(width: 1280, height: 800)
+            #else
+            let s = UIScreen.main.bounds.size
+            #endif
+            w = s.width; h = s.height
+        }
         return CGSize(width: w * scale, height: h * scale)
     }
 
@@ -179,23 +266,46 @@ final class OverlayUIView: UIView {
         return Prepared(name: e.name, host: built.host, resolve: built.resolve, params: params)
     }
 
+    /// Add a prepared effect's Metal layer to this view's backing layer. NSView's
+    /// `layer` is optional (it's layer-backed via `wantsLayer`); UIView's is not.
+    private func addOverlayLayer(_ l: CALayer) {
+        #if os(macOS)
+        layer?.addSublayer(l)
+        #else
+        layer.addSublayer(l)
+        #endif
+    }
+
     /// Attach a prepared effect's layer (sized to the view).
     private func attach(_ p: Prepared) {
         let l = p.host.lightLayer
         l.frame = bounds
         l.contentsScale = renderScale
         l.drawableSize = canvasPx()
-        layer.addSublayer(l)
+        addOverlayLayer(l)
     }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
+    /// Resize the current effect's layer to the view bounds (shared by the UIKit
+    /// `layoutSubviews` and AppKit `layout` hooks).
+    private func relayout() {
         let scale = renderScale
         if let l = current?.host.lightLayer {
             l.frame = bounds; l.contentsScale = scale
             l.drawableSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
         }
     }
+
+    #if os(macOS)
+    override func layout() {
+        super.layout()
+        relayout()
+    }
+    #else
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        relayout()
+    }
+    #endif
 
     /// Real-time seconds a play occupies = (duration / slow-mo) + gap.
     private func dwellSeconds(_ params: [String: DopeValue], gap: Double) -> Double {
@@ -226,7 +336,7 @@ final class OverlayUIView: UIView {
     private func beginPlaying(_ p: Prepared) {
         p.host.play()
         activeUntil = CACurrentMediaTime() + dwellSeconds(p.params, gap: Self.idleTailSeconds)
-        displayLink?.isPaused = false
+        vsync?.isPaused = false
         notifyActive(true)
     }
 
@@ -294,7 +404,7 @@ final class OverlayUIView: UIView {
         // rendering entirely — the overlay has nothing to show until the next Fire.
         // Autoplay (CI) renders continuously.
         if Autoplay.requestedEffect == nil && now > activeUntil {
-            displayLink?.isPaused = true
+            vsync?.isPaused = true
             notifyActive(false)
             return
         }
@@ -323,6 +433,13 @@ final class OverlayUIView: UIView {
     /// Map a SwiftUI `.global` (window) point into this view's local coordinates.
     /// Identity when the overlay already sits at the window origin.
     private func localPoint(_ global: CGPoint) -> CGPoint {
-        window != nil ? convert(global, from: nil) : global
+        #if os(macOS)
+        // The overlay fills the window (ignoresSafeArea) and shares SwiftUI's
+        // top-left global space (the view is `isFlipped`), so global ≈ local —
+        // and we avoid AppKit's bottom-left window-coordinate convert flip.
+        return global
+        #else
+        return window != nil ? convert(global, from: nil) : global
+        #endif
     }
 }
