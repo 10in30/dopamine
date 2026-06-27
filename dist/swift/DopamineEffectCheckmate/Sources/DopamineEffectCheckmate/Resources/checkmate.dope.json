@@ -1,0 +1,362 @@
+{
+  "fmt": "dopamine-effect",
+  "v": "1.0.0",
+  "id": "dopamine.success.checkmate",
+  "meta": {
+    "name": "Checkmate",
+    "description": "An unapologetically fabulous winning move: a chess QUEEN pops into place with an overshoot bounce, hurls an expanding RAINBOW swoosh-shockwave + a spinning pride sunburst, and is mobbed by twinkling 4-point sparkle bling. LGBTQ+ pride inspired (yas, queen). Heavy on whimsy + bling; high whimsy posterizes the rainbow into the canonical 6-stripe pride flag.",
+    "tags": [
+      "success",
+      "celebration",
+      "pride",
+      "chess",
+      "bling"
+    ]
+  },
+  "controls": {
+    "mood": {
+      "type": "enum",
+      "label": "Mood",
+      "default": "celebratory",
+      "options": [
+        "serene",
+        "celebratory",
+        "electric"
+      ],
+      "ui": "segmented"
+    },
+    "intensity": {
+      "type": "scalar",
+      "label": "Intensity",
+      "default": 0.75,
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "ui": "slider",
+      "help": "Reward strength: pop overshoot, swoosh reach, sunburst energy, sparkle density + brightness."
+    },
+    "whimsy": {
+      "type": "scalar",
+      "label": "Whimsy",
+      "default": 0.6,
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "ui": "slider",
+      "help": "Photoreal smooth spectral glow (0) to a cel POP-ART pride flag (1): the rainbow posterizes into the canonical 6 stripes and the motion snaps on twos."
+    },
+    "seed": {
+      "type": "int",
+      "label": "Seed",
+      "default": null,
+      "nullable": true,
+      "help": "Null = unique sparkle scatter + accent palette per fire; pin to reproduce."
+    },
+    "origin": {
+      "type": "point",
+      "label": "Origin",
+      "default": "center"
+    },
+    "target": {
+      "type": "selector",
+      "label": "Target",
+      "default": "document.body"
+    }
+  },
+  "baselines": {
+    "serene": {
+      "durationMs": 2200,
+      "lightness": 0.88,
+      "chroma": 0.1,
+      "hueCenter": 300,
+      "hueRange": 320,
+      "bling": 0.7,
+      "swoosh": 0.82,
+      "rays": 8,
+      "spin": 0.4,
+      "sizeFrac": 0.26
+    },
+    "celebratory": {
+      "durationMs": 1700,
+      "lightness": 0.85,
+      "chroma": 0.18,
+      "hueCenter": 320,
+      "hueRange": 360,
+      "bling": 1,
+      "swoosh": 1,
+      "rays": 10,
+      "spin": 0.7,
+      "sizeFrac": 0.3
+    },
+    "electric": {
+      "durationMs": 1300,
+      "lightness": 0.82,
+      "chroma": 0.26,
+      "hueCenter": 330,
+      "hueRange": 300,
+      "bling": 1.35,
+      "swoosh": 1.2,
+      "rays": 12,
+      "spin": 1.05,
+      "sizeFrac": 0.34
+    }
+  },
+  "palette": {
+    "model": "oklch",
+    "space": "linear-srgb",
+    "generator": "golden-angle",
+    "goldenAngleDeg": 137.50776405003785,
+    "stops": 3,
+    "hueSpread": 0.7,
+    "lightness": {
+      "baseline": "lightness",
+      "perStop": [
+        0,
+        0.06,
+        -0.05
+      ]
+    },
+    "chroma": {
+      "from": {
+        "mul": [
+          {
+            "baseline": "chroma"
+          },
+          {
+            "lerp": [
+              "intensity",
+              0.7,
+              1.5
+            ]
+          }
+        ]
+      },
+      "perStop": [
+        0,
+        0.02,
+        -0.01
+      ]
+    },
+    "seed": {
+      "deterministic": true,
+      "source": "controls.seed",
+      "prng": "mulberry32",
+      "note": "Per-fire accent palette (used to TINT the sparkle bling) drawn from a wide hueRange so the glints sparkle in shifting colours. The hero rainbow is the procedural pride spectrum in the shader (independent of this register); this keeps the seed/parity machinery + per-fire novelty honest."
+    },
+    "perMood": {
+      "serene": {
+        "hueCenter": 300,
+        "hueRange": 320,
+        "lightness": 0.88,
+        "chroma": 0.1
+      },
+      "celebratory": {
+        "hueCenter": 320,
+        "hueRange": 360,
+        "lightness": 0.85,
+        "chroma": 0.18
+      },
+      "electric": {
+        "hueCenter": 330,
+        "hueRange": 300,
+        "lightness": 0.82,
+        "chroma": 0.26
+      }
+    }
+  },
+  "tempo": {
+    "durationMs": {
+      "from": {
+        "baseline": "durationMs"
+      }
+    },
+    "frame": {
+      "amp": {
+        "envelope": [
+          {
+            "input": "life"
+          },
+          {
+            "param": "overshoot"
+          }
+        ]
+      },
+      "extras": {
+        "pop": {
+          "easeOutBack": [
+            {
+              "clamp01": {
+                "div": [
+                  {
+                    "input": "life"
+                  },
+                  0.28
+                ]
+              }
+            },
+            {
+              "param": "overshoot"
+            }
+          ]
+        }
+      }
+    },
+    "reducedMotion": {
+      "peakMs": 320,
+      "holdMs": 420
+    },
+    "note": "amp is the held-breath success envelope (brightness gate, decays to 0 — a transient reward). pop is a separate easeOutBack scale over the first 28% of life that OVERSHOOTS then settles to exactly 1 and HOLDS, so the queen bounces into place and stays full-size while the light fades around her."
+  },
+  "render": {
+    "params": {
+      "exposure": {
+        "type": "float",
+        "from": {
+          "lerp": [
+            "intensity",
+            0.9,
+            1.6
+          ]
+        }
+      },
+      "bling": {
+        "type": "float",
+        "from": {
+          "mul": [
+            {
+              "baseline": "bling"
+            },
+            {
+              "lerp": [
+                "intensity",
+                0.7,
+                1.4
+              ]
+            }
+          ]
+        }
+      },
+      "swoosh": {
+        "type": "float",
+        "from": {
+          "mul": [
+            {
+              "baseline": "swoosh"
+            },
+            {
+              "lerp": [
+                "intensity",
+                0.8,
+                1.3
+              ]
+            }
+          ]
+        }
+      },
+      "rays": {
+        "type": "int",
+        "from": {
+          "round": {
+            "add": [
+              {
+                "const": 4
+              },
+              {
+                "mul": [
+                  {
+                    "sub": [
+                      {
+                        "baseline": "rays"
+                      },
+                      {
+                        "const": 4
+                      }
+                    ]
+                  },
+                  {
+                    "control": "intensity"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "spin": {
+        "type": "float",
+        "from": {
+          "baseline": "spin"
+        }
+      },
+      "sizeFrac": {
+        "type": "float",
+        "from": {
+          "mul": [
+            {
+              "baseline": "sizeFrac"
+            },
+            {
+              "lerp": [
+                "intensity",
+                0.4,
+                1
+              ]
+            }
+          ]
+        }
+      },
+      "overshoot": {
+        "type": "float",
+        "from": {
+          "lerp": [
+            "intensity",
+            0.8,
+            1.6
+          ]
+        }
+      },
+      "style": {
+        "type": "float",
+        "from": {
+          "control": "whimsy"
+        }
+      }
+    },
+    "shadowHeightFrac": 0.5,
+    "consts": {},
+    "config": {
+      "usesOrigin": true
+    },
+    "backends": {
+      "webgl2": {
+        "stage": "fullscreen-triangle",
+        "blend": "screen",
+        "shader": {
+          "program": "checkmate"
+        }
+      }
+    },
+    "fallbackOrder": [
+      "webgl2"
+    ]
+  },
+  "binding": {
+    "note": "CROSS-PLATFORM uniform-binding contract. Which render.params are NOT shader uniforms, the seed-keyed scatter field (uSeed seeds the sparkle scatter), and the per-frame extras (the pop scale). No samplers — the chess queen is drawn analytically from 2D SDF primitives so it is byte-identical on web/Metal/GL with no baked-SDF aux texture.",
+    "excludeParams": [
+      "style",
+      "overshoot",
+      "durationMs"
+    ],
+    "scatterKey": "checkmateSeed",
+    "scatterWeb": "uSeed",
+    "extras": [
+      {
+        "name": "pop",
+        "type": "float",
+        "web": "uPop",
+        "note": "easeOutBack pop scale 0→overshoot→1 (the queen's bounce-in, then held)"
+      }
+    ],
+    "samplers": []
+  }
+}
