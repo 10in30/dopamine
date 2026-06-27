@@ -1,0 +1,123 @@
+# Dopamine — SwiftPM RELEASE (git-tag publishing).
+#
+# SwiftPM has no mainstream package registry: a consumer depends on a package by
+# GIT URL + a semver tag, resolving the Package.swift at the REPO ROOT. So we
+# publish the effects as ONE aggregate package (DopamineCore + every
+# DopamineEffect<Name> product) by tagging a release tree that carries the
+# generated sources:
+#
+#   .package(url: "https://github.com/10in30/dopamine.git", from: "0.1.0")
+#   .product(name: "DopamineEffectComic", package: "Dopamine")
+#
+# FLOW (manual, mirrors the npm Changesets two-step at a coarser grain):
+#   1. Pick a semver version (e.g. 0.1.0) and run this workflow with it.
+#   2. It builds the dist/ packages (`dopamine build`), writes the aggregate root
+#      Package.swift (scripts/swift-aggregate.mjs), then commits BOTH — plus the
+#      already-tracked swift/Sources/DopamineCore runtime — onto a DETACHED release
+#      commit and pushes ONLY the tag `v<version>`. `main` stays clean: the
+#      generated sources + the root manifest live on the tag tree alone (both are
+#      gitignored on main).
+#
+# Runs on a free Linux runner — assembling the package is pure Node + text; the
+# Metal/iOS compile is gated separately by swift.yml on every effects change.
+
+name: swift-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver version to tag (e.g. 0.1.0 → tag v0.1.0)"
+        type: string
+        required: true
+
+# Never run two releases at once (they'd race on tag creation / the push).
+concurrency:
+  group: swift-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # push the release tag
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate version + ensure the tag is free
+        run: |
+          VERSION="${{ inputs.version }}"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::'$VERSION' is not a semver version (expected MAJOR.MINOR.PATCH, e.g. 0.1.0)."
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null \
+             || git ls-remote --exit-code --tags origin "v$VERSION" >/dev/null 2>&1; then
+            echo "::error::tag v$VERSION already exists — bump the version."
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # The toolchain needs only its declared deps (esbuild/typescript for the
+      # shader + logic transpile); scripts are skipped to keep the install lean.
+      - name: Install deps
+        run: |
+          n=0
+          until npm ci --ignore-scripts; do
+            n=$((n+1))
+            if [ "$n" -ge 4 ]; then echo "npm ci failed after $n attempts"; exit 1; fi
+            echo "npm ci failed (attempt $n) — retrying in 15s…"; sleep 15
+          done
+
+      # `dopamine build` converts the comic display faces woff2→ttf for the Swift
+      # embed, which needs fonttools+brotli.
+      - name: Install fonttools (woff2→ttf for dopamine build)
+        run: |
+          python3 -m pip install --quiet --break-system-packages fonttools brotli \
+            || python3 -m pip install --quiet fonttools brotli
+
+      - name: Build the dist/ packages
+        run: node tools/dopamine/src/cli.mjs build
+
+      - name: Write the aggregate root Package.swift
+        run: node scripts/swift-aggregate.mjs
+
+      # Validate the generated manifest resolves before tagging (cheap on Linux:
+      # parses the manifest + checks every target path/resource exists — it does
+      # NOT compile the Metal shaders, which swift.yml's macOS job covers).
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.0.3"
+      - name: Sanity-check the manifest
+        run: |
+          swift package dump-package >/dev/null
+          swift build --target DopamineCore   # core compiles on Linux behind the canImport guards
+
+      - name: Tag the release tree
+        run: |
+          git config user.email noreply@anthropic.com
+          git config user.name Claude
+          # A detached release commit that ADDS the generated sources (gitignored on
+          # main): the root manifest + every effect's dist/swift tree. The
+          # DopamineCore runtime under swift/ is already tracked.
+          git checkout --detach
+          git add -f Package.swift dist/swift
+          git commit -q -m "release: Dopamine SwiftPM v$VERSION"
+          git tag -a "v$VERSION" -m "Dopamine SwiftPM v$VERSION"
+          # Push ONLY the tag — main is never advanced by a release.
+          n=0
+          until git push origin "refs/tags/v$VERSION"; do
+            n=$((n+1))
+            if [ "$n" -ge 4 ]; then echo "tag push failed after $n attempts"; exit 1; fi
+            sleep $((2 ** n))
+          done
+          echo "::notice::Published Dopamine SwiftPM v$VERSION — consumers: .package(url: \"https://github.com/${{ github.repository }}.git\", from: \"$VERSION\")"
