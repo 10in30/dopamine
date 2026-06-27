@@ -161,20 +161,7 @@
   "tempo": {
     "durationMs": {
       "from": {
-        "round": {
-          "mul": [
-            {
-              "baseline": "durationMs"
-            },
-            {
-              "lerp": [
-                "intensity",
-                1.1,
-                0.9
-              ]
-            }
-          ]
-        }
+        "baseline": "durationMs"
       }
     },
     "frame": {
@@ -1563,8 +1550,8 @@
             {
               "lerp": [
                 "intensity",
-                0.9,
-                1.1
+                0.4,
+                1
               ]
             }
           ]
@@ -1574,15 +1561,25 @@
         "type": "int",
         "from": {
           "round": {
-            "mul": [
+            "add": [
               {
-                "baseline": "burstCount"
+                "const": 4
               },
               {
-                "lerp": [
-                  "intensity",
-                  0.5,
-                  1.3
+                "mul": [
+                  {
+                    "sub": [
+                      {
+                        "baseline": "burstCount"
+                      },
+                      {
+                        "const": 4
+                      }
+                    ]
+                  },
+                  {
+                    "control": "intensity"
+                  }
                 ]
               }
             ]
@@ -1599,8 +1596,8 @@
             {
               "lerp": [
                 "intensity",
-                0.85,
-                1.2
+                0.4,
+                1
               ]
             }
           ]

@@ -51,6 +51,43 @@ describe("inkstroke resolve (Calligraphic Verdict)", () => {
     expect(hi.overshoot).toBeGreaterThan(lo.overshoot);
   });
 
+  it("intensity scales SIZE: scale & pressure grow ~0.4x baseline (low) -> baseline (1.0)", () => {
+    // SIZE contract: { mul: [ baseline, lerp(intensity, 0.4, 1.0) ] }.
+    const baseScale = 0.72; // celebratory baseline scale
+    const basePressure = 1.25; // celebratory baseline pressure
+    const lo = resolve("celebratory", 0.0, 0.5, 5);
+    const hi = resolve("celebratory", 1.0, 0.5, 5);
+    // At intensity 1.0 the param reaches its full baseline.
+    expect(hi.scale).toBeCloseTo(baseScale);
+    expect(hi.pressure).toBeCloseTo(basePressure);
+    // At intensity 0 it floors at 0.4x baseline.
+    expect(lo.scale).toBeCloseTo(baseScale * 0.4);
+    expect(lo.pressure).toBeCloseTo(basePressure * 0.4);
+    // Monotonic growth with intensity.
+    expect(hi.scale).toBeGreaterThan(lo.scale);
+    expect(hi.pressure).toBeGreaterThan(lo.pressure);
+  });
+
+  it("intensity scales COUNT: droplets grow from MIN 4 -> baseline at intensity 1.0", () => {
+    // COUNT contract: round(4 + (baseline - 4) * intensity), clampMax MAX_DROPS.
+    const baseDroplets = 30; // celebratory baseline droplets
+    const lo = resolve("celebratory", 0.0, 0.5, 5);
+    const hi = resolve("celebratory", 1.0, 0.5, 5);
+    expect(lo.droplets).toBe(4); // floors at MIN at intensity 0
+    expect(hi.droplets).toBe(baseDroplets); // reaches baseline at intensity 1
+    expect(hi.droplets).toBeGreaterThan(lo.droplets);
+    expect(hi.droplets).toBeLessThanOrEqual(MAX_DROPS);
+  });
+
+  it("intensity does NOT affect timing: durationMs is identical across intensities", () => {
+    const lo = resolve("celebratory", 0.0, 0.5, 5);
+    const mid = resolve("celebratory", 0.5, 0.5, 5);
+    const hi = resolve("celebratory", 1.0, 0.5, 5);
+    expect(lo.durationMs).toBe(1900); // celebratory baseline durationMs, unscaled
+    expect(mid.durationMs).toBe(lo.durationMs);
+    expect(hi.durationMs).toBe(lo.durationMs);
+  });
+
   it("whimsy is the stylization axis: dries the ink (less wetness) and tracks style", () => {
     const lo = resolve("celebratory", 0.7, 0.0, 5);
     const hi = resolve("celebratory", 0.7, 1.0, 5);

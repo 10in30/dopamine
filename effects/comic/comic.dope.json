@@ -51,7 +51,7 @@
   },
   "tempo": {
     "durationMs": {
-      "from": { "round": { "mul": [{ "baseline": "durationMs" }, { "lerp": ["intensity", 1.1, 0.9] }] } }
+      "from": { "baseline": "durationMs" }
     },
     "frame": {
       "amp": {
@@ -166,15 +166,15 @@
       },
       "scale": {
         "type": "float",
-        "from": { "mul": [{ "baseline": "scale" }, { "lerp": ["intensity", 0.85, 1.12] }] }
+        "from": { "mul": [{ "baseline": "scale" }, { "lerp": ["intensity", 0.4, 1.0] }] }
       },
       "burstPoints": {
         "type": "int",
-        "from": { "round": { "mul": [{ "baseline": "burstPoints" }, { "lerp": ["intensity", 0.8, 1.2] }] } }
+        "from": { "round": { "add": [{ "const": 6 }, { "mul": [{ "sub": [{ "baseline": "burstPoints" }, { "const": 6 }] }, { "control": "intensity" }] }] } }
       },
       "actionLines": {
         "type": "int",
-        "from": { "round": { "mul": [{ "baseline": "actionLines" }, { "lerp": ["intensity", 0.7, 1.25] }] } }
+        "from": { "round": { "add": [{ "const": 4 }, { "mul": [{ "sub": [{ "baseline": "actionLines" }, { "const": 4 }] }, { "control": "intensity" }] }] } }
       },
       "halftone": { "type": "float", "clamp01": true, "from": { "lerp": ["whimsy", 0.28, 1.0] } },
       "dotSize": { "type": "float", "from": { "lerp": ["whimsy", 5.0, 11.0] } },

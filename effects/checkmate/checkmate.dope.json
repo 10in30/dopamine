@@ -169,20 +169,7 @@
   "tempo": {
     "durationMs": {
       "from": {
-        "round": {
-          "mul": [
-            {
-              "baseline": "durationMs"
-            },
-            {
-              "lerp": [
-                "intensity",
-                1.1,
-                0.9
-              ]
-            }
-          ]
-        }
+        "baseline": "durationMs"
       }
     },
     "frame": {
@@ -272,31 +259,52 @@
         "type": "int",
         "from": {
           "round": {
-            "baseline": "rays"
+            "add": [
+              {
+                "const": 4
+              },
+              {
+                "mul": [
+                  {
+                    "sub": [
+                      {
+                        "baseline": "rays"
+                      },
+                      {
+                        "const": 4
+                      }
+                    ]
+                  },
+                  {
+                    "control": "intensity"
+                  }
+                ]
+              }
+            ]
           }
         }
       },
       "spin": {
         "type": "float",
         "from": {
-          "mul": [
-            {
-              "baseline": "spin"
-            },
-            {
-              "lerp": [
-                "intensity",
-                0.85,
-                1.25
-              ]
-            }
-          ]
+          "baseline": "spin"
         }
       },
       "sizeFrac": {
         "type": "float",
         "from": {
-          "baseline": "sizeFrac"
+          "mul": [
+            {
+              "baseline": "sizeFrac"
+            },
+            {
+              "lerp": [
+                "intensity",
+                0.4,
+                1.0
+              ]
+            }
+          ]
         }
       },
       "overshoot": {

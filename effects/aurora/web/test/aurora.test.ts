@@ -37,18 +37,55 @@ describe("aurora resolve (curtains of polar light)", () => {
       expect(p.sway).toBeGreaterThan(0);
       expect(p.striation).toBeGreaterThanOrEqual(0);
       expect(p.striation).toBeLessThanOrEqual(1);
+      // rays is a 0..1 searchlight-pillar strength (a look fraction), clamp01.
       expect(p.rays).toBeGreaterThanOrEqual(0);
       expect(p.rays).toBeLessThanOrEqual(1);
     }
   });
 
-  it("higher intensity raises brightness and coverage", () => {
+  it("higher intensity raises brightness, coverage and band height", () => {
     const lo = resolve({ mood: "serene", intensity: 0.1, whimsy: 0.4, seed: 5 });
     const hi = resolve({ mood: "serene", intensity: 0.95, whimsy: 0.4, seed: 5 });
     expect(hi.exposure).toBeGreaterThan(lo.exposure);
     expect(hi.coverage).toBeGreaterThan(lo.coverage);
     expect(hi.bandHeight).toBeGreaterThan(lo.bandHeight);
     expect(hi.overshoot).toBeGreaterThan(lo.overshoot);
+  });
+
+  it("SIZE params scale ~0.4x baseline (low intensity) -> baseline (intensity 1)", () => {
+    const baseCoverage = 0.55; // serene baseline.coverage
+    const baseBandHeight = 0.28; // serene baseline.bandHeight
+    const full = resolve({ mood: "serene", intensity: 1.0, whimsy: 0.4, seed: 5 });
+    const low = resolve({ mood: "serene", intensity: 0.0, whimsy: 0.4, seed: 5 });
+    // At intensity 1.0 the SIZE multiplier is 1.0 -> exactly the baseline.
+    expect(full.coverage).toBeCloseTo(baseCoverage, 5);
+    expect(full.bandHeight).toBeCloseTo(baseBandHeight, 5);
+    // At intensity 0 the multiplier is 0.4 -> ~0.4x the baseline.
+    expect(low.coverage).toBeCloseTo(baseCoverage * 0.4, 5);
+    expect(low.bandHeight).toBeCloseTo(baseBandHeight * 0.4, 5);
+  });
+
+  it("rays is a 0..1 searchlight strength (a look fraction), clamped to [0,1]", () => {
+    // aurora's `rays` is NOT an element count -- the curtain count is fixed at
+    // MAX_CURTAINS and modulated by `coverage`. `rays` is the searchlight-pillar
+    // strength (serene 0.35, celebratory 0.5, electric 0.7 baselines), kept as a
+    // brightness-like look param that rises gently with intensity, clamp01.
+    const lo = resolve({ mood: "electric", intensity: 0.1, whimsy: 0.4, seed: 5 });
+    const hi = resolve({ mood: "electric", intensity: 0.95, whimsy: 0.4, seed: 5 });
+    expect(hi.rays).toBeGreaterThan(lo.rays);
+    expect(lo.rays).toBeGreaterThanOrEqual(0);
+    expect(hi.rays).toBeLessThanOrEqual(1);
+  });
+
+  it("intensity does NOT affect timing/speed (sway and durationMs are baseline-only)", () => {
+    const lo = resolve({ mood: "serene", intensity: 0.1, whimsy: 0.4, seed: 5 });
+    const hi = resolve({ mood: "serene", intensity: 0.95, whimsy: 0.4, seed: 5 });
+    // sway is a motion RATE -> baseline-only, identical across intensities.
+    expect(hi.sway).toBe(lo.sway);
+    expect(hi.sway).toBeCloseTo(0.06, 5); // serene baseline.sway
+    // durationMs is timing -> baseline-only, identical across intensities.
+    expect(hi.durationMs).toBe(lo.durationMs);
+    expect(hi.durationMs).toBe(3200); // serene baseline.durationMs
   });
 
   it("style follows whimsy (the raw control)", () => {

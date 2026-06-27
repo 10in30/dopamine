@@ -57,14 +57,32 @@ describe("dots resolve (calm looping thinking-row)", () => {
     }
   });
 
-  it("intensity drives brightness, glow and chase liveliness", () => {
+  it("intensity drives brightness and glow, but NOT speed/timing", () => {
     const lo = resolve("celebratory", 0.05, 0.5, 5);
     const hi = resolve("celebratory", 0.98, 0.5, 5);
     expect(hi.exposure).toBeGreaterThan(lo.exposure);
     expect(hi.glow).toBeGreaterThan(lo.glow);
-    expect(hi.chase).toBeGreaterThan(lo.chase);
-    // higher intensity tightens the dots (smaller, brighter)
-    expect(hi.dotRadius).toBeLessThan(lo.dotRadius);
+    // chase is a motion rate (speed) -> baseline-only, identical at any intensity
+    expect(hi.chase).toBe(lo.chase);
+    expect(hi.chase).toBe(resolve("celebratory", 0.5, 0.5, 5).chase);
+  });
+
+  it("intensity grows SIZE: dotRadius scales ~0.4x baseline (low) -> baseline (1.0)", () => {
+    const baseline = 0.03; // celebratory dotRadius
+    const lo = resolve("celebratory", 0.0, 0.5, 5);
+    const hi = resolve("celebratory", 1.0, 0.5, 5);
+    expect(lo.dotRadius).toBeCloseTo(baseline * 0.4, 9);
+    expect(hi.dotRadius).toBeCloseTo(baseline, 9);
+    expect(hi.dotRadius).toBeGreaterThan(lo.dotRadius);
+  });
+
+  it("intensity grows COUNT: floors at MIN(2) low -> baseline at 1.0", () => {
+    const baselineCount = 4; // celebratory dotCount
+    const lo = resolve("celebratory", 0.0, 0.5, 5);
+    const hi = resolve("celebratory", 1.0, 0.5, 5);
+    expect(lo.dotCount).toBe(MIN_DOTS);
+    expect(hi.dotCount).toBe(baselineCount);
+    expect(hi.dotCount).toBeGreaterThan(lo.dotCount);
   });
 
   it("whimsy is the stylization axis (style == raw whimsy)", () => {

@@ -45,12 +45,22 @@ describe("confetti.resolve", () => {
     expect(p.durationMs).toBeGreaterThan(1000);
   });
 
-  it("intensity scales count, spread and launch speed up", () => {
+  it("intensity scales the spatial footprint + count up, but not playback tempo", () => {
     const lo = resolve({ intensity: 0.1 });
     const hi = resolve({ intensity: 1.0 });
+    // size/extent (footprint = spread + launch DISTANCE) + count + piece size all
+    // correlate with intensity. `spread` is LINEAR (≈10% at 0.1); `launchSpeed`
+    // floors at 40%; together a low-intensity burst is a small, short puff of a
+    // few pieces.
     expect(hi.pieceCount).toBeGreaterThan(lo.pieceCount as number);
     expect(hi.spread).toBeGreaterThan(lo.spread as number);
     expect(hi.launchSpeed).toBeGreaterThan(lo.launchSpeed as number);
+    expect(hi.pieceSize).toBeGreaterThan(lo.pieceSize as number);
+    // PLAYBACK TEMPO comes only from mood — invariant across intensity.
+    expect(hi.flutter).toBe(lo.flutter as number);
+    expect(hi.durationMs).toBe(lo.durationMs as number);
+    // linear footprint: at intensity 0.1 the spread is ~10% of the intensity-1 value.
+    expect((lo.spread as number) / (hi.spread as number)).toBeCloseTo(0.1, 5);
   });
 
   it("whimsy drives style (raw control passthrough)", () => {

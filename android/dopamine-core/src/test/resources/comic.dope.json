@@ -156,20 +156,7 @@
   "tempo": {
     "durationMs": {
       "from": {
-        "round": {
-          "mul": [
-            {
-              "baseline": "durationMs"
-            },
-            {
-              "lerp": [
-                "intensity",
-                1.1,
-                0.9
-              ]
-            }
-          ]
-        }
+        "baseline": "durationMs"
       }
     },
     "frame": {
@@ -625,8 +612,8 @@
             {
               "lerp": [
                 "intensity",
-                0.85,
-                1.12
+                0.4,
+                1
               ]
             }
           ]
@@ -636,15 +623,25 @@
         "type": "int",
         "from": {
           "round": {
-            "mul": [
+            "add": [
               {
-                "baseline": "burstPoints"
+                "const": 6
               },
               {
-                "lerp": [
-                  "intensity",
-                  0.8,
-                  1.2
+                "mul": [
+                  {
+                    "sub": [
+                      {
+                        "baseline": "burstPoints"
+                      },
+                      {
+                        "const": 6
+                      }
+                    ]
+                  },
+                  {
+                    "control": "intensity"
+                  }
                 ]
               }
             ]
@@ -655,15 +652,25 @@
         "type": "int",
         "from": {
           "round": {
-            "mul": [
+            "add": [
               {
-                "baseline": "actionLines"
+                "const": 4
               },
               {
-                "lerp": [
-                  "intensity",
-                  0.7,
-                  1.25
+                "mul": [
+                  {
+                    "sub": [
+                      {
+                        "baseline": "actionLines"
+                      },
+                      {
+                        "const": 4
+                      }
+                    ]
+                  },
+                  {
+                    "control": "intensity"
+                  }
                 ]
               }
             ]

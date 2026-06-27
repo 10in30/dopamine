@@ -167,20 +167,7 @@
   "tempo": {
     "durationMs": {
       "from": {
-        "round": {
-          "mul": [
-            {
-              "baseline": "durationMs"
-            },
-            {
-              "lerp": [
-                "intensity",
-                1.1,
-                0.9
-              ]
-            }
-          ]
-        }
+        "baseline": "durationMs"
       }
     },
     "frame": {
@@ -277,8 +264,8 @@
             {
               "lerp": [
                 "intensity",
-                0.7,
-                1.25
+                0.4,
+                1
               ]
             }
           ]
@@ -301,8 +288,8 @@
             {
               "lerp": [
                 "intensity",
-                0.85,
-                1.15
+                0.4,
+                1
               ]
             }
           ]
@@ -311,18 +298,7 @@
       "sway": {
         "type": "float",
         "from": {
-          "mul": [
-            {
-              "baseline": "sway"
-            },
-            {
-              "lerp": [
-                "intensity",
-                0.85,
-                1.2
-              ]
-            }
-          ]
+          "baseline": "sway"
         }
       },
       "striation": {

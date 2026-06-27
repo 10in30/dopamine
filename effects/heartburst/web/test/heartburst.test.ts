@@ -112,3 +112,54 @@ describe("heartburst effect factory", () => {
     expect(heartburst.reducedMotion).toEqual({ peakMs: 180, holdMs: 360 });
   });
 });
+
+describe("heartburst intensity contract", () => {
+  const at = (intensity: number) =>
+    heartburst.resolve(
+      { mood: "celebratory", intensity, whimsy: 0.4, seed: 1 },
+      {} as never,
+    ) as Record<string, unknown>;
+
+  // celebratory baselines: heartScale 0.3, burstSpread 0.46, burstCount 18, durationMs 2000
+  const BASE_HEART_SCALE = 0.3;
+  const BASE_BURST_SPREAD = 0.46;
+  const BASE_BURST_COUNT = 18;
+  const MIN_BURST_COUNT = 4;
+
+  it("intensity does NOT affect timing — durationMs is identical across intensities", () => {
+    const lo = at(0).durationMs;
+    const mid = at(0.5).durationMs;
+    const hi = at(1).durationMs;
+    expect(lo).toBe(2000);
+    expect(mid).toBe(2000);
+    expect(hi).toBe(2000);
+  });
+
+  it("heartScale scales from ~0.4x baseline (low) to baseline (intensity 1) and grows monotonically", () => {
+    const lo = at(0).heartScale as number;
+    const hi = at(1).heartScale as number;
+    expect(lo).toBeCloseTo(BASE_HEART_SCALE * 0.4, 6);
+    expect(hi).toBeCloseTo(BASE_HEART_SCALE, 6);
+    expect(hi).toBeGreaterThan(lo);
+    expect(at(0.5).heartScale as number).toBeGreaterThan(lo);
+    expect(at(0.5).heartScale as number).toBeLessThan(hi);
+  });
+
+  it("burstSpread scales from ~0.4x baseline (low) to baseline (intensity 1) and grows monotonically", () => {
+    const lo = at(0).burstSpread as number;
+    const hi = at(1).burstSpread as number;
+    expect(lo).toBeCloseTo(BASE_BURST_SPREAD * 0.4, 6);
+    expect(hi).toBeCloseTo(BASE_BURST_SPREAD, 6);
+    expect(hi).toBeGreaterThan(lo);
+    expect(at(0.5).burstSpread as number).toBeGreaterThan(lo);
+    expect(at(0.5).burstSpread as number).toBeLessThan(hi);
+  });
+
+  it("burstCount floors at MIN(4) at intensity 0 and reaches baseline at intensity 1", () => {
+    expect(at(0).burstCount).toBe(MIN_BURST_COUNT);
+    expect(at(1).burstCount).toBe(BASE_BURST_COUNT);
+    // grows with intensity: floor → baseline
+    expect(at(0.5).burstCount as number).toBeGreaterThan(MIN_BURST_COUNT);
+    expect(at(0.5).burstCount as number).toBeLessThan(BASE_BURST_COUNT);
+  });
+});

@@ -51,7 +51,7 @@
   },
   "tempo": {
     "durationMs": {
-      "from": { "round": { "mul": [{ "baseline": "durationMs" }, { "lerp": ["intensity", 1.1, 0.9] }] } }
+      "from": { "baseline": "durationMs" }
     },
     "frame": {
       "amp": { "envelope": [{ "input": "life" }, { "param": "overshoot" }] },
@@ -74,16 +74,16 @@
       },
       "coverage": {
         "type": "float", "clamp01": true,
-        "from": { "mul": [{ "baseline": "coverage" }, { "lerp": ["intensity", 0.7, 1.25] }] }
+        "from": { "mul": [{ "baseline": "coverage" }, { "lerp": ["intensity", 0.4, 1.0] }] }
       },
       "bandY": { "type": "float", "from": { "baseline": "bandY" } },
       "bandHeight": {
         "type": "float", "clamp01": true,
-        "from": { "mul": [{ "baseline": "bandHeight" }, { "lerp": ["intensity", 0.85, 1.15] }] }
+        "from": { "mul": [{ "baseline": "bandHeight" }, { "lerp": ["intensity", 0.4, 1.0] }] }
       },
       "sway": {
         "type": "float",
-        "from": { "mul": [{ "baseline": "sway" }, { "lerp": ["intensity", 0.85, 1.2] }] }
+        "from": { "baseline": "sway" }
       },
       "striation": {
         "type": "float", "clamp01": true,

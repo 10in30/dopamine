@@ -23,6 +23,12 @@ const MOODS: DopamineMood[] = ["serene", "celebratory", "electric"];
 const POOL = (parseDope(comicDoc as object).content as { pool: string[] }).pool;
 const pickWord = (seed: number): ComicWord => pickFromList(POOL, seed) as ComicWord;
 
+// The per-mood baseline table ships in comic.dope.json (`baselines`); the
+// intensity-tuning tests below pin the resolved params against these.
+const BASELINES = (comicDoc as { baselines: Record<string, {
+  durationMs: number; scale: number; burstPoints: number; actionLines: number;
+}> }).baselines;
+
 /** The production path: the factory's `.dope`-driven resolve. */
 const resolve = (mood: DopamineMood, intensity: number, whimsy: number, seed: number) =>
   comic.resolve({ mood, intensity, whimsy, seed }, resolveMood(mood));
@@ -116,6 +122,38 @@ describe("comic resolve (Comic Impact)", () => {
     expect(hi.exposure).toBeGreaterThan(lo.exposure);
     expect(hi.overshoot).toBeGreaterThan(lo.overshoot);
     expect(hi.scale).toBeGreaterThan(lo.scale);
+  });
+
+  it("intensity drives SIZE: ~0.4x baseline at low, full baseline at 1.0 (timing-free)", () => {
+    const base = BASELINES.celebratory.scale; // baseline scale (0.4)
+    const lo = resolve("celebratory", 0.0, 0.5, 5);
+    const hi = resolve("celebratory", 1.0, 0.5, 5);
+    // SIZE/extent scales 0.4x..1.0x of the mood baseline.
+    expect(lo.scale).toBeCloseTo(base * 0.4, 6);
+    expect(hi.scale).toBeCloseTo(base, 6);
+    expect(hi.scale).toBeGreaterThan(lo.scale);
+  });
+
+  it("intensity floors COUNTS from their MIN up to the mood baseline (MIN burst=6, lines=4)", () => {
+    const baseBurst = BASELINES.celebratory.burstPoints; // 20
+    const baseLines = BASELINES.celebratory.actionLines; // 30
+    const lo = resolve("celebratory", 0.0, 0.5, 5);
+    const hi = resolve("celebratory", 1.0, 0.5, 5);
+    // At intensity 0 the counts floor at their MIN; at 1.0 they reach baseline.
+    expect(lo.burstPoints).toBe(6);
+    expect(lo.actionLines).toBe(4);
+    expect(hi.burstPoints).toBe(baseBurst);
+    expect(hi.actionLines).toBe(baseLines);
+    // Monotonic growth between.
+    expect(hi.burstPoints).toBeGreaterThan(lo.burstPoints);
+    expect(hi.actionLines).toBeGreaterThan(lo.actionLines);
+  });
+
+  it("intensity does NOT affect timing: durationMs is identical across intensities", () => {
+    const base = BASELINES.celebratory.durationMs;
+    for (const i of [0.0, 0.1, 0.5, 0.95, 1.0]) {
+      expect(resolve("celebratory", i, 0.5, 5).durationMs).toBe(base);
+    }
   });
 
   it("whimsy is the NOIR->POP-ART axis: louder halftone + more saturation + style", () => {

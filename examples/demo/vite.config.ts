@@ -16,7 +16,7 @@ const movedEffectAliases = (() => {
     );
   } catch { /* no effects/ yet */ }
   return names.map((n) => ({
-    find: new RegExp(`^@dopamine\\/effect-${n}$`),
+    find: new RegExp(`^@dopaminefx\\/effect-${n}$`),
     replacement: fileURLToPath(new URL(`../../effects/${n}/web/src/index.ts`, import.meta.url)),
   }));
 })();
@@ -31,11 +31,11 @@ export default defineConfig({
   base: "./",
   resolve: {
     alias: [
-      { find: /^@dopamine\/core$/, replacement: pkg("core/src/index.ts") },
-      { find: /^@dopamine\/effects$/, replacement: pkg("effects/src/index.ts") },
+      { find: /^@dopaminefx\/core$/, replacement: pkg("core/src/index.ts") },
+      { find: /^@dopaminefx\/effects$/, replacement: pkg("effects/src/index.ts") },
       // Moved effects (effects/<name>/web) resolve here, BEFORE the generic alias.
       ...movedEffectAliases,
-      { find: /^@dopamine\/effect-(.*)$/, replacement: pkg("effect-$1/src/index.ts") },
+      { find: /^@dopaminefx\/effect-(.*)$/, replacement: pkg("effect-$1/src/index.ts") },
     ],
   },
 });

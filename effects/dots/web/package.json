@@ -1,6 +1,6 @@
 {
   "name": "@dopaminefx/effect-dots",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Dots — a calm ambient looping 'thinking' dot-row indicator for Dopamine.",
   "keywords": [
     "dopamine-effect"

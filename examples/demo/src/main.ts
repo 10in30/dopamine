@@ -208,6 +208,11 @@ function fire(overrides: Partial<typeof state> = {}): Promise<void> {
     syncPauseBtn();
     return Promise.resolve();
   }
+  // Intensity is the effect's "presence" dial; 0 means "don't show it at all".
+  // The .dope mappings floor a NON-zero intensity at a visible minimum (glyphs
+  // ~40% size, ~a handful of elements), so the host owns the hard off-switch at
+  // exactly 0 (a clean numeric guard — never fire on a non-positive intensity).
+  if (!(intensity > 0)) return Promise.resolve();
   // Bring the targeted card into view first, so the effect (drawn at the card's
   // viewport position on the fixed overlay) is actually visible when it fires.
   ensureTargetVisible();

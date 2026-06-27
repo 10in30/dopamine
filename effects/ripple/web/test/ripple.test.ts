@@ -49,14 +49,36 @@ describe("ripple resolve (droplet-in-a-pool)", () => {
     }
   });
 
-  it("intensity drives wave amplitude, ring count and caustic brightness", () => {
+  it("intensity drives wave amplitude (size), ring count and caustic brightness", () => {
     const lo = resolve("celebratory", 0.05, 0.5, 5);
     const hi = resolve("celebratory", 0.98, 0.5, 5);
+    // SIZE: amplitude scales baseline by ~0.4x (low) up to baseline (intensity 1).
     expect(hi.amplitude).toBeGreaterThan(lo.amplitude);
     expect(hi.rings).toBeGreaterThan(lo.rings);
     expect(hi.caustic).toBeGreaterThan(lo.caustic);
     expect(hi.overshoot).toBeGreaterThan(lo.overshoot);
     expect(hi.exposure).toBeGreaterThan(lo.exposure);
+  });
+
+  it("amplitude grows from ~0.4x baseline (low intensity) to baseline (intensity 1)", () => {
+    const base = 0.5; // celebratory baseline amplitude
+    const lo = resolve("celebratory", 0.0, 0.5, 5);
+    const hi = resolve("celebratory", 1.0, 0.5, 5);
+    expect(lo.amplitude).toBeCloseTo(base * 0.4, 6);
+    expect(hi.amplitude).toBeCloseTo(base, 6);
+  });
+
+  it("rings grow from MIN_RINGS to baseline as intensity rises (intensity 1 == baseline)", () => {
+    // celebratory baseline rings = 4: intensity 0 -> 2 (MIN), intensity 1 -> 4 (baseline).
+    expect(resolve("celebratory", 0.0, 0.5, 5).rings).toBe(MIN_RINGS);
+    expect(resolve("celebratory", 1.0, 0.5, 5).rings).toBe(4);
+  });
+
+  it("intensity does NOT affect speed or durationMs (baseline-only timing)", () => {
+    const lo = resolve("celebratory", 0.05, 0.5, 5);
+    const hi = resolve("celebratory", 0.98, 0.5, 5);
+    expect(hi.speed).toBe(lo.speed);
+    expect(hi.durationMs).toBe(lo.durationMs);
   });
 
   it("whimsy is the stylization axis (style == raw whimsy)", () => {
@@ -74,9 +96,9 @@ describe("ripple resolve (droplet-in-a-pool)", () => {
   });
 
   it("ring count clamps to [MIN_RINGS, MAX_RINGS]", () => {
-    // electric baseline 5 + intensity*2 = 7 == MAX_RINGS at full intensity.
+    // electric baseline 5: intensity 1 -> 2+(5-2)*1 = 5 (== baseline) <= MAX_RINGS.
     expect(resolve("electric", 1.0, 0.5, 9).rings).toBeLessThanOrEqual(MAX_RINGS);
-    // serene baseline 3 + 0 at zero intensity stays >= MIN_RINGS.
+    // serene baseline 3: intensity 0 floors at MIN_RINGS.
     expect(resolve("serene", 0.0, 0.5, 9).rings).toBeGreaterThanOrEqual(MIN_RINGS);
   });
 
