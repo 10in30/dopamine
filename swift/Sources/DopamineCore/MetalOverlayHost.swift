@@ -28,6 +28,11 @@ import Metal
 import QuartzCore
 import CoreGraphics
 import simd
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 /// A hybrid effect that needs an offscreen "panel" (the web's Canvas2D layer it
 /// samples in-shader — e.g. comic's word, heartburst's hearts) supplies ONLY its
@@ -182,6 +187,19 @@ public final class MetalOverlayHost<Config: PassConfig> {
     /// multi-MB heap allocation every tick for hybrid effects). Sized lazily.
     private var uploadBuffer: [UInt8] = []
 
+    /// Off-screen target the SHADOW pass renders into (cleared to WHITE, so the
+    /// multiply-blended shadow pipeline copies its `mul` output verbatim). A host
+    /// conversion pass then turns that into premultiplied black-with-alpha and
+    /// destination-over-composites it BEHIND the glow in the light layer — so the
+    /// whole overlay is ONE source-over layer that darkens the live backdrop on BOTH
+    /// iOS and macOS (no `CALayer.compositingFilter`, which is macOS-only). Sized to
+    /// the drawable; reallocated on resize. nil ⇒ shadows off (wantsShadow == false).
+    private var shadowRawTex: MTLTexture?
+    /// The host-owned "multiply colour → premultiplied black-alpha" conversion: a
+    /// fullscreen pass compiled at runtime (so it needs no bundled `.metal`), with a
+    /// destination-over blend. nil ⇒ build failed ⇒ skip the shadow (glow still draws).
+    private var shadowConvert: (pipeline: MTLRenderPipelineState, sampler: MTLSamplerState)?
+
     /// `library` is the effect's compiled `default.metallib` (built on macOS).
     public init(config: Config, device: MTLDevice, library: MTLLibrary, wantsShadow: Bool) throws {
         guard let q = device.makeCommandQueue() else { throw MetalPassError.pipelineFailed("no command queue") }
@@ -207,6 +225,59 @@ public final class MetalOverlayHost<Config: PassConfig> {
         } else {
             shadowLayer = nil
         }
+        if wantsShadow {
+            shadowConvert = Self.makeShadowConvert(device: device, pixelFormat: lightLayer.pixelFormat)
+        }
+    }
+
+    /// Build the host-owned shadow conversion pass (multiply colour → premultiplied
+    /// black-with-alpha, destination-over). Compiled from a source string so the
+    /// library needs no bundled `.metal`. Returns nil on any failure (shadows just
+    /// don't render; the glow is unaffected).
+    private static func makeShadowConvert(device: MTLDevice, pixelFormat: MTLPixelFormat)
+        -> (pipeline: MTLRenderPipelineState, sampler: MTLSamplerState)? {
+        let src = """
+        #include <metal_stdlib>
+        using namespace metal;
+        struct DopShadowVOut { float4 pos [[position]]; float2 uv; };
+        vertex DopShadowVOut dop_shadowConvertV(uint vid [[vertex_id]]) {
+          float2 p[3] = { float2(-1.0, -1.0), float2(3.0, -1.0), float2(-1.0, 3.0) };
+          DopShadowVOut o;
+          o.pos = float4(p[vid], 0.0, 1.0);
+          float2 uv = p[vid] * 0.5 + 0.5;
+          o.uv = float2(uv.x, 1.0 - uv.y);   // match the runner's top-left drawable
+          return o;
+        }
+        fragment float4 dop_shadowConvertF(DopShadowVOut in [[stage_in]],
+            texture2d<float> raw [[texture(0)]], sampler smp [[sampler(0)]]) {
+          float3 c = raw.sample(smp, in.uv).rgb;   // shadow MULTIPLY colour: 1 = no shadow
+          float dark = clamp(1.0 - dot(c, float3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
+          return float4(0.0, 0.0, 0.0, dark);      // premultiplied black (source-over darkening)
+        }
+        """
+        guard let lib = try? device.makeLibrary(source: src, options: nil),
+              let vfn = lib.makeFunction(name: "dop_shadowConvertV"),
+              let ffn = lib.makeFunction(name: "dop_shadowConvertF") else { return nil }
+        let d = MTLRenderPipelineDescriptor()
+        d.vertexFunction = vfn
+        d.fragmentFunction = ffn
+        let a = d.colorAttachments[0]!
+        a.pixelFormat = pixelFormat
+        a.isBlendingEnabled = true
+        a.rgbBlendOperation = .add
+        a.alphaBlendOperation = .add
+        // Destination-over: result = src·(1 − dst.a) + dst — the shadow fills only
+        // where the glow hasn't already, i.e. BEHIND it, in the same layer.
+        a.sourceRGBBlendFactor = .oneMinusDestinationAlpha
+        a.destinationRGBBlendFactor = .one
+        a.sourceAlphaBlendFactor = .oneMinusDestinationAlpha
+        a.destinationAlphaBlendFactor = .one
+        let sd = MTLSamplerDescriptor()
+        sd.minFilter = .linear; sd.magFilter = .linear
+        sd.sAddressMode = .clampToEdge; sd.tAddressMode = .clampToEdge
+        guard let pipeline = try? device.makeRenderPipelineState(descriptor: d),
+              let sampler = device.makeSamplerState(descriptor: sd) else { return nil }
+        return (pipeline, sampler)
     }
 
     /// Do ALL the expensive per-fire work AHEAD of `play()`: compile the pass
@@ -391,24 +462,6 @@ public final class MetalOverlayHost<Config: PassConfig> {
         panelTex = tex
     }
 
-    /// Build a command buffer + render encoder for one layer's next drawable.
-    /// Returns nil if no drawable is available this frame (can happen
-    /// transiently, especially on a headless simulator) — the caller then
-    /// SKIPS the frame instead of force-unwrapping a nil encoder, which would
-    /// crash the app.
-    private func beginPass(_ layer: CAMetalLayer)
-        -> (cb: MTLCommandBuffer, drawable: CAMetalDrawable, enc: MTLRenderCommandEncoder)? {
-        guard let drawable = layer.nextDrawable(),
-              let cb = queue.makeCommandBuffer() else { return nil }
-        let rpd = MTLRenderPassDescriptor()
-        rpd.colorAttachments[0].texture = drawable.texture
-        rpd.colorAttachments[0].loadAction = .clear
-        rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-        rpd.colorAttachments[0].storeAction = .store
-        guard let enc = cb.makeRenderCommandEncoder(descriptor: rpd) else { return nil }
-        return (cb, drawable, enc)
-    }
-
     /// Drive one on-screen frame (call from a CADisplayLink). `dpr` is the content
     /// scale; `anchorPx` the effect origin in points; `targetPx` the targeted
     /// element's size in points (zero ⇒ the centrepiece fills the whole canvas).
@@ -425,29 +478,79 @@ public final class MetalOverlayHost<Config: PassConfig> {
         let pf = panelFrameInputs(dpr: dpr, anchorPx: anchorPx, targetPx: targetPx)
         redrawPanel(life: life, centerPx: pf.center, targetPx: pf.target, elapsedMs: elapsedMs)
 
-        // The LIGHT pass is mandatory. If no drawable is available this frame,
-        // skip the whole tick rather than crash on a nil encoder.
-        guard let light = beginPass(lightLayer) else { return }
-
         let w = Float(lightLayer.drawableSize.width)
         let h = Float(lightLayer.drawableSize.height)
+        // No drawable available this frame ⇒ skip the tick rather than crash.
+        guard w >= 1, h >= 1,
+              let drawable = lightLayer.nextDrawable(),
+              let cb = queue.makeCommandBuffer() else { return }
 
-        // Optional shadow pass into its own drawable / command buffer.
-        let shadow = shadowLayer.flatMap { beginPass($0) }
+        // ONE command buffer, sequential render passes (Metal allows only ONE active
+        // encoder per command buffer at a time, and a single queue executes a buffer's
+        // passes in order — so the conversion safely reads what the shadow pass wrote):
+        //   1. SHADOW pass → off-screen `shadowRawTex`, cleared WHITE so the multiply
+        //      pipeline copies its `mul` output (1 = no shadow) verbatim.
+        //   2. LIGHT (glow) pass → the on-screen drawable, cleared transparent.
+        //   3. CONVERSION → sample the raw shadow, emit premultiplied black with
+        //      alpha = 1 − luma(mul), destination-over so it fills BEHIND the glow.
+        // Net: ONE source-over layer that darkens the live backdrop on iOS AND macOS
+        // (no `CALayer.compositingFilter`, which is macOS-only).
+        let useShadow = wantsShadow && shadowConvert != nil
+        if useShadow {
+            ensureShadowRawTex(width: Int(w), height: Int(h))
+            if let raw = shadowRawTex {
+                let srpd = MTLRenderPassDescriptor()
+                srpd.colorAttachments[0].texture = raw
+                srpd.colorAttachments[0].loadAction = .clear
+                srpd.colorAttachments[0].clearColor = MTLClearColor(red: 1, green: 1, blue: 1, alpha: 1)
+                srpd.colorAttachments[0].storeAction = .store
+                if let se = cb.makeRenderCommandEncoder(descriptor: srpd) {
+                    runner.render(elapsedMs: elapsedMs, width: w, height: h, anchorPx: anchorPx,
+                                  targetPx: targetPx, dpr: dpr,
+                                  lightEncoder: nil, shadowEncoder: se, panel: panelTex)
+                    se.endEncoding()
+                }
+            }
+        }
 
-        // Encode the draw calls FIRST, then end encoding. (Encoding into an
-        // already-ended encoder is Metal API misuse and crashes.)
-        runner.render(
-            elapsedMs: elapsedMs, width: w, height: h, anchorPx: anchorPx,
-            targetPx: targetPx, dpr: dpr,
-            lightEncoder: light.enc, shadowEncoder: shadow?.enc, panel: panelTex
-        )
+        let lrpd = MTLRenderPassDescriptor()
+        lrpd.colorAttachments[0].texture = drawable.texture
+        lrpd.colorAttachments[0].loadAction = .clear
+        lrpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        lrpd.colorAttachments[0].storeAction = .store
+        guard let le = cb.makeRenderCommandEncoder(descriptor: lrpd) else { return }
+        runner.render(elapsedMs: elapsedMs, width: w, height: h, anchorPx: anchorPx,
+                      targetPx: targetPx, dpr: dpr,
+                      lightEncoder: le, shadowEncoder: nil, panel: panelTex)
+        le.endEncoding()
 
-        shadow?.enc.endEncoding()
-        light.enc.endEncoding()
+        if useShadow, let raw = shadowRawTex, let sc = shadowConvert {
+            let crpd = MTLRenderPassDescriptor()
+            crpd.colorAttachments[0].texture = drawable.texture
+            crpd.colorAttachments[0].loadAction = .load
+            crpd.colorAttachments[0].storeAction = .store
+            if let conv = cb.makeRenderCommandEncoder(descriptor: crpd) {
+                conv.setRenderPipelineState(sc.pipeline)
+                conv.setFragmentTexture(raw, index: 0)
+                conv.setFragmentSamplerState(sc.sampler, index: 0)
+                conv.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+                conv.endEncoding()
+            }
+        }
 
-        if let shadow { shadow.cb.present(shadow.drawable); shadow.cb.commit() }
-        light.cb.present(light.drawable); light.cb.commit()
+        cb.present(drawable)
+        cb.commit()
+    }
+
+    /// (Re)allocate the off-screen shadow target to match the drawable size.
+    private func ensureShadowRawTex(width: Int, height: Int) {
+        guard width > 0, height > 0 else { return }
+        if let t = shadowRawTex, t.width == width, t.height == height { return }
+        let d = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: lightLayer.pixelFormat, width: width, height: height, mipmapped: false)
+        d.usage = [.renderTarget, .shaderRead]
+        d.storageMode = .private
+        shadowRawTex = device.makeTexture(descriptor: d)
     }
 
     // MARK: - Off-screen capture (CI recorder)
@@ -510,5 +613,40 @@ public final class MetalOverlayHost<Config: PassConfig> {
                                   bytesPerRow: bpr, space: cs, bitmapInfo: info.rawValue) else { return nil }
         return ctx.makeImage()
     }
+}
+
+// MARK: - Hosting the overlay layer in a view
+//
+// AGENT NOTE — orientation when hosting `lightLayer` yourself:
+// Metal renders into a TOP-LEFT-origin drawable. Core Animation composites a layer
+// per its layer-tree geometry, so the orientation depends on the VIEW you attach to:
+//   • iOS `UIView`         → never flipped; the layer composites upright as-is.
+//   • macOS `NSView`       → default origin is BOTTOM-LEFT (upright as-is); but a
+//     view with `isFlipped == true` (top-left origin — common to match UIKit/SwiftUI
+//     anchor coordinates) composites the drawable's contents UPSIDE DOWN unless you
+//     set `layer.isGeometryFlipped = true` to cancel it.
+// Most effects are ~vertically symmetric so the flip is easy to miss — it only reads
+// wrong on an asymmetric GLYPH / icon / word. ALWAYS attach via `attach(to:)` below
+// (it reads `view.isFlipped` and orients the layer correctly) instead of calling
+// `view.layer.addSublayer(host.lightLayer)` directly. Do NOT hardcode
+// `isGeometryFlipped` — `attach(to:)` is the single correct path on both platforms.
+extension MetalOverlayHost {
+    #if canImport(AppKit)
+    /// Attach the overlay's `lightLayer` as a sublayer of `view`, oriented for the
+    /// view's coordinate system. On a FLIPPED `NSView` (`isFlipped == true`) this sets
+    /// `isGeometryFlipped` so the Metal drawable presents upright; on a normal NSView
+    /// it leaves it alone. Makes `view` layer-backed if it isn't already.
+    public func attach(to view: NSView) {
+        view.wantsLayer = true
+        lightLayer.isGeometryFlipped = view.isFlipped
+        view.layer?.addSublayer(lightLayer)
+    }
+    #elseif canImport(UIKit)
+    /// Attach the overlay's `lightLayer` as a sublayer of `view`. UIKit's coordinate
+    /// space never needs the geometry flip, so this is a plain `addSublayer`.
+    public func attach(to view: UIView) {
+        view.layer.addSublayer(lightLayer)
+    }
+    #endif
 }
 #endif

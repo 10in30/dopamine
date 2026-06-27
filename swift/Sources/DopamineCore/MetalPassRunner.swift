@@ -308,9 +308,28 @@ public final class MetalPassRunner<Config: PassConfig> {
             sd.storageMode = .shared
             guard let tex = device.makeTexture(descriptor: sd) else { continue }
             // 8 bits per pixel ⇒ bytesPerRow == size, no row padding needed.
-            sdf.bytes.withUnsafeBytes { raw in
-                tex.replace(region: MTLRegionMake2D(0, 0, sdf.size, sdf.size),
-                            mipmapLevel: 0, withBytes: raw.baseAddress!, bytesPerRow: sdf.size)
+            // Match the web pass-runner's `UNPACK_FLIP_Y_WEBGL = true` SDF upload
+            // (pass-runner.ts): the single-source GLSL→MSL shader samples the SDF in
+            // the SAME y-up vUv on every platform, so the baked field's row 0 must be
+            // its BOTTOM row. Reverse the R8 rows here — otherwise the baked-SDF icon
+            // (solarbloom's bloom mark, etc.) renders upside down relative to the rest
+            // of the frame on BOTH iOS and macOS (the procedural look + panels are
+            // unaffected). This is independent of the host view's geometry flip.
+            let n = sdf.size
+            var flipped = [UInt8](repeating: 0, count: n * n)
+            sdf.bytes.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+                let src = raw.bindMemory(to: UInt8.self)
+                flipped.withUnsafeMutableBytes { (dstRaw: UnsafeMutableRawBufferPointer) in
+                    let dst = dstRaw.bindMemory(to: UInt8.self)
+                    for row in 0..<n {
+                        let s = (n - 1 - row) * n, d = row * n
+                        for col in 0..<n { dst[d + col] = src[s + col] }
+                    }
+                }
+            }
+            flipped.withUnsafeBytes { raw in
+                tex.replace(region: MTLRegionMake2D(0, 0, n, n),
+                            mipmapLevel: 0, withBytes: raw.baseAddress!, bytesPerRow: n)
             }
             decoded.append((spec, tex))
             if let on = spec.onExtra { onExtras.append(on) }
@@ -414,12 +433,16 @@ public final class MetalPassRunner<Config: PassConfig> {
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
     }
 
-    /// Render light (and shadow, if its encoder is provided) for `elapsedMs`.
+    /// Render the light pass (when `lightEncoder` is provided) and/or the shadow
+    /// pass (when `shadowEncoder` is provided) for `elapsedMs`. Either may be nil so
+    /// a host can drive them as separate render passes — e.g. shadow into an
+    /// off-screen target, then light into the drawable — sequentially on one command
+    /// buffer (Metal allows only one active encoder per command buffer at a time).
     public func render(
         elapsedMs: Double,
         width: Float, height: Float, anchorPx: SIMD2<Float>,
         targetPx: SIMD2<Float> = .zero, dpr: Float,
-        lightEncoder: MTLRenderCommandEncoder,
+        lightEncoder: MTLRenderCommandEncoder?,
         shadowEncoder: MTLRenderCommandEncoder?,
         panel: MTLTexture? = nil
     ) {
@@ -469,8 +492,10 @@ public final class MetalPassRunner<Config: PassConfig> {
             let s = standard(info, amp: amp, width: width, height: height, anchorPx: anchorPx, targetPx: targetPx, dpr: dpr, isShadow: true)
             encodePass(se, pipeline: sp, uniforms: config.packUniforms(standard: s, params: params, extras: extras), panel: panel, arrays: arrays)
         }
-        let s = standard(info, amp: amp, width: width, height: height, anchorPx: anchorPx, targetPx: targetPx, dpr: dpr, isShadow: false)
-        encodePass(lightEncoder, pipeline: lightPipeline, uniforms: config.packUniforms(standard: s, params: params, extras: extras), panel: panel, arrays: arrays)
+        if let le = lightEncoder {
+            let s = standard(info, amp: amp, width: width, height: height, anchorPx: anchorPx, targetPx: targetPx, dpr: dpr, isShadow: false)
+            encodePass(le, pipeline: lightPipeline, uniforms: config.packUniforms(standard: s, params: params, extras: extras), panel: panel, arrays: arrays)
+        }
     }
 
     private func standardStyle() -> Float {

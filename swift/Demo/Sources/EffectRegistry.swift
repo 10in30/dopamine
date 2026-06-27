@@ -16,6 +16,11 @@ import Metal
 import QuartzCore
 import simd
 import DopamineCore
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 // dopamine:effects:imports — generated from effects/ by scripts/gen-registries.mjs; do not edit
 import DopamineEffectAurora
 import DopamineEffectCheckmate
@@ -56,6 +61,13 @@ public protocol AnyEffectHost: AnyObject {
     func renderOffscreen(elapsedMs: Double, width: Int, height: Int,
                          dpr: Float, anchorPx: SIMD2<Float>,
                          targetPx: SIMD2<Float>) -> CGImage?
+    /// Attach `lightLayer` to a host view, oriented for its coordinate space (sets
+    /// `isGeometryFlipped` on a flipped NSView). Use INSTEAD of `addSublayer`.
+    #if canImport(AppKit)
+    func attach(to view: NSView)
+    #elseif canImport(UIKit)
+    func attach(to view: UIView)
+    #endif
 }
 extension MetalOverlayHost: AnyEffectHost {}
 
@@ -76,84 +88,84 @@ enum EffectRegistry {
         DemoEffect(name: "aurora") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: AuroraResources.bundle),
                   let host = try? MetalOverlayHost(config: Aurora.passConfig(), device: device,
-                                                   library: lib, wantsShadow: false),
+                                                   library: lib, wantsShadow: true),
                   let fx = try? Aurora() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
         DemoEffect(name: "checkmate") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: CheckmateResources.bundle),
                   let host = try? MetalOverlayHost(config: Checkmate.passConfig(), device: device,
-                                                   library: lib, wantsShadow: false),
+                                                   library: lib, wantsShadow: true),
                   let fx = try? Checkmate() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
         DemoEffect(name: "comic") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: ComicResources.bundle),
                   let host = try? MetalOverlayHost(config: Comic.passConfig(), device: device,
-                                                   library: lib, wantsShadow: false),
+                                                   library: lib, wantsShadow: true),
                   let fx = try? Comic() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
         DemoEffect(name: "confetti") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: ConfettiResources.bundle),
                   let host = try? MetalOverlayHost(config: Confetti.passConfig(), device: device,
-                                                   library: lib, wantsShadow: false),
+                                                   library: lib, wantsShadow: true),
                   let fx = try? Confetti() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
         DemoEffect(name: "dots") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: DotsResources.bundle),
                   let host = try? MetalOverlayHost(config: Dots.passConfig(), device: device,
-                                                   library: lib, wantsShadow: false),
+                                                   library: lib, wantsShadow: true),
                   let fx = try? Dots() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
         DemoEffect(name: "fail") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: FailResources.bundle),
                   let host = try? MetalOverlayHost(config: Fail.passConfig(), device: device,
-                                                   library: lib, wantsShadow: false),
+                                                   library: lib, wantsShadow: true),
                   let fx = try? Fail() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
         DemoEffect(name: "halo") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: HaloResources.bundle),
                   let host = try? MetalOverlayHost(config: Halo.passConfig(), device: device,
-                                                   library: lib, wantsShadow: false),
+                                                   library: lib, wantsShadow: true),
                   let fx = try? Halo() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
         DemoEffect(name: "heartburst") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: HeartburstResources.bundle),
                   let host = try? MetalOverlayHost(config: Heartburst.passConfig(), device: device,
-                                                   library: lib, wantsShadow: false),
+                                                   library: lib, wantsShadow: true),
                   let fx = try? Heartburst() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
         DemoEffect(name: "inkstroke") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: InkstrokeResources.bundle),
                   let host = try? MetalOverlayHost(config: Inkstroke.passConfig(), device: device,
-                                                   library: lib, wantsShadow: false),
+                                                   library: lib, wantsShadow: true),
                   let fx = try? Inkstroke() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
         DemoEffect(name: "lightning") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: LightningResources.bundle),
                   let host = try? MetalOverlayHost(config: Lightning.passConfig(), device: device,
-                                                   library: lib, wantsShadow: false),
+                                                   library: lib, wantsShadow: true),
                   let fx = try? Lightning() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
         DemoEffect(name: "ripple") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: RippleResources.bundle),
                   let host = try? MetalOverlayHost(config: Ripple.passConfig(), device: device,
-                                                   library: lib, wantsShadow: false),
+                                                   library: lib, wantsShadow: true),
                   let fx = try? Ripple() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
         DemoEffect(name: "solarbloom") { device in
             guard let lib = try? device.makeDefaultLibrary(bundle: SolarbloomResources.bundle),
                   let host = try? MetalOverlayHost(config: Solarbloom.passConfig(), device: device,
-                                                   library: lib, wantsShadow: false),
+                                                   library: lib, wantsShadow: true),
                   let fx = try? Solarbloom() else { return nil }
             return (host, { (try? fx.resolve($0)) ?? [:] })
         },
