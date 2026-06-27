@@ -102,6 +102,11 @@ const targets = {
       `      - package: ${e.swiftModule}`,
       `        product: ${e.swiftModule}`,
     ]),
+    // The macOS demo target carries the SAME effect dependency list as the iOS one.
+    "deps-mac": EFFECTS.flatMap((e) => [
+      `      - package: ${e.swiftModule}`,
+      `        product: ${e.swiftModule}`,
+    ]),
   }),
 
   // Android umbrella: per-effect imports + the registerAll() body.
