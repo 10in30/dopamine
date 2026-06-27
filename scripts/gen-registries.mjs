@@ -91,7 +91,7 @@ const targets = {
         `        DemoEffect(name: "${e.slug}") { device in`,
         `            guard let lib = try? device.makeDefaultLibrary(bundle: ${e.Name}Resources.bundle),`,
         `                  let host = try? MetalOverlayHost(config: ${config}, device: device,`,
-        `                                                   library: lib, wantsShadow: false),`,
+        `                                                   library: lib, wantsShadow: true),`,
         `                  let fx = try? ${e.Name}() else { return nil }`,
         `            return (host, { (try? fx.resolve($0)) ?? [:] })`,
         `        },`,
