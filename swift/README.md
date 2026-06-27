@@ -63,7 +63,7 @@ library product:
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/10in30/dopamine.git", from: "0.1.0"),
+    .package(url: "https://github.com/10in30/dopamine.git", from: "0.2.0"),
 ],
 targets: [
     .target(name: "MyApp", dependencies: [
