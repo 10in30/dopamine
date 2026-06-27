@@ -20,6 +20,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
+  "devDependencies": {
+    "@types/node": "^25.9.2"
+  },
   "license": "MIT",
   "author": "10in30",
   "homepage": "https://github.com/10in30/dopamine#readme",
