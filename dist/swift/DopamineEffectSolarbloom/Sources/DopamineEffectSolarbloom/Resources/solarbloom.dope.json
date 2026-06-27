@@ -1,0 +1,552 @@
+{
+  "fmt": "dopamine-effect",
+  "v": "1.0.0",
+  "id": "dopamine.success.solarbloom",
+  "meta": {
+    "name": "Solarbloom",
+    "description": "A centered radial volumetric bloom — light radiating from a point — with drifting motes and a checkmark drawn in light.",
+    "tags": [
+      "success",
+      "bloom",
+      "radial"
+    ]
+  },
+  "controls": {
+    "mood": {
+      "type": "enum",
+      "label": "Mood",
+      "default": "celebratory",
+      "options": [
+        "serene",
+        "celebratory",
+        "electric"
+      ],
+      "ui": "segmented"
+    },
+    "intensity": {
+      "type": "scalar",
+      "label": "Intensity",
+      "default": 0.7,
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "ui": "slider",
+      "help": "Saturation, brightness, bloom size, overshoot."
+    },
+    "whimsy": {
+      "type": "scalar",
+      "label": "Whimsy",
+      "default": 0.5,
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "ui": "slider",
+      "help": "Photoreal (0) to cel / hand-drawn (1)."
+    },
+    "seed": {
+      "type": "int",
+      "label": "Seed",
+      "default": null,
+      "nullable": true,
+      "help": "Null = unique palette per fire; pin to reproduce."
+    },
+    "origin": {
+      "type": "point",
+      "label": "Origin",
+      "default": "center"
+    },
+    "target": {
+      "type": "selector",
+      "label": "Target",
+      "default": "document.body"
+    }
+  },
+  "baselines": {
+    "serene": {
+      "durationMs": 2600,
+      "lightness": 0.84,
+      "chroma": 0.09,
+      "hueCenter": 230,
+      "hueRange": 120,
+      "bloomRadius": 0.85,
+      "moteCount": 22,
+      "moteSpeed": 0.55,
+      "turbulence": 0.35,
+      "overshoot": 0.55,
+      "iridescence": 0.85,
+      "dispersion": 0.35
+    },
+    "celebratory": {
+      "durationMs": 1800,
+      "lightness": 0.8,
+      "chroma": 0.16,
+      "hueCenter": 50,
+      "hueRange": 320,
+      "bloomRadius": 0.7,
+      "moteCount": 48,
+      "moteSpeed": 0.85,
+      "turbulence": 0.6,
+      "overshoot": 1,
+      "iridescence": 0.6,
+      "dispersion": 0.6
+    },
+    "electric": {
+      "durationMs": 1200,
+      "lightness": 0.78,
+      "chroma": 0.23,
+      "hueCenter": 35,
+      "hueRange": 150,
+      "bloomRadius": 0.6,
+      "moteCount": 72,
+      "moteSpeed": 1.25,
+      "turbulence": 0.9,
+      "overshoot": 1.45,
+      "iridescence": 0.4,
+      "dispersion": 0.95
+    }
+  },
+  "palette": {
+    "model": "oklch",
+    "space": "linear-srgb",
+    "generator": "golden-angle",
+    "goldenAngleDeg": 137.50776405003785,
+    "stops": 3,
+    "hueSpread": 0.55,
+    "lightness": {
+      "baseline": "lightness",
+      "perStop": [
+        0,
+        0.06,
+        -0.05
+      ]
+    },
+    "chroma": {
+      "from": {
+        "mul": [
+          {
+            "baseline": "chroma"
+          },
+          {
+            "lerp": [
+              "intensity",
+              0.7,
+              1.5
+            ]
+          }
+        ]
+      },
+      "perStop": [
+        0,
+        0.02,
+        -0.01
+      ]
+    },
+    "seed": {
+      "deterministic": true,
+      "source": "controls.seed",
+      "prng": "mulberry32"
+    },
+    "perMood": {
+      "serene": {
+        "hueCenter": 230,
+        "hueRange": 120,
+        "lightness": 0.84,
+        "chroma": 0.09
+      },
+      "celebratory": {
+        "hueCenter": 50,
+        "hueRange": 320,
+        "lightness": 0.8,
+        "chroma": 0.16
+      },
+      "electric": {
+        "hueCenter": 35,
+        "hueRange": 150,
+        "lightness": 0.78,
+        "chroma": 0.23
+      }
+    }
+  },
+  "tempo": {
+    "durationMs": {
+      "from": {
+        "round": {
+          "mul": [
+            {
+              "baseline": "durationMs"
+            },
+            {
+              "lerp": [
+                "intensity",
+                1.1,
+                0.9
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "frame": {
+      "amp": {
+        "envelope": [
+          {
+            "input": "life"
+          },
+          {
+            "param": "overshoot"
+          }
+        ]
+      },
+      "extras": {
+        "check": {
+          "easeOutCubic": {
+            "div": [
+              {
+                "input": "elapsedMs"
+              },
+              240
+            ]
+          }
+        }
+      }
+    },
+    "reducedMotion": {
+      "peakMs": 260,
+      "holdMs": 360
+    },
+    "note": "Datafied per-frame logic (delta-0 with the historical hand frame() hook). amp = envelope(life, overshoot) — the held-breath success envelope (anticipation→peak→settle). check = checkProgress(elapsedMs) = easeOutCubic(elapsedMs/240): the functional confirmation draws within ~240 ms on the REAL (un-stepped) clock so it lands near the ~100 ms reward signal and reads smoothly even where the bloom/motes step on twos. The mote SPRITE PANEL geometry stays the one per-platform draw (the sprite-panel seam); the baked-SDF checkmark binds declaratively from binding.samplers on every platform (the fail precedent). The whimsy-picked glyph-fallback canvas is a web-only optional hook (the canonical effect always ships the baked SDF)."
+  },
+  "geometry": {
+    "kind": "radial",
+    "viewBox": [
+      0,
+      0,
+      100,
+      100
+    ],
+    "outlines": {
+      "checkmark": {
+        "role": "confirm-glyph",
+        "source": "baked-sdf",
+        "note": "GEOMETRY SEAM: the checkmark icon is driven by the svgPath below, baked at build time (scripts/bake-sdf.mjs → engine/sdf.ts) into the inline `sdf` distance field. The runtime samples that SDF (effects/solarbloom.ts + engine/shader.ts uSdfTex) — it never re-bakes. Change the svgPath and re-bake to change the rendered icon with NO shader edit. If `sdf` is absent the effect falls back to a bundled SIL-OFL check font glyph, then to the analytic two-segment SDF, so the win always confirms.",
+        "svgPath": "M 5 55 L 38 88 L 95 12",
+        "sdf": {
+          "size": 64,
+          "range": 18,
+          "viewBox": [
+            0,
+            0,
+            100,
+            100
+          ],
+          "data": "data:application/octet-stream;base64,RFMAQP/////////////////////////////////////////////////////////////////////z49PGua+nop+go6r////////////////////////////////////////////////////////////////////35dTDtKebkoyJio6V///////////////////////////////////////////////////////////////////76djGtaSViH12c3R5gf//////////////////////////////////////////////////////////////////7tzKuaeVhXZqYV1eZG7/////////////////////////////////////////////////////////////////8uHPvayaiHZlV0xHSFBc////////////////////////////////////////////////////////////////9+XTwrCejXtpV0Y4MTM9Tf//////////////////////////////////////////////////////////////++nYxrSjkX9uXEo4JxseLkH//////////////////////////////////////////////////////////////+7cyrmnlYRyYE89KxkIECY8//////////////////////////////////////////////////////////////Lhz72smoh2ZVNBMB4MBhcqPv////////////////////////////////////////////////////////////fl08Kwno17aVdGNCIRARMlNkj///////////////////////////////////////////////////////////vp2Ma0o5F/blxKOCcVAw4gMkRV///////////////////////////////////////////////////////////u3Mq5p5WEcmBPPSsZCAocLT9RY//////////////////////////////////////////////////////////y4c+9rJqIdmVTQTAeDAYXKTtMXnD////////////////////////////////////////////////////////35dPCsJ6Ne2lXRjQiEQETJTZIWmt9///////////////////////////////////////////////////////76djGtKORf25cSjgnFQMOIDJEVWd5iv//////////////////////////////////////////////////////7tzKuaeVhHJgTz0rGQgKHC0/UWN0hpj/////////////////////////////////////////////////////8uHPvayaiHZlU0EwHgwGFyk7TF5wgpOl////////////////////////////////////////////////////9+XTwrCejXtpV0Y0IhEBEyU2SFprfY+hsv//////////////////////////////////////////////////++nYxrSjkX9uXEo4JxUDDiAyRFVneYqcrsD//////////////////////////////////////////////////+7cyrmnlYRyYE89KxkIChwtP1FjdIaYqbvN//////////////////////////////////////////////////Lhz72smoh2ZVNBMB4MBhcpO0xecIKTpbfI2v////////////////////////////////////////////////fl08Kwno17aVdGNCIRARMlNkhaa32PobLE1uf///////////////////////////////////////////////vp2Ma0o5F/blxKOCcVAw4gMkRVZ3mKnK7A0eP1///////////////////////////////////////////////u3Mq5p5WEcmBPPSsZCAocLT9RY3SGmKm7zd/w//Tw7e3v8vj////////////////////////////////////y4c+9rJqIdmVTQTAeDAYXKTtMXnCCk6W3yNrs/f/f2tfX2d3j6/X////////////////////////////////35dPCsJ6Ne2lXRjQiEQETJTZIWmt9j6GyxNbn+f//ysTBwcPHztfh7vv////////////////////////////76djGtKORf25cSjgnFQMOIDJEVWd5ipyuwNHj9f///7Wvq6utsrnDz9zr+v//////////////////////////7tzKuaeVhHJgTz0rGQgKHC0/UWN0hpipu83f8P////+gmZWUl52lsL3M2+v6////////////////////////8uHPvayaiHZlU0EwHgwGFyk7TF5wgpOlt8ja7P3/////jIR/foGIkp6svMvb6/r/////////////////////9+XTwrCejXtpV0Y0IhEBEyU2SFprfY+hssTW5/n//////3hvaWhsdH+Nnay8y9vr+v//////////////////++nYxrSjkX9uXEo4JxUDDiAyRFVneYqcrsDR4/X///////9lWlNSV2BufY2drLzL2+v6/////////////////+7cyrmnlYRyYE89KxkIChwtP1FjdIaYqbvN3/D/////////VUc+PEJPXm59jZ2svMvb6/r///////////////Lhz72smoh2ZVNBMB4MBhcpO0xecIKTpbfI2uz9/////////0c1KSYvP05ebn2Nnay8y9vr+v////////////fl08Kwno17aVdGNCIRARMlNkhaa32PobLE1uf5//////////8+KRYRHy8/Tl5ufY2drLzL2+v6//////////vp2Ma0o5F/blxKOCcVAw4gMkRVZ3mKnK7A0eP1////////////PCYRABAfLz9OXm59jZ2svMvb6/r////////u3Mq5p5WEcmBPPSsZCAocLT9RY3SGmKm7zd/w/////////////0IvHxAAEB8vP05ebn2Nnay8y9vr+v/////y4c+9rJqIdmVTQTAeDAYXKTtMXnCCk6W3yNrs/f////////////9PPy8fEAAQHy8/Tl5ufY2drLzL2+v6///35dPCsJ6Ne2lXRjQiEQETJTZIWmt9j6GyxNbn+f//////////////Xk4/Lx8QABAfLz9OXm59jZ2svMvb6/r76djGtKORf25cSjgnFQMOIDJEVWd5ipyuwNHj9f///////////////25eTj8vHxAAEB8vP05ebn2Nnay8y9vr7tzKuaeVhHJgTz0rGQgKHC0/UWN0hpipu83f8P////////////////99bl5OPy8fEAAQHy8/Tl5ufY2drLzL2+HPvayaiHZlU0EwHgwGFyk7TF5wgpOlt8ja7P3/////////////////jX1uXk4/Lx8QABAfLz9OXm59jZ2svMvTwrCejXtpV0Y0IhEBEyU2SFprfY+hssTW5/n//////////////////52NfW5eTj8vHxAAEB8vP05ebn2Nnay8xrSjkX9uXEo4JxUDDiAyRFVneYqcrsDR4/X///////////////////+snY19bl5OPy8fEAAQHy8/Tl5ufY2drLmnlYRyYE89KxkIChwtP1FjdIaYqbvN3/D/////////////////////vKydjX1uXk4/Lx8QABAfLz9OXm59jZ2smoh2ZVNBMB4MBhcpO0xecIKTpbfI2uz9/////////////////////8u8rJ2NfW5eTj8vHxAAEB8vP05ebn2NnY17aVdGNCIRARMlNkhaa32PobLE1uf5///////////////////////by7ysnY19bl5OPy8fEAAQHy8/Tl5ufY1/blxKOCcVAw4gMkRVZ3mKnK7A0eP1////////////////////////69vLvKydjX1uXk4/Lx8QABAfLz9OXm59cmBPPSsZCAocLT9RY3SGmKm7zd/w//////////////////////////rr28u8rJ2NfW5eTj8vHxAAEB8vP05ebmVTQTAeDAYXKTtMXnCCk6W3yNrs/f//////////////////////////+uvby7ysnY19bl5OPy8fEAAQHy8/Tl5XRjQiEQETJTZIWmt9j6GyxNbn+f/////////////////////////////669vLvKydjX1uXk4/Lx8QABAfLz9OSjgnFQMOIDJEVWd5ipyuwNHj9f////////////////////////////////rr28u8rJ2NfW5eTj8vHxAAEB8vPz0rGQgKHC0/UWN0hpipu83f8P//////////////////////////////////+uvby7ysnY19bl5OPy8fEAAQHy8wHgwGFyk7TF5wgpOlt8ja7P3////////////////////////////////////669vLvKydjX1uXk4/Lx8QABAfIhEBEyU2SFprfY+hssTW5/n///////////////////////////////////////rr28u8rJ2NfW5eTj8vHxAAEBUDDiAyRFVneYqcrsDR4/X/////////////////////////////////////////+uvby7ysnY19bl5OPy8fEAAIChwtP1FjdIaYqbvN3/D////////////////////////////////////////////669vLvKydjX1uXk4/Lx8QBhcpO0xecIKTpbfI2uz9//////////////////////////////////////////////rr28u8rJ2NfW5eTj8vIBolNkhaa32PobLE1uf5////////////////////////////////////////////////+uvby7ysnY19bl5OPzQwN0RVZ3mKnK7A0eP1///////////////////////////////////////////////////669vLvKydjX1uXlFJR0tVZHSGmKm7zd/w//////////////////////////////////////////////////////rr28u8rJ2NfXBlXl1gaHSDk6W3yNrs/f//////////////////////////////////////////////////////+uvby7ysnY6DenRzdnyHk6KyxNbn+f/////////////////////////////////////////////////////////669vLvK2hlo+KiYuRmqWywdLj9f////////////////////////////////////////////////////////////rr282/tKukoJ+hpq64xNLh8f////////////////////////////////////////8="
+        }
+      }
+    }
+  },
+  "content": {
+    "note": "Whimsy→check-glyph fallback bands (face + char), used only when the baked SDF is absent. Equal-width bands: low whimsy = refined ✓, high = bold ✔. Reproduces engine/mood.ts pickCheckGlyph byte-for-byte.",
+    "glyphBands": [
+      {
+        "family": "Dopamine Check Symbols",
+        "char": "✓"
+      },
+      {
+        "family": "Dopamine Check Sans",
+        "char": "✔"
+      },
+      {
+        "family": "Dopamine Check Symbols",
+        "char": "✔"
+      }
+    ]
+  },
+  "render": {
+    "params": {
+      "exposure": {
+        "type": "float",
+        "from": {
+          "lerp": [
+            "intensity",
+            0.75,
+            1.5
+          ]
+        }
+      },
+      "bloomRadius": {
+        "type": "float",
+        "from": {
+          "mul": [
+            {
+              "baseline": "bloomRadius"
+            },
+            {
+              "lerp": [
+                "intensity",
+                0.8,
+                1.15
+              ]
+            }
+          ]
+        }
+      },
+      "moteCount": {
+        "type": "int",
+        "clampMax": "MAX_MOTES",
+        "from": {
+          "round": {
+            "mul": [
+              {
+                "baseline": "moteCount"
+              },
+              {
+                "lerp": [
+                  "intensity",
+                  0.85,
+                  1.25
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "moteSpeed": {
+        "type": "float",
+        "from": {
+          "baseline": "moteSpeed"
+        }
+      },
+      "turbulence": {
+        "type": "float",
+        "from": {
+          "mul": [
+            {
+              "baseline": "turbulence"
+            },
+            {
+              "lerp": [
+                "intensity",
+                0.85,
+                1.2
+              ]
+            }
+          ]
+        }
+      },
+      "overshoot": {
+        "type": "float",
+        "from": {
+          "mul": [
+            {
+              "baseline": "overshoot"
+            },
+            {
+              "lerp": [
+                "intensity",
+                0.7,
+                1.25
+              ]
+            }
+          ]
+        }
+      },
+      "iridescence": {
+        "type": "float",
+        "clamp01": true,
+        "from": {
+          "mul": [
+            {
+              "baseline": "iridescence"
+            },
+            {
+              "lerp": [
+                "whimsy",
+                1,
+                0.12
+              ]
+            }
+          ]
+        }
+      },
+      "dispersion": {
+        "type": "float",
+        "clamp01": true,
+        "from": {
+          "mul": [
+            {
+              "baseline": "dispersion"
+            },
+            {
+              "lerp": [
+                "whimsy",
+                1,
+                0.45
+              ]
+            },
+            {
+              "lerp": [
+                "intensity",
+                0.85,
+                1.1
+              ]
+            }
+          ]
+        }
+      },
+      "style": {
+        "type": "float",
+        "from": {
+          "control": "whimsy"
+        }
+      }
+    },
+    "shadowHeightFrac": {
+      "param": "bloomRadius"
+    },
+    "pass": {
+      "note": "PER-PASS uniforms (evaluated once per pass, never per frame): the checkmark glyph box half-size + SDF stroke/range in device px, sized to the TARGETED element (targetMinDimPx falls back to the full canvas when untargeted). sdfRange/sdfViewBoxW come from the checkmark sampler's baked-SDF metadata; sdfOn / checkTexOn are NOT here — the web aux-texture binding flips them (the baked SDF flips sdfOn, the glyph-canvas hook flips checkTexOn), natives keep the analytic ✓ at 0.",
+      "checkBox": {
+        "mul": [
+          0.16,
+          {
+            "input": "targetMinDimPx"
+          }
+        ]
+      },
+      "sdfStrokePx": {
+        "mul": [
+          0.16,
+          {
+            "input": "targetMinDimPx"
+          },
+          0.11
+        ]
+      },
+      "sdfRangePx": {
+        "mul": [
+          {
+            "input": "sdfRange"
+          },
+          {
+            "div": [
+              {
+                "mul": [
+                  2,
+                  {
+                    "mul": [
+                      0.16,
+                      {
+                        "input": "targetMinDimPx"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "max": [
+                  {
+                    "input": "sdfViewBoxW"
+                  },
+                  0.000001
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "panel": {
+      "sampler": "uMotePanel",
+      "texture": 3,
+      "note": "SPRITE-PANEL seam (a PASS effect's dynamic sprite layer, NOT a panel-kind whole-content panel): the drifting light motes are rasterized into an offscreen Canvas2D/CoreGraphics/android.graphics panel each frame (each mote's pose + lit colour + streak + twinkle computed ONCE per frame) and the shader SAMPLES it for the mote layer; the volumetric bloom + checkmark stay procedural in the shader. The panel binds at texture(3) so texture(1) stays the baked-SDF slot (the checkmark) — this PASS hybrid keeps BOTH the sprite panel AND the aux SDF on EVERY platform: the generic pass runner (web pass-runner / Metal MetalPassRunner+MetalOverlayHost / Android GlPassRunner) hosts a sprite panel at an arbitrary unit ALONGSIDE the baked-SDF aux (the heartburst sprite-panel + fail SDF-aux seams, composed). The draw itself is the per-platform sprite-panel-draw seam (web panelDraw hook / SolarbloomPanel.swift / SolarbloomPanel.kt) — the ONLY hand-written per-platform source."
+    },
+    "consts": {
+      "MAX_MOTES": 80
+    },
+    "config": {
+      "usesOrigin": true
+    },
+    "backends": {
+      "webgl2": {
+        "stage": "fullscreen-triangle",
+        "blend": "screen",
+        "shader": {
+          "program": "solarbloom"
+        }
+      }
+    },
+    "fallbackOrder": [
+      "webgl2"
+    ]
+  },
+  "binding": {
+    "note": "CROSS-PLATFORM uniform-binding contract. Which render.params are NOT shader uniforms, the seed-keyed scatter field, the per-frame/host extras, and the texture samplers — one source of truth for the web u<Name> list, the Swift struct + packer, and the MSL struct. SHIPS in the portable .dope (the runtime derives its uniform bindings from it); the toolchain consumes it too for the Metal struct codegen. Only `x-build`, `slug` and `kind` stay toolchain-only.",
+    "excludeParams": [
+      "style",
+      "overshoot",
+      "durationMs"
+    ],
+    "scatterKey": "moteSeed",
+    "scatterWeb": "uMoteSeed",
+    "extras": [
+      {
+        "name": "check",
+        "type": "float",
+        "web": "uCheck",
+        "note": "checkProgress(elapsedMs) (tempo.frame.extras)"
+      },
+      {
+        "name": "checkBox",
+        "type": "float",
+        "web": "uCheckBox",
+        "note": "half-size (device px) of glyph box (render.pass)"
+      },
+      {
+        "name": "checkTexOn",
+        "type": "float",
+        "web": "uCheckTexOn",
+        "note": "1 = sample the font glyph texture (flipped by the glyph-canvas aux hook)"
+      },
+      {
+        "name": "sdfOn",
+        "type": "float",
+        "web": "uSdfOn",
+        "note": "1 = drive the checkmark from the baked SDF (flipped by the SDF sampler binding)"
+      },
+      {
+        "name": "sdfRangePx",
+        "type": "float",
+        "web": "uSdfRangePx",
+        "note": "device px mapping to the SDF 0..1 range (render.pass)"
+      },
+      {
+        "name": "sdfStrokePx",
+        "type": "float",
+        "web": "uSdfStrokePx",
+        "note": "half stroke width (device px) (render.pass)"
+      }
+    ],
+    "samplers": [
+      {
+        "web": "uCheckTex",
+        "name": "checkTex",
+        "texture": 0,
+        "note": "GLYPH-FALLBACK seam: the whimsy-picked bundled check-font glyph (✓ / ✔), rasterized into an offscreen canvas and uploaded by an optional host glyph-fallback hook, used only when the baked SDF is absent. Code-shaped (the host font rasterize) — stays a hook; the canonical effect always ships the baked SDF, and natives don't bind aux textures (analytic fallback)."
+      },
+      {
+        "web": "uSdfTex",
+        "name": "sdfTex",
+        "texture": 1,
+        "outline": "checkmark",
+        "on": "sdfOn",
+        "note": "Declarative SDF source: the baked geometry.outlines.checkmark SDF binds here on EVERY platform (web, Metal, GL — the generic pass runner decodes the inline SDF, uploads an R8 texture and flips the sdfOn extra to 1); the analytic two-segment ✓ is the fallback when the SDF is absent (the fail precedent)."
+      },
+      {
+        "web": "uMotePanel",
+        "name": "motePanel",
+        "texture": 3,
+        "note": "SPRITE-PANEL sampler (render.panel): the drifting-mote Canvas2D/CoreGraphics/android.graphics panel the runner redraws + uploads every frame at texture(3), leaving texture(1) as the baked-SDF slot. Bound by the pass runner's sprite-panel seam on every platform; the per-platform mote DRAW is the panel-draw seam (web panelDraw hook / SolarbloomPanel.swift / SolarbloomPanel.kt)."
+      }
+    ]
+  }
+}
