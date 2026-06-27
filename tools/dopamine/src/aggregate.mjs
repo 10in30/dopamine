@@ -7,7 +7,7 @@
  * at the repo root that exposes `DopamineCore` + every `DopamineEffect<Name>` as
  * library products:
  *
- *   .package(url: "https://github.com/10in30/dopamine.git", from: "0.1.0")
+ *   .package(url: "https://github.com/10in30/dopamine.git", from: "0.2.0")
  *   // then pick products: "DopamineCore", "DopamineEffectComic", …
  *
  * Its targets reuse the SAME sources the per-effect `dist/swift/` packages carry:
