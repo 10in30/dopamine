@@ -57,6 +57,11 @@ struct ContentView: View {
     @State private var theme: ColorScheme = .dark
     @State private var themeInitialized = false
 
+    // macOS desktop overlay knobs: effects render on a floating panel larger than
+    // the window (window + margin) with a radial fade — bleeding past the window.
+    @State private var overlayMargin: Double = 200
+    @State private var fullScreenEffects = false
+
     private let moods = ["serene", "celebratory", "electric"]
 
     // Stage palette derived from the chosen scheme.
@@ -94,6 +99,8 @@ struct ContentView: View {
                 mood: mood, intensity: intensity, whimsy: whimsy,
                 anchor: anchor, targets: targets,
                 backdropLum: backdropLum,
+                overlayMargin: overlayMargin,
+                fullScreenEffects: fullScreenEffects,
                 onActiveChange: { active in
                     if active {
                         effectActive = true                 // cut out instantly
@@ -236,6 +243,23 @@ struct ContentView: View {
             }
             slider("Intensity", value: $intensity)
             slider("Whimsy", value: $whimsy)
+            #if os(macOS)
+            // Desktop overlay: how far effects bleed past the window, and a
+            // whole-desktop toggle. (The effect renders on a floating panel larger
+            // than the window with a radial edge fade — the macOS desktop default.)
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle(isOn: $fullScreenEffects) {
+                    Text("Full-screen effects").font(.caption).foregroundStyle(textSecondary)
+                }
+                HStack {
+                    Text("Overlay bleed").font(.caption).foregroundStyle(textSecondary)
+                    Spacer()
+                    Text("\(Int(overlayMargin)) pt")
+                        .font(.caption.monospacedDigit()).foregroundStyle(textPrimary.opacity(0.4))
+                }
+                Slider(value: $overlayMargin, in: 0...800).disabled(fullScreenEffects)
+            }
+            #endif
         }
     }
 
