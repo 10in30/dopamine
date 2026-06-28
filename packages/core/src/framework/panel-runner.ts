@@ -190,6 +190,7 @@ export function createPanelInstance<P extends PassParams>(
     gl.uniform1f(u.uLife, info.life);
     gl.uniform1f(u.uTimeS, info.elapsedMs / 1000);
     gl.uniform1f(u.uStyle, params.style);
+    if (u.uBackdropLum) gl.uniform1f(u.uBackdropLum, ctx.composite?.luminance ?? 0);
     bindPalette(gl, u, pal);
     bindScalars(gl, u, params, scalarBinds);
     bindFrameUniforms(gl, u, frameUniforms);

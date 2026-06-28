@@ -30,6 +30,7 @@ import {
   GLSL_CONSTANTS,
   GLSL_DITHER,
   GLSL_HASH,
+  GLSL_MARK_OUT,
   GLSL_PALETTE_MIX,
   GLSL_SD_SEG,
   GLSL_TONEMAP_ACES,
@@ -67,6 +68,7 @@ uniform float uShadow;        // 0 = light pass (screen), 1 = shadow pass (multi
 uniform vec2  uShadowOffset;  // device-px offset of the cast silhouette
 uniform float uShadowSoft;    // penumbra softness in device px (blur tap radius)
 uniform float uShadowStrength;// 0..1 max darkening of the multiply layer
+uniform float uBackdropLum;   // backdrop luminance 0 dark .. 1 light (mark-out)
 uniform vec3  uC0;            // accent palette (sparkle tint) — per fire
 uniform vec3  uC1;            // mid
 uniform vec3  uC2;            // outer accent
@@ -78,6 +80,7 @@ ${GLSL_PALETTE_MIX}
 ${GLSL_SD_SEG}
 ${GLSL_TONEMAP_ACES}
 ${GLSL_DITHER}
+${GLSL_MARK_OUT}
 
 // ---- The pride spectrum -----------------------------------------------------
 // Smooth IQ-cosine rainbow: a continuous, saturated spectral sweep over [0,1).
@@ -259,5 +262,11 @@ void main(){
   // toward the cel/pop-art end where hard flag bands are intended.
   col = ditherAdd(col, frag, uTimeS, 1.0 - style);
 
-  fragColor = vec4(max(col, 0.0), 1.0);
+  // Direct mark: the queen reads as cast LIGHT on a dark UI, but the lit rainbow
+  // fill + white rim wash out on a light surface. So hand her to dopMarkOut as a
+  // DEEP version of her own per-pixel pride hue — a saturated rainbow silhouette
+  // that stays legible on white. dopMarkOut ignores this on a dark backdrop.
+  float markA = clamp(fill, 0.0, 1.0);
+  vec3 markInk = clamp(body * 0.5, 0.0, 0.72);
+  fragColor = dopMarkOut(max(col, 0.0), markInk, markA);
 }`;

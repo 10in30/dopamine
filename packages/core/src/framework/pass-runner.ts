@@ -339,6 +339,7 @@ export function createPassInstance(
       gl.uniform1f(u.uPhase, loopMs / config.loopPeriodMs);
     }
     gl.uniform1f(u.uStyle, params.style);
+    if (u.uBackdropLum) gl.uniform1f(u.uBackdropLum, ctx.composite?.luminance ?? 0);
     bindPalette(gl, u, pal);
     bindScalars(gl, u, params, scalarBinds);
     bindFrameUniforms(gl, u, frameUniforms);

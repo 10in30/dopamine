@@ -15,6 +15,18 @@ private struct TargetFrameKey: PreferenceKey {
     }
 }
 
+/// The order card's centre (global points). Reported via a PreferenceKey — which
+/// always reflects the SETTLED layout — instead of `onAppear`, which can fire with
+/// a transient pre-layout frame (the same fix the target chips already use), so the
+/// anchored effect (e.g. solarbloom) lands on the card, not the screen centre.
+private struct CardCenterKey: PreferenceKey {
+    static var defaultValue: CGPoint = .zero
+    static func reduce(value: inout CGPoint, nextValue: () -> CGPoint) {
+        let n = nextValue()
+        if n != .zero { value = n }
+    }
+}
+
 struct ContentView: View {
     // Which effect to play. Defaults to the first registered effect, matching the
     // overlay's initial current effect.
@@ -37,13 +49,33 @@ struct ContentView: View {
     // out (so its label doesn't show through the effect) and back in after.
     @State private var effectActive = false
 
+    // Light / dark stage. Defaults to the current SYSTEM appearance (set once on
+    // appear), then the toggle overrides. Dark composites the effect the classic
+    // way (backdropLuminance 0); light hands the runtime the stage luminance so the
+    // light-out boost + direct glyph/ink (dopMarkOut) keep effects legible on white.
+    @Environment(\.colorScheme) private var systemScheme
+    @State private var theme: ColorScheme = .dark
+    @State private var themeInitialized = false
+
     private let moods = ["serene", "celebratory", "electric"]
+
+    // Stage palette derived from the chosen scheme.
+    private var isLight: Bool { theme == .light }
+    private var stageBg: Color { isLight ? Color(white: 0.90) : Color(white: 0.11) }
+    private var cardBg: Color { isLight ? .white : Color(white: 0.22) }
+    private var cardStroke: Color { isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.12) }
+    private var textPrimary: Color { isLight ? Color(white: 0.12) : .white }
+    private var textSecondary: Color { textPrimary.opacity(0.6) }
+    /// Backdrop relative luminance handed to the overlay (0 dark .. ~light). On a
+    /// light stage this drives `dopLightOut`/`dopMarkOut`; 0 keeps the dark look.
+    private var backdropLum: Double { isLight ? 0.82 : 0.0 }
 
     var body: some View {
         ZStack {
-            Color(white: 0.11).ignoresSafeArea()
+            stageBg.ignoresSafeArea()
 
             VStack(spacing: 24) {
+                appearanceToggle
                 Spacer()
                 orderCard
                 targetsRow
@@ -61,6 +93,7 @@ struct ContentView: View {
                 fireToken: fireToken,
                 mood: mood, intensity: intensity, whimsy: whimsy,
                 anchor: anchor, targets: targets,
+                backdropLum: backdropLum,
                 onActiveChange: { active in
                     if active {
                         effectActive = true                 // cut out instantly
@@ -71,6 +104,27 @@ struct ContentView: View {
             )
             .allowsHitTesting(false)
             .ignoresSafeArea()
+        }
+        .preferredColorScheme(theme)
+        .onPreferenceChange(CardCenterKey.self) { anchor = $0 }
+        .onAppear {
+            // Launch matching the current system appearance; the toggle then owns it.
+            if !themeInitialized { theme = systemScheme; themeInitialized = true }
+        }
+    }
+
+    /// Light / Dark segmented toggle (top-trailing), the macOS analog of the web
+    /// demo's Dark/Light buttons.
+    private var appearanceToggle: some View {
+        HStack {
+            Spacer()
+            Picker("Appearance", selection: $theme) {
+                Text("Light").tag(ColorScheme.light)
+                Text("Dark").tag(ColorScheme.dark)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 160)
         }
     }
 
@@ -92,30 +146,30 @@ struct ContentView: View {
             .opacity(effectActive && targets[effectName] == nil ? 0 : 1)
             Text("Order complete")
                 .font(.title2.weight(.semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(textPrimary)
             Text("Your dopamine hit is on its way.")
                 .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(textSecondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 36)
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color(white: 0.22))
+                .fill(cardBg)
                 .overlay(
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                        .strokeBorder(cardStroke, lineWidth: 1)
                 )
-                .shadow(color: .black.opacity(0.5), radius: 24, y: 12)
+                .shadow(color: .black.opacity(isLight ? 0.18 : 0.5), radius: 24, y: 12)
         )
         // Track the card's center in the global coordinate space so the overlay
-        // anchors the bloom on the checkmark.
+        // anchors the bloom on the checkmark. A PreferenceKey reflects the SETTLED
+        // layout (onAppear can fire with a transient pre-layout frame, leaving the
+        // bloom centred on the screen instead of the card).
         .background(
             GeometryReader { geo in
-                Color.clear.onAppear {
-                    let f = geo.frame(in: .global)
-                    anchor = CGPoint(x: f.midX, y: f.midY)
-                }
+                let f = geo.frame(in: .global)
+                Color.clear.preference(key: CardCenterKey.self, value: CGPoint(x: f.midX, y: f.midY))
             }
         )
     }
@@ -139,7 +193,7 @@ struct ContentView: View {
     private func targetChip(_ key: String, _ label: String, w: CGFloat, h: CGFloat, color: Color) -> some View {
         Text(label)
             .font(.caption.weight(.semibold))
-            .foregroundStyle(.white.opacity(0.85))
+            .foregroundStyle(textPrimary.opacity(0.85))
             .frame(width: w, height: h)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -164,7 +218,7 @@ struct ContentView: View {
     private var controls: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Effect").font(.caption).foregroundStyle(.white.opacity(0.6))
+                Text("Effect").font(.caption).foregroundStyle(textSecondary)
                 // A menu picker (not segmented) — there are nine effects, too many
                 // to fit as segments. Selecting an effect switches it; tap Fire to play.
                 Picker("Effect", selection: $effectName) {
@@ -174,7 +228,7 @@ struct ContentView: View {
                 .tint(.orange)
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text("Mood").font(.caption).foregroundStyle(.white.opacity(0.6))
+                Text("Mood").font(.caption).foregroundStyle(textSecondary)
                 Picker("Mood", selection: $mood) {
                     ForEach(moods, id: \.self) { Text($0.capitalized).tag($0) }
                 }
@@ -188,10 +242,10 @@ struct ContentView: View {
     private func slider(_ label: String, value: Binding<Double>) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(label).font(.caption).foregroundStyle(.white.opacity(0.6))
+                Text(label).font(.caption).foregroundStyle(textSecondary)
                 Spacer()
                 Text(String(format: "%.2f", value.wrappedValue))
-                    .font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.4))
+                    .font(.caption.monospacedDigit()).foregroundStyle(textPrimary.opacity(0.4))
             }
             Slider(value: value, in: 0...1)
         }

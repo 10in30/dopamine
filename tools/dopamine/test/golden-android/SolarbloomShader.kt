@@ -12,7 +12,7 @@ import ai.dopamine.core.GLSL_DOMAIN_WARP
 import ai.dopamine.core.GLSL_FBM
 import ai.dopamine.core.GLSL_HASH
 import ai.dopamine.core.GLSL_IRIDESCENT
-import ai.dopamine.core.GLSL_LIGHT_OUT
+import ai.dopamine.core.GLSL_MARK_OUT
 import ai.dopamine.core.GLSL_PALETTE_MIX
 import ai.dopamine.core.GLSL_PARTICLES
 import ai.dopamine.core.GLSL_SD_SEG
@@ -31,6 +31,7 @@ out vec4 fragColor;
 
 uniform vec2  uResolution;   // device pixels
 uniform vec2  uOrigin;       // bloom origin, gl coords (y up)
+uniform float uBackdropLum;  // backdrop luminance 0 dark .. 1 light (mark-out)
 uniform float uAmp;          // envelope amplitude (peaks > 1)
 uniform float uCheck;        // checkmark draw progress 0..1
 uniform float uLife;         // total normalized progress 0..1
@@ -69,8 +70,8 @@ ${GLSL_DISPERSION}
 ${GLSL_SD_SEG}
 ${GLSL_TONEMAP_ACES}
 ${GLSL_DITHER}
+${GLSL_MARK_OUT}
 ${GLSL_PARTICLES}
-${GLSL_LIGHT_OUT}
 
 // Radial bloom intensity at a normalized radius dn (1.0 == bloom edge). Sampled
 // three times at channel-shifted radii to get a spectral split at the rim.
@@ -437,5 +438,18 @@ void main(){
   // Faded out toward the cel end, where hard bands are the intended look.
   col = ditherAdd(col, frag, uTimeS, 1.0 - uStyle);
 
-  fragColor = dopLightOut(col);
+  // The checkmark is "drawn in light" (bright white) above — perfect on a dark
+  // UI, but invisible on a light one. So ALSO hand it to dopMarkOut as a DIRECT
+  // ink mark: on a light backdrop it composites a solid, palette-tinted dark
+  // tick over the glow so the confirmation stays legible; on a dark backdrop
+  // dopMarkOut ignores it entirely (the light version above carries it). Coverage
+  // is the crisp glyph body, gated by the same draw-in/fade as the lit version.
+  float markA = clamp(ccore * 1.25, 0.0, 1.0) * cFade;
+  // A palette-fit ink: a DEEP, saturated version of the inner palette colour so
+  // the tick reads as a confident COLOURED confirmation on a light surface (not a
+  // flat black mark) — coherent with the bloom it sits in. Saturation is pushed
+  // out from luma, then the value is brought down enough to stay legible on white.
+  float inkL = dot(uC0, vec3(0.2126, 0.7152, 0.0722));
+  vec3 markInk = clamp(mix(vec3(inkL), uC0, 1.7) * 0.46, 0.0, 0.72);
+  fragColor = dopMarkOut(col, markInk, markA);
 }"""

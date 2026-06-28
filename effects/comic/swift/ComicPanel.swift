@@ -166,7 +166,11 @@ public func drawComicPanel(
         ctx.closePath()
     }
 
-    let ink = CGFloat(inkWeight) * dpr * slamScale
+    // Ink thickness scales with the EFFECT SIZE (minDim), not just dpr — without
+    // this a small targeted fire gets a proportionally huge outline that swamps the
+    // letters (the word/burst already scale with minDim). 1.0 at a full-page fire,
+    // proportionally thinner for a small target. In sync with ComicRenderer (web).
+    let ink = CGFloat(inkWeight) * dpr * slamScale * (minDim / min(w, h))
     let fillA = presence  // 0..1 channel value scaled by presence (web `255*presence`).
 
     // Burst FILL -> BLUE.

@@ -9,7 +9,7 @@ import ai.dopamine.core.GLSL_CONSTANTS
 import ai.dopamine.core.GLSL_DITHER
 import ai.dopamine.core.GLSL_HALFTONE
 import ai.dopamine.core.GLSL_HASH
-import ai.dopamine.core.GLSL_LIGHT_OUT
+import ai.dopamine.core.GLSL_MARK_OUT
 import ai.dopamine.core.GLSL_ROT2
 import ai.dopamine.core.GLSL_TONEMAP_ACES
 
@@ -47,6 +47,7 @@ uniform float uShadow;        // 0 = light pass (screen), 1 = shadow pass (multi
 uniform vec2  uShadowOffset;  // device-px offset of the cast silhouette
 uniform float uShadowSoft;    // penumbra softness in device px
 uniform float uShadowStrength;// 0..1 max darkening of the multiply layer
+uniform float uBackdropLum;   // backdrop luminance 0 dark .. 1 light (mark-out)
 uniform vec3  uC0;            // hero heart core color (warm red)
 uniform vec3  uC1;            // heart shade / burst color (pink/coral)
 uniform vec3  uC2;            // accent / glow / blush color
@@ -57,7 +58,7 @@ ${GLSL_ROT2}
 ${GLSL_HALFTONE}
 ${GLSL_TONEMAP_ACES}
 ${GLSL_DITHER}
-${GLSL_LIGHT_OUT}
+${GLSL_MARK_OUT}
 
 void main(){
   vec2 frag = vUv * uResolution;
@@ -197,5 +198,12 @@ void main(){
   // Ordered dither to kill banding the screen blend reveals (faded toward cel).
   col = ditherAdd(col, frag, uTimeS, 1.0 - uStyle * 0.7);
 
-  fragColor = dopLightOut(col);
+  // Direct mark (palette-fit ink): the warm lit hearts wash out on a light
+  // surface, so render the hearts (hero + the little burst + the contour) as a
+  // DEEP, saturated version of the palette's warm core so they read as solid
+  // coloured hearts on white. Faded with presence/burst; ignored on a dark UI.
+  float markA = clamp((heartFill + burstFill * burstFade + contour) * uPresence, 0.0, 1.0);
+  float hbL = dot(uC0, vec3(0.2126, 0.7152, 0.0722));
+  vec3 markInk = clamp(mix(vec3(hbL), uC0, 1.5) * 0.52, 0.0, 0.72);
+  fragColor = dopMarkOut(max(col, 0.0), markInk, markA);
 }"""

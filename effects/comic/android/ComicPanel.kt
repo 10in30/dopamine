@@ -200,7 +200,11 @@ fun drawComicPanel(
     }
     burstPath.close()
 
-    val ink = inkWeight.toFloat() * dpr * slamScale
+    // Ink thickness scales with the EFFECT SIZE (minDim), not just dpr — without
+    // this a small targeted fire gets a proportionally huge outline that swamps the
+    // letters (the word/burst already scale with minDim). 1.0 at a full-page fire,
+    // proportionally thinner for a small target. In sync with ComicRenderer (web).
+    val ink = inkWeight.toFloat() * dpr * slamScale * (minDim / min(widthPx, heightPx).toFloat())
     val fillA = channel(presence) // presence-scaled channel value (web `255*presence`).
 
     // Burst FILL -> BLUE.
