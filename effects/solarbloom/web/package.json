@@ -1,6 +1,6 @@
 {
   "name": "@dopaminefx/effect-solarbloom",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Solarbloom — a centered radial volumetric bloom success effect for Dopamine.",
   "keywords": [
     "dopamine-effect"
@@ -27,7 +27,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@dopaminefx/core": "^0.5.0"
+    "@dopaminefx/core": "^0.6.0"
   },
   "license": "MIT",
   "author": "10in30",

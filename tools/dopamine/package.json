@@ -1,6 +1,6 @@
 {
   "name": "@dopaminefx/build",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "type": "module",
   "description": "Dopamine cross-platform effect build toolchain — generates the web / SwiftPM / Android artifacts from a single effect folder (the expanded .dope package).",
   "bin": {
