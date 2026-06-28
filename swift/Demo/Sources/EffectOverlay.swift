@@ -48,6 +48,10 @@ struct EffectOverlay {
     /// Backdrop relative luminance (0 dark .. ~light) the effect composites
     /// against — drives the light-out boost + direct glyph/ink on a light stage.
     var backdropLum: Double = 0
+    /// macOS desktop overlay knobs: how far the effect surface extends past the
+    /// window (pt), and whether to cover the whole desktop instead.
+    var overlayMargin: Double = 200
+    var fullScreenEffects: Bool = false
     /// Called (on the main thread) when playback STARTS (true) and when it ends
     /// and the overlay goes idle (false) — so the host can fade the targeted
     /// element's content out while the effect plays over it, then back in.
@@ -62,6 +66,10 @@ struct EffectOverlay {
         view.intensity = intensity
         view.whimsy = whimsy
         view.backdropLum = backdropLum
+        #if os(macOS)
+        view.overlayMargin = CGFloat(overlayMargin)
+        view.fullScreenEffects = fullScreenEffects
+        #endif
         view.onActiveChange = onActiveChange
         // Picker selection: make the chosen effect current (does NOT play it; Fire
         // plays). No-op during autoplay or if it's already current.
@@ -118,6 +126,18 @@ final class OverlayView: PlatformView {
     /// Backdrop luminance for the light-out boost; updating it re-applies to the
     /// live host so a Light/Dark toggle takes effect on the next frame.
     var backdropLum: Double = 0 { didSet { current?.host.backdropLuminance = backdropLum } }
+
+    #if os(macOS)
+    /// The macOS desktop default: effects render on a floating `DesktopEffectOverlay`
+    /// LARGER than the window (window + margin) with a radial edge fade, so they
+    /// bleed past the window — not hosted in-window. Created once the view has a
+    /// window. The overlay owns the display-link tick; this view drives no link.
+    private var desktop: DesktopEffectOverlay?
+    /// How far the effect surface extends beyond the window on each side (pt).
+    var overlayMargin: CGFloat = 200 { didSet { desktop?.margin = overlayMargin } }
+    /// Cover the whole desktop instead of window+margin (slower; bleeds everywhere).
+    var fullScreenEffects: Bool = false { didSet { desktop?.coversWholeScreen = fullScreenEffects } }
+    #endif
 
     // The ordered effect list + autoplay mode are fixed at launch.
     private let effects = EffectRegistry.resolve(Autoplay.requestedEffect)
@@ -184,24 +204,19 @@ final class OverlayView: PlatformView {
             demoLog.error("[DopamineDemo] no Metal device"); return
         }
         device = dev
-        // Build + prepare the first effect now (so the very first play is instant)
-        // and attach its layer. Don't start its clock until autoplay/Fire.
         idx = 0
+        // iOS: build + prepare the first effect now (CADisplayLink works without a
+        // window) and attach its layer. macOS: the effect is hosted by the floating
+        // DesktopEffectOverlay, which needs the window + its surface size — so the
+        // first build + autoplay are deferred to `viewDidMoveToWindow`.
+        #if !os(macOS)
         current = buildAndPrepare(0)
         if let current { attach(current) }
-        // On iOS a CADisplayLink works without a window, so start it here. On macOS
-        // the display link is vended by the NSView once it has a window/screen — see
-        // `viewDidMoveToWindow`.
-        // Manual mode starts idle (nothing playing ⇒ nothing to draw); Fire resumes
-        // it. Autoplay (CI) renders continuously, so it stays unpaused — see
-        // `startDisplayLink`, which sets the initial paused state.
-        #if !os(macOS)
         startDisplayLink()
-        #endif
         if Autoplay.requestedEffect != nil {
-            // Let the layer size + (in CI) the recorder warm up before the first play.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.startAutoplay() }
         }
+        #endif
     }
 
     /// Create the per-frame display link and add it to the main run loop. On macOS
@@ -225,8 +240,15 @@ final class OverlayView: PlatformView {
     #if os(macOS)
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        // The NSView display link needs a window/screen; start it once attached.
-        if window != nil { startDisplayLink() }
+        // Create the floating desktop overlay tracking this view's window, then build
+        // the first effect (sized to the overlay's surface) + kick off autoplay.
+        guard let w = window, desktop == nil else { return }
+        desktop = DesktopEffectOverlay(tracking: w, margin: overlayMargin, coversWholeScreen: fullScreenEffects)
+        idx = 0
+        current = buildAndPrepare(0)
+        if Autoplay.requestedEffect != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.startAutoplay() }
+        }
     }
     #endif
 
@@ -268,7 +290,14 @@ final class OverlayView: PlatformView {
         // the classic dark look. Set before prepare so the first frame is correct.
         built.host.backdropLuminance = backdropLum
         let scale = renderScale
+        // macOS: size to the floating overlay SURFACE (window+margin) so a hybrid
+        // effect's panel texture is built at the surface size (prepare reads this).
+        // iOS: the in-window view bounds.
+        #if os(macOS)
+        let px = desktop?.surfaceSizePx ?? canvasPx()
+        #else
         let px = canvasPx()
+        #endif
         built.host.lightLayer.isOpaque = false
         built.host.lightLayer.contentsScale = scale
         built.host.lightLayer.drawableSize = px           // panel is sized from this
@@ -283,21 +312,28 @@ final class OverlayView: PlatformView {
     /// upright. (Don't `addSublayer` the layer directly — see the AGENT NOTE on
     /// `MetalOverlayHost.attach(to:)`.)
     private func attach(_ p: Prepared) {
+        #if os(macOS)
+        // The DesktopEffectOverlay hosts + sizes the layer on present(); nothing in-window.
+        #else
         let l = p.host.lightLayer
         l.frame = bounds
         l.contentsScale = renderScale
         l.drawableSize = canvasPx()
         p.host.attach(to: self)
+        #endif
     }
 
     /// Resize the current effect's layer to the view bounds (shared by the UIKit
-    /// `layoutSubviews` and AppKit `layout` hooks).
+    /// `layoutSubviews` and AppKit `layout` hooks). No-op on macOS — the floating
+    /// DesktopEffectOverlay owns the layer's layout/sizing.
     private func relayout() {
+        #if !os(macOS)
         let scale = renderScale
         if let l = current?.host.lightLayer {
             l.frame = bounds; l.contentsScale = scale
             l.drawableSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
         }
+        #endif
     }
 
     #if os(macOS)
@@ -339,11 +375,45 @@ final class OverlayView: PlatformView {
     /// Start (or restart) playback of `p`: start its clock, resume the display link,
     /// and set the idle deadline so `tick` can pause again once it has faded.
     private func beginPlaying(_ p: Prepared) {
+        notifyActive(true)
+        #if os(macOS)
+        // Present into the floating desktop overlay (bleeds past the window + radial
+        // fade). The overlay owns the tick; it stops itself once the effect fades.
+        let (anchorScreen, targetSize) = overlayAnchorTarget(for: p.name)
+        let realMs = effectDurationMs(p.params) / Swift.max(0.05, slowmo)   // slow-mo extends real time
+        if let host = p.host as? DopamineEffectHost {
+            desktop?.present(host, durationMs: realMs, anchorScreen: anchorScreen, targetSizePt: targetSize)
+        }
+        // The overlay has no idle callback — mirror the dwell to fade the card UI back.
+        DispatchQueue.main.asyncAfter(deadline: .now() + realMs / 1000.0 + Self.idleTailSeconds) { [weak self] in
+            self?.notifyActive(false)
+        }
+        #else
         p.host.play()
         activeUntil = CACurrentMediaTime() + dwellSeconds(p.params, gap: Self.idleTailSeconds)
         vsync?.isPaused = false
-        notifyActive(true)
+        #endif
     }
+
+    private func effectDurationMs(_ params: [String: DopeValue]) -> Double {
+        if case let .number(v)? = params["durationMs"] { return v }
+        return 1800.0
+    }
+
+    #if os(macOS)
+    /// (anchorScreen, targetSize) for `name`: a registered target chip's centre+size,
+    /// else the card anchor — mapped from SwiftUI `.global` (window top-left) to a
+    /// global SCREEN point (AppKit bottom-left) the DesktopEffectOverlay expects.
+    private func overlayAnchorTarget(for name: String) -> (CGPoint?, CGSize) {
+        var size = CGSize.zero
+        var g: CGPoint? = (anchorPoint2D == .zero) ? nil : anchorPoint2D
+        if let r = targets[name] { g = CGPoint(x: r.midX, y: r.midY); size = r.size }
+        guard let p = g, let w = window else { return (nil, size) }
+        let h = w.contentView?.bounds.height ?? bounds.height
+        let screen = w.convertPoint(toScreen: CGPoint(x: p.x, y: h - p.y))   // top-left → screen BL
+        return (screen, size)
+    }
+    #endif
 
     /// Report play/idle transitions to the host (deferred to the next runloop tick
     /// so we never mutate SwiftUI state inside an `updateUIView` call chain).
