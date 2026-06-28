@@ -22,6 +22,24 @@ inline float benday(float2 frag, float cell, float v, float ang) {
   return 1.0 - smoothstep(r - aa, r + aa, d);
 }
 
+inline float4 dopMarkOut(float3 glow, float3 markInk, float markA, constant ComicUniforms &u) {
+  glow = max(glow, 0.0);
+  float bk = clamp(u.backdropLum, 0.0, 1.0);
+  
+  
+  
+  
+  if(bk <= 0.0) return float4(glow, clamp(max(max(glow.r, glow.g), glow.b), 0.0, 1.0));
+  float luma = dot(glow, float3(0.2126, 0.7152, 0.0722));
+  float3 gcol = max(mix(float3(luma), glow, 1.0 + bk * 1.100), 0.0);
+  float ga = clamp(max(max(gcol.r, gcol.g), gcol.b), 0.0, 1.0);
+  ga = pow(ga, 1.0 + bk * 1.600);
+  float mA = clamp(markA, 0.0, 1.0) * bk;
+  float3 outRgb = mix(gcol, max(markInk, 0.0), mA);
+  float outA = mix(ga, 1.0, mA);
+  return float4(outRgb, outA);
+}
+
 fragment float4 comic_fragment(
     VSOut in [[stage_in]],
     constant ComicUniforms &u [[buffer(0)]],
@@ -191,11 +209,16 @@ fragment float4 comic_fragment(
   
   col = dop_ditherAdd(col, frag, u.timeS, 1.0 - u.style * 0.7);
 
-  col = max(col, 0.0);
-    float bk = clamp(u.backdropLum, 0.0, 1.0);
-    float luma = dot(col, float3(0.2126, 0.7152, 0.0722));
-    col = max(mix(float3(luma), col, 1.0 + bk * 0.600), 0.0);
-    float outA = clamp(max(max(col.r, col.g), col.b), 0.0, 1.0);
-    outA = clamp(outA * (1.0 + bk * 0.800), 0.0, 1.0);
-    return float4(col, outA);
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  float markA = clamp(ink * (1.0 - 0.82 * wordFill), 0.0, 1.0);
+  float3 markInk = float3(0.04, 0.04, 0.05);
+  return dopMarkOut(max(col, 0.0), markInk, markA, u);
 }

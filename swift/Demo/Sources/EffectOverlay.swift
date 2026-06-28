@@ -45,6 +45,9 @@ struct EffectOverlay {
     /// Per-effect target boxes (global points). The overlay aims the matching
     /// effect's centrepiece at the box centre, sized to the box.
     var targets: [String: CGRect] = [:]
+    /// Backdrop relative luminance (0 dark .. ~light) the effect composites
+    /// against — drives the light-out boost + direct glyph/ink on a light stage.
+    var backdropLum: Double = 0
     /// Called (on the main thread) when playback STARTS (true) and when it ends
     /// and the overlay goes idle (false) — so the host can fade the targeted
     /// element's content out while the effect plays over it, then back in.
@@ -58,6 +61,7 @@ struct EffectOverlay {
         view.mood = mood
         view.intensity = intensity
         view.whimsy = whimsy
+        view.backdropLum = backdropLum
         view.onActiveChange = onActiveChange
         // Picker selection: make the chosen effect current (does NOT play it; Fire
         // plays). No-op during autoplay or if it's already current.
@@ -111,6 +115,9 @@ final class OverlayView: PlatformView {
     var mood = "celebratory"
     var intensity = 0.8
     var whimsy = 0.4
+    /// Backdrop luminance for the light-out boost; updating it re-applies to the
+    /// live host so a Light/Dark toggle takes effect on the next frame.
+    var backdropLum: Double = 0 { didSet { current?.host.backdropLuminance = backdropLum } }
 
     // The ordered effect list + autoplay mode are fixed at launch.
     private let effects = EffectRegistry.resolve(Autoplay.requestedEffect)
@@ -256,6 +263,10 @@ final class OverlayView: PlatformView {
             demoLog.error("[DopamineDemo] failed to build effect=\(e.name, privacy: .public)"); return nil
         }
         built.host.timeScale = slowmo
+        // Light/dark stage: backdrop luminance drives the light-out boost + direct
+        // glyph/ink (dopMarkOut) so effects stay legible on a light surface; 0 keeps
+        // the classic dark look. Set before prepare so the first frame is correct.
+        built.host.backdropLuminance = backdropLum
         let scale = renderScale
         let px = canvasPx()
         built.host.lightLayer.isOpaque = false

@@ -10,7 +10,7 @@ import ai.dopamine.core.GLSL_DITHER
 import ai.dopamine.core.GLSL_FBM
 import ai.dopamine.core.GLSL_HASH
 import ai.dopamine.core.GLSL_IRIDESCENT
-import ai.dopamine.core.GLSL_LIGHT_OUT
+import ai.dopamine.core.GLSL_MARK_OUT
 import ai.dopamine.core.GLSL_PALETTE_MIX
 import ai.dopamine.core.GLSL_PARTICLES
 import ai.dopamine.core.GLSL_SD_SEG
@@ -30,6 +30,7 @@ uniform vec2  uResolution;   // device pixels
 uniform vec2  uOrigin;       // gesture centre, gl coords (y up) — the targeted element
 uniform vec2  uTarget;       // targeted element size (device px); stroke length scales to it
 uniform float uDraw;         // pen / stroke draw progress 0..1 (fast confirm)
+uniform float uBackdropLum;  // backdrop luminance 0 dark .. 1 light (mark-out)
 uniform float uLife;         // whole-effect progress 0..1
 uniform float uTimeS;        // elapsed seconds
 uniform float uAmp;          // envelope amplitude (peaks > 1)
@@ -58,8 +59,8 @@ ${GLSL_IRIDESCENT}
 ${GLSL_TONEMAP_ACES}
 ${GLSL_DITHER}
 ${GLSL_SD_SEG}
+${GLSL_MARK_OUT}
 ${GLSL_PARTICLES}
-${GLSL_LIGHT_OUT}
 
 // Length-aware pen progress. The bespoke draw window (STROKE_DRAW_MS = 360 ms) is
 // calibrated for a full-canvas stroke; shrunk to a targeted element the gesture
@@ -414,5 +415,10 @@ void main(){
   // would reveal; faded out toward the cel end where hard bands are intended.
   col = ditherAdd(col, frag, uTimeS, 1.0 - uStyle);
 
-  fragColor = dopLightOut(col);
+  // Direct mark: a signature is INK — it must stay a legible dark stroke on a
+  // light surface, not pale cast light. Hand the stroke body to dopMarkOut as a
+  // DEEP version of its own ink hue; dopMarkOut ignores it on a dark backdrop.
+  float markA = clamp(ink, 0.0, 1.0);
+  vec3 markInk = clamp(inkCol * 0.42, 0.0, 0.6);
+  fragColor = dopMarkOut(max(col, 0.0), markInk, markA);
 }"""

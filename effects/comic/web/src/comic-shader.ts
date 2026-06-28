@@ -31,6 +31,7 @@ import {
   GLSL_DITHER,
   GLSL_HALFTONE,
   GLSL_HASH,
+  GLSL_MARK_OUT,
   GLSL_ROT2,
   GLSL_TONEMAP_ACES,
 } from "@dopaminefx/core";
@@ -49,6 +50,7 @@ in vec2 vUv;
 out vec4 fragColor;
 
 uniform sampler2D uPanel;     // R=wordFill G=ink B=burstFill
+uniform float uBackdropLum;   // backdrop luminance 0 dark .. 1 light (mark-out)
 uniform vec2  uResolution;    // device pixels
 uniform vec2  uTarget;        // targeted element size (device px); scales the action lines
 uniform vec2  uOrigin;        // impact centre (the anchor), device px
@@ -78,6 +80,7 @@ ${GLSL_ROT2}
 ${GLSL_HALFTONE}
 ${GLSL_TONEMAP_ACES}
 ${GLSL_DITHER}
+${GLSL_MARK_OUT}
 
 void main(){
   vec2 frag = vUv * uResolution;
@@ -243,5 +246,16 @@ void main(){
   // (faded toward the pop end where the flat printed look is intended).
   col = ditherAdd(col, frag, uTimeS, 1.0 - uStyle * 0.7);
 
-  fragColor = vec4(max(col, 0.0), 1.0);
+  // The ink (letters + outlines + burst contours) is "the absence of light" — it
+  // reads as black only on a DARK page. On a LIGHT page that's invisible, so the
+  // whole word is unreadable. Hand the ink to dopMarkOut as a DIRECT near-black
+  // mark: on a light backdrop it lays solid ink over the glow so the lettering
+  // returns; on a dark backdrop dopMarkOut ignores it (the carve above stands).
+  // Carve the direct ink OFF the letter interiors (where wordFill is high) so it
+  // frames the lettering as an OUTLINE instead of flooding it black and hiding the
+  // pop colour — the colour shows from the boosted glow, the ink rims it. The
+  // burst + line outlines (no wordFill there) stay solidly inked.
+  float markA = clamp(ink * (1.0 - 0.82 * wordFill), 0.0, 1.0);
+  vec3 markInk = vec3(0.04, 0.04, 0.05);
+  fragColor = dopMarkOut(max(col, 0.0), markInk, markA);
 }`;

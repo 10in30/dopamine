@@ -186,25 +186,70 @@ vec4 dopLightOut(vec3 col){
  * BACKDROP-BOOSTED premultiplied light out.
  *
  * Plain `dopLightOut` (above) composites source-over, which is vivid on a dark
- * surface but PALE on a light one: a soft glow has low brightness → low alpha →
- * it blends mostly toward the (light) page and washes out. On a light surface we
- * therefore push the light to read as COLOUR, not pale wash:
- *   - SATURATION boost — pull the colour away from its own luma so it stays
- *     chromatic instead of greying toward white, and
- *   - PRESENCE (alpha) boost — lift faint alphas so the colour covers more and
- *     thereby DARKENS the light page toward the colour (bright cores, already at
- *     alpha 1, are untouched by the clamp).
+ * surface but MUDDY on a light one: a soft glow is a broad field of low-value
+ * colour, and source-over paints that whole field as a semi-opaque wash that
+ * mixes with the light page into a dull brown/grey smear. The fix is NOT to make
+ * the wash cover MORE (that's what muddied it) — it's to keep only the STRONG
+ * light and make the colour that survives read as vivid hue:
+ *   - SATURATION boost — pull the colour away from its own luma so what shows is
+ *     a clean chromatic hue, not a greyed pastel, and
+ *   - PRESENCE GAMMA — raise alpha to a power > 1 so the broad dim halo falls
+ *     away toward transparent (the page stays clean) while bright cores (alpha
+ *     ≈ 1) are untouched. This is the inverse of the old presence *lift*, which
+ *     inflated the dim halo and was the source of the muddiness.
  *
  * Both ramp with `backdropExpr` — a GLSL float expression for the backdrop
  * relative luminance, 0 (black) .. 1 (white). At 0 this is byte-FOR-byte
- * equivalent to plain `dopLightOut` (`sat = 1`, `lift = 1`), so a dark backdrop —
+ * equivalent to plain `dopLightOut` (`sat = 1`, `gamma = 1`), so a dark backdrop —
  * or no backdrop — is unchanged. The web path bakes the luminance in as a
  * literal (`dopLightOutGLSL("0.81")`); the native stacks pass a uniform
  * (`dopLightOutGLSL("uBackdropLum")`), so the LOOK matches across platforms from
  * one math definition.
  */
-export const DOP_LIGHT_SAT_GAIN = 0.6;
-export const DOP_LIGHT_LIFT_GAIN = 0.8;
+export const DOP_LIGHT_SAT_GAIN = 1.1;
+export const DOP_LIGHT_ALPHA_GAMMA = 1.6;
+
+/**
+ * DIRECT-MARK light out — for effects that draw a legible GLYPH / INK (a
+ * checkmark, a lettered word + outline) on top of a glow.
+ *
+ * The glow is emitted as light (the usual model: vivid on dark, and on a light
+ * backdrop boosted exactly like `dopLightOut`). But a GLYPH encoded as light
+ * VANISHES on a light surface — bright-white-on-white, or "ink as the absence of
+ * light" which on a light page is just the page. So the mark gets its OWN path:
+ *   - DARK backdrop (`uBackdropLum <= 0`): byte-identical to the plain opaque
+ *     emit `vec4(glow, 1.0)` — the mark stays fused into `glow` as light, exactly
+ *     as before. Dark mode is UNTOUCHED.
+ *   - LIGHT backdrop: composite the mark as a DIRECT, source-over colour over the
+ *     (boosted) glow — `markInk` at coverage `markA` — so a dark ink reads as a
+ *     solid, legible mark on the light page (its alpha is driven by coverage, not
+ *     by the colour's brightness, which is what `dopLightOut` cannot do).
+ *
+ * The effect supplies `markInk` (the backdrop-appropriate ink colour) and `markA`
+ * (the glyph/ink coverage 0..1). `uBackdropLum` is the standard uniform (web:
+ * set by the runners; native: `u.backdropLum`). The glow boost mirrors
+ * `dopLightOutGLSL` from the SAME gain consts, so the two can't drift.
+ */
+export const GLSL_MARK_OUT = /* glsl */ `
+vec4 dopMarkOut(vec3 glow, vec3 markInk, float markA){
+  glow = max(glow, 0.0);
+  float bk = clamp(uBackdropLum, 0.0, 1.0);
+  // DARK: premultiplied light (alpha = brightness) — matches the native overlay's
+  // source-over convention. On web the dark canvas is opaque (alpha ignored), so
+  // the RGB is byte-identical to the old \`vec4(glow, 1.0)\`; the alpha only matters
+  // on the native self-contained overlay, which composites premultiplied.
+  if (bk <= 0.0) return vec4(glow, clamp(max(max(glow.r, glow.g), glow.b), 0.0, 1.0));
+  float luma = dot(glow, vec3(0.2126, 0.7152, 0.0722));
+  vec3 gcol = max(mix(vec3(luma), glow, 1.0 + bk * ${DOP_LIGHT_SAT_GAIN.toFixed(3)}), 0.0);
+  float ga = clamp(max(max(gcol.r, gcol.g), gcol.b), 0.0, 1.0);
+  ga = pow(ga, 1.0 + bk * ${DOP_LIGHT_ALPHA_GAMMA.toFixed(3)});
+  float mA = clamp(markA, 0.0, 1.0) * bk;
+  vec3 outRgb = mix(gcol, max(markInk, 0.0), mA);
+  float outA = mix(ga, 1.0, mA);
+  return vec4(outRgb, outA);
+}
+`;
+
 export function dopLightOutGLSL(backdropExpr: string): string {
   return /* glsl */ `
 vec4 dopLightOut(vec3 col){
@@ -213,7 +258,7 @@ vec4 dopLightOut(vec3 col){
   float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
   col = max(mix(vec3(luma), col, 1.0 + backdrop * ${DOP_LIGHT_SAT_GAIN.toFixed(3)}), 0.0);
   float a = clamp(max(max(col.r, col.g), col.b), 0.0, 1.0);
-  a = clamp(a * (1.0 + backdrop * ${DOP_LIGHT_LIFT_GAIN.toFixed(3)}), 0.0, 1.0);
+  a = pow(a, 1.0 + backdrop * ${DOP_LIGHT_ALPHA_GAMMA.toFixed(3)});
   return vec4(col, a);
 }
 `;

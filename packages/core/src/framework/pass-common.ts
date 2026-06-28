@@ -195,6 +195,11 @@ export function allocTexture(glc: GLContext): WebGLTexture {
 export const STANDARD_COMMON = [
   "uResolution", "uTarget", "uLife", "uTimeS", "uLoopS", "uPhase", "uStyle", "uAmp",
   "uC0", "uC1", "uC2", "uShadow", "uShadowOffset", "uShadowSoft", "uShadowStrength",
+  // Backdrop relative luminance (0 dark .. 1 light), from the host `backdrop`
+  // option (0 when none). Lets a shader render legible GLYPHS/INK as a direct,
+  // backdrop-aware colour on a light surface (see `dopMarkOut` in look/glsl.ts);
+  // the native stacks already expose the same value as `u.backdropLum`.
+  "uBackdropLum",
 ] as const;
 
 /**

@@ -164,9 +164,10 @@ float particleFade(float t, float tailPow){
 // overlay composites against; GlPassRunner sets it by name from the public
 // backdrop option (0 by default ⇒ no boost ⇒ the dark look is unchanged). On a
 // light surface the BOOST keeps soft glows reading as colour: saturate the light
-// away from its own luma + lift faint alphas so the colour covers more (darkening
-// the page toward it). This MIRRORS the web `dopLightOutGLSL`
-// (packages/core/src/engine/look/glsl.ts; SAT gain 0.6, LIFT gain 0.8) and the
+// away from its own luma + a presence GAMMA that suppresses the broad dim halo
+// (which source-over otherwise smears into a muddy wash) while keeping bright
+// light. This MIRRORS the web `dopLightOutGLSL`
+// (packages/core/src/engine/look/glsl.ts; SAT gain 1.1, alpha GAMMA 1.6) and the
 // Metal light-out tail, so the LOOK matches across platforms.
 const val GLSL_LIGHT_OUT: String = """
 uniform float uBackdropLum;
@@ -174,9 +175,34 @@ vec4 dopLightOut(vec3 col){
   col = max(col, 0.0);
   float bk = clamp(uBackdropLum, 0.0, 1.0);
   float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
-  col = max(mix(vec3(luma), col, 1.0 + bk * 0.6), 0.0);
+  col = max(mix(vec3(luma), col, 1.0 + bk * 1.1), 0.0);
   float a = clamp(max(max(col.r, col.g), col.b), 0.0, 1.0);
-  a = clamp(a * (1.0 + bk * 0.8), 0.0, 1.0);
+  a = pow(a, 1.0 + bk * 1.6);
   return vec4(col, a);
+}
+"""
+
+// DIRECT-MARK light out — the Android mirror of the web `GLSL_MARK_OUT`
+// (packages/core/src/engine/look/glsl.ts). For effects that draw a legible GLYPH
+// / INK (solarbloom's checkmark, comic's word + outline): the glow is emitted as
+// light, but a mark encoded as light VANISHES on a light surface, so the mark
+// gets its own DIRECT, source-over, backdrop-aware path. The effect declares
+// `uniform float uBackdropLum;` itself (so this chunk does NOT redeclare it) and
+// supplies `markInk` (the ink colour) + `markA` (coverage). On a dark backdrop
+// this returns premultiplied light (alpha = brightness) for the self-contained
+// overlay; on a light backdrop it lays the ink over the boosted glow.
+const val GLSL_MARK_OUT: String = """
+vec4 dopMarkOut(vec3 glow, vec3 markInk, float markA){
+  glow = max(glow, 0.0);
+  float bk = clamp(uBackdropLum, 0.0, 1.0);
+  if (bk <= 0.0) return vec4(glow, clamp(max(max(glow.r, glow.g), glow.b), 0.0, 1.0));
+  float luma = dot(glow, vec3(0.2126, 0.7152, 0.0722));
+  vec3 gcol = max(mix(vec3(luma), glow, 1.0 + bk * 1.100), 0.0);
+  float ga = clamp(max(max(gcol.r, gcol.g), gcol.b), 0.0, 1.0);
+  ga = pow(ga, 1.0 + bk * 1.600);
+  float mA = clamp(markA, 0.0, 1.0) * bk;
+  vec3 outRgb = mix(gcol, max(markInk, 0.0), mA);
+  float outA = mix(ga, 1.0, mA);
+  return vec4(outRgb, outA);
 }
 """
