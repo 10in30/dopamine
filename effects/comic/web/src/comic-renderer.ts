@@ -154,7 +154,12 @@ export function drawPanel(
     ctx.closePath();
   };
 
-  const ink = params.inkWeight * dpr * scale;
+  // Ink thickness scales with the EFFECT SIZE (minDim), not just dpr — the
+  // word/burst already scale with minDim, so without this a small targeted fire
+  // gets a proportionally huge outline that swamps the letters. The factor is 1.0
+  // at a full-page fire (minDim == min(w,h)) and proportionally thinner for a
+  // small target. Kept in sync with ComicPanel.swift / ComicPanel.kt.
+  const ink = params.inkWeight * dpr * scale * (minDim / Math.min(w, h));
 
   // Burst FILL -> BLUE only.
   ctx.save();
